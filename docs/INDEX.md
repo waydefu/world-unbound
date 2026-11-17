@@ -22,6 +22,7 @@ Where everything is. Start with [HANDOFF.md](HANDOFF.md) to pick up the work.
 | [spikes/engine-spike.md](spikes/engine-spike.md) | three.js vs Babylon on the owner's phone; why bundles are mandatory |
 | [spikes/terrain-erosion.md](spikes/terrain-erosion.md) | Erosion prototype findings; why the bake was deferred |
 | [reference/engine-research-v1.1.md](reference/engine-research-v1.1.md) | Engine architecture research and technical decisions v1.1 (owner's source document; research proposal) |
+| [reference/external-projects.md](reference/external-projects.md) | External reference projects (Abyssal Garden: blind visual critic, fly-through benchmark, adaptive quality) |
 | [reference/game-spec-v1.md](reference/game-spec-v1.md) | Game specification v1.0 (owner's source document) |
 | [reference/aegis-v2.md](reference/aegis-v2.md) | AEGIS ∞ v2.0 governance specification (owner's source document) |
 
