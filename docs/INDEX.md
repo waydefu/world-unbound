@@ -21,6 +21,8 @@ Where everything is. Start with [HANDOFF.md](HANDOFF.md) to pick up the work.
 | [rfc/README.md](rfc/README.md) | RFC process |
 | [spikes/engine-spike.md](spikes/engine-spike.md) | three.js vs Babylon on the owner's phone; why bundles are mandatory |
 | [spikes/terrain-erosion.md](spikes/terrain-erosion.md) | Erosion prototype findings; why the bake was deferred |
+| [reference/game-spec-v1.md](reference/game-spec-v1.md) | Game specification v1.0 (owner's source document) |
+| [reference/aegis-v2.md](reference/aegis-v2.md) | AEGIS ∞ v2.0 governance specification (owner's source document) |
 
 ## Governance and security
 
