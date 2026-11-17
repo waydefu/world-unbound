@@ -67,7 +67,7 @@ export class App {
     this.hud = new Hud(options.hudRoot, {
       setCamera: (index) => this.setCamera(index),
       exportReport: () => downloadJson(`world-unbound-telemetry-${Date.now()}.json`, this.report()),
-    }, params.hud);
+    }, params.hud, CAMERAS.map((c) => c.name));
     this.state = {
       backend: 'none', fallbackReason: null, quality: tier.name, recoveredFromCrash: options.recoveredFromCrash,
       deviceLostCount: 0, cameraIndex: 0, cameraName: '', cssWidth: 0, cssHeight: 0,

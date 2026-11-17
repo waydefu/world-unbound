@@ -1,4 +1,5 @@
 import { BUDGET_BALANCED, BUDGET_HIGH } from '../perf/memoryRegistry';
+import type { ShadowSettings } from '../render/shadows';
 import type { LodPolicy } from '../world/chunkGrid';
 import type { QualityName } from './params';
 
@@ -15,13 +16,6 @@ export interface QualityTier {
   readonly shadows: ShadowSettings;
 }
 
-/** Cascaded sun shadows (G1.2). Budgeted from the phone GPU ramp: about 1.5-3 ms for three cascades. */
-export interface ShadowSettings {
-  readonly cascades: number;
-  readonly mapSize: number;
-  /** Distance (m) covered by the cascades; beyond it terrain is unshadowed and fog takes over. */
-  readonly maxFar: number;
-}
 
 export const QUALITY: Record<QualityName, QualityTier> = {
   low: {

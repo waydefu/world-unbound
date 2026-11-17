@@ -1,7 +1,7 @@
 import {
   Color, DirectionalLight, FogExp2, HemisphereLight, Mesh, MeshStandardNodeMaterial, PlaneGeometry, type Scene,
 } from 'three/webgpu';
-import type { Weather } from '../app/params';
+import type { Weather } from '../env/weather';
 import type { CelestialState } from '../env/ephemeris';
 import type { SkySummary } from '../env/skyView';
 import { SkyDome } from './sky';

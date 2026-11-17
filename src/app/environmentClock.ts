@@ -3,7 +3,7 @@ import { seasonOf, type Season } from '../env/calendar';
 import { computeCelestial, createCelestialState, type CelestialState } from '../env/ephemeris';
 import { SkyViewBuilder } from '../env/skyView';
 import type { Environment } from '../render/environment';
-import type { Weather } from './params';
+import type { Weather } from '../env/weather';
 
 /** Rows of the sky-view table rebuilt per frame while a refresh is in progress. */
 const ROWS_PER_FRAME = 4;

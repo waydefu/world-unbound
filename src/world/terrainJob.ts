@@ -1,6 +1,6 @@
-import { TILE_DIM } from '../world/constants';
-import { generateTile } from '../world/heightField';
-import { buildChunkMesh, createMeshBuffers } from '../world/terrainMesh';
+import { TILE_DIM } from './constants';
+import { generateTile } from './heightField';
+import { buildChunkMesh, createMeshBuffers } from './terrainMesh';
 
 /** Messages exchanged with the terrain worker (also used by the main-thread fallback). */
 export interface TerrainRequest {

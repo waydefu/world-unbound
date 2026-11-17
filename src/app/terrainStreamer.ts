@@ -4,7 +4,7 @@ import { ChunkRequests } from '../world/chunkRequests';
 import { slotCx, slotCz, type LodPolicy } from '../world/chunkGrid';
 import { CHUNK_COUNT } from '../world/constants';
 import { TerrainClient } from './terrainClient';
-import { resultBytes, runTerrainJob, type TerrainRequest } from './terrainJob';
+import { resultBytes, runTerrainJob, type TerrainRequest } from '../world/terrainJob';
 
 const MAX_IN_FLIGHT = 16;
 const APPLY_BUDGET_MS = 3;

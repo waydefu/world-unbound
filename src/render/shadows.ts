@@ -1,6 +1,13 @@
 import type { DirectionalLight } from 'three/webgpu';
 import { CSMShadowNode } from 'three/addons/csm/CSMShadowNode.js';
-import type { ShadowSettings } from '../app/quality';
+
+/** Cascaded sun shadows (G1.2). Budgeted from the phone GPU ramp: about 1.5-3 ms for three cascades. */
+export interface ShadowSettings {
+  readonly cascades: number;
+  readonly mapSize: number;
+  /** Distance (m) covered by the cascades; beyond it terrain is unshadowed and fog takes over. */
+  readonly maxFar: number;
+}
 
 /**
  * Cascaded shadow maps for the sun (G1.2). Practical split scheme (blend of

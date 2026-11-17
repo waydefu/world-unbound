@@ -61,6 +61,22 @@ const PATH_RULES = [
   [/new\s+URL\(\s*['"`]\//, 'root-absolute URL; resolve relative to import.meta.url'],
 ];
 const PURE_DIRS = ['world', 'perf', 'env'];
+/**
+ * Module layers (docs/architecture/README.md): each src/ directory may import
+ * only the directories listed here. Lower layers never import upwards; app is
+ * the composition root and may import everything.
+ */
+const LAYERS = {
+  world: [],
+  perf: [],
+  env: [],
+  platform: ['world', 'perf', 'env'],
+  render: ['world', 'perf', 'env', 'platform'],
+  ui: ['platform'],
+  app: ['world', 'perf', 'env', 'platform', 'render', 'ui'],
+};
+const knownDirs = new Set(readdirSync(path.join(root, 'src'), { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name));
+for (const dir of knownDirs) if (!LAYERS[dir]) fail(path.join(root, 'src', dir), 1, `src/${dir} has no entry in the audit LAYERS table`);
 const DOM_GLOBALS = /\b(document|window|navigator|localStorage|requestAnimationFrame)\b/;
 
 for (const file of sourceFiles.filter((f) => f.endsWith('.ts'))) {
@@ -81,7 +97,12 @@ for (const file of sourceFiles.filter((f) => f.endsWith('.ts'))) {
         fail(file, i + 1, `src/${rel[0]} may only import from its own directory (found "${imported}")`);
       }
     }
-    if (rel[0] === 'render' && imported && /\/ui\//.test(imported)) fail(file, i + 1, 'src/render must not import src/ui');
+    if (imported?.startsWith('.') && rel.length > 1 && LAYERS[rel[0]]) {
+      const target = path.relative(path.join(root, 'src'), path.resolve(path.dirname(file), imported)).split(path.sep)[0];
+      if (target !== rel[0] && !LAYERS[rel[0]].includes(target)) {
+        fail(file, i + 1, `src/${rel[0]} may not import src/${target} (allowed: ${LAYERS[rel[0]].join(', ') || 'own directory only'}; see docs/architecture/README.md)`);
+      }
+    }
   });
 }
 

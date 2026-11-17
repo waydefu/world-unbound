@@ -2,12 +2,16 @@
 
 An open-source project starting from a verifiable GitHub governance baseline.
 
+**Picking up the work?** Read [docs/HANDOFF.md](docs/HANDOFF.md), then [docs/INDEX.md](docs/INDEX.md).
+
 ## Current status
 
 - **Governance M0:** complete on 2026-11-17 (negative test passed). Independent two-person review remains an unmet control.
-- **Game G0 (engine skeleton):** Vite + TypeScript + three.js WebGPURenderer (WebGL2 fallback), deterministic terrain and coastline, chunk streaming in a Worker, hysteresis dynamic resolution, telemetry HUD with JSON export, six fixed test cameras, static and headless audits. There is no gameplay, architecture, vegetation, real sky or ocean yet.
+- **Governance M1:** complete on the agent side ([status](docs/governance/status.md)).
+- **Game G0 (engine skeleton):** Vite + TypeScript + three.js WebGPURenderer (WebGL2 fallback), deterministic terrain and coastline, chunk streaming in a Worker, hysteresis dynamic resolution, telemetry HUD with JSON export, six fixed test cameras, static and headless audits.
+- **Game G1 (in progress):** physical sky and atmosphere, calendar and ephemeris, auto-exposure, cascaded sun shadows, terrain in render bundles. No buildings, vegetation, real ocean or gameplay yet.
 
-Not verified on any real device. Performance, thermal and WebGPU results must come from hardware tests.
+Partly verified on the owner's phone (engine spike, GPU ramp); shadows not yet. Performance, thermal and WebGPU results must come from hardware tests.
 
 ## Run it
 
@@ -17,19 +21,19 @@ npm run dev      # http://localhost:5173/world-unbound/
 npm run check    # typecheck, tests, build, audits
 ```
 
-Once Pages is enabled, the site is served at https://waydefu.github.io/world-unbound/. Debug parameters: `?cam=0..5 &backend=webgpu|webgl2 &q=low|med|high &scale=0.5..1.5 &hour=0..24 &wx=clear|cloudy|rain|storm`. Press `H` or tap **HUD** for telemetry; **JSON** exports a report.
+Once Pages is enabled, the site is served at https://waydefu.github.io/world-unbound/. Debug parameters: `?cam=0..5 &backend=webgpu|webgl2 &q=low|med|high &scale=0.5..1.5 &hour=0..24 &day=0..32 &wx=clear|cloudy|rain|storm &shadows=0`. Press `H` or tap **HUD** for telemetry; **JSON** exports a report.
 
 ## Governance
 
 - [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Code of Conduct](CODE_OF_CONDUCT.md)
 - [AI Agent contract](AGENTS.md) · [Governance dictionaries](governance/)
-- [Architecture and contracts](docs/) · [Open-source license](LICENSE)
+- [Architecture and module layers](docs/architecture/README.md) · [Governance status](docs/governance/status.md) · [Index](docs/INDEX.md) · [Open-source license](LICENSE)
 
 The source of truth is AEGIS ∞ v2.0. Configuration files here are **declarations** until corresponding GitHub settings and protected CI checks enforce them.
 
 ## CI / main protection
 
-On each push to main and each PR targeting main, CI runs four jobs (`m0-files`, `policy-syntax`, `app-checks`, `visual-audit`) and an unconditional `final-gate`. The final gate rejects failed, cancelled, skipped, and unknown prerequisite conclusions. The single Required Check stays `final-gate`.
+On each push to main and each PR targeting main, CI runs `m0-files`, `policy-syntax`, `app-checks`, `visual-audit`, `dependency-review`, an advisory `base-policy`, and an unconditional `final-gate` over the first five; CodeQL code scanning is also required by the ruleset ([M1](docs/governance/m1.md)). The final gate rejects failed, cancelled, skipped, and unknown prerequisite conclusions. The single Required Check stays `final-gate`.
 
 Pushes to main also run `.github/workflows/pages.yml`, which rebuilds and re-verifies the merged commit and deploys it to GitHub Pages.
 

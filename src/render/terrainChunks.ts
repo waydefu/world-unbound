@@ -1,7 +1,7 @@
 import {
   BufferAttribute, BufferGeometry, BundleGroup, FrontSide, Group, Mesh, MeshStandardNodeMaterial, Sphere, Vector3,
 } from 'three/webgpu';
-import type { TerrainResult } from '../app/terrainJob';
+import type { TerrainResult } from '../world/terrainJob';
 import { MemoryPartition, type MemoryRegistry } from '../perf/memoryRegistry';
 import { CHUNK_COUNT, CHUNK_SIZE, MAX_LOD } from '../world/constants';
 import { lodIndexCount, lodVertexCount, slotCx, slotCz } from '../world/chunkGrid';

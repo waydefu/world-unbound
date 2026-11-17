@@ -1,7 +1,9 @@
 /** URL debug parameters (pure parsing; invalid values fall back to defaults). */
-export type BackendChoice = 'auto' | 'webgpu' | 'webgl2';
+import { WEATHERS, type Weather } from '../env/weather';
+import type { BackendChoice } from '../render/renderer';
+
+export type { BackendChoice, Weather };
 export type QualityName = 'low' | 'med' | 'high';
-export type Weather = 'clear' | 'cloudy' | 'rain' | 'storm';
 
 export interface DebugParams {
   /** Fixed test camera 0..5. */
@@ -28,7 +30,6 @@ export interface DebugParams {
 export const CAMERA_COUNT = 6;
 /** Late spring: long evenings, so the dusk camera gets a real golden hour. */
 export const DEFAULT_DAY = 6;
-const WEATHERS: readonly Weather[] = ['clear', 'cloudy', 'rain', 'storm'];
 const QUALITIES: readonly QualityName[] = ['low', 'med', 'high'];
 
 function numberIn(raw: string | null, min: number, max: number): number | null {
