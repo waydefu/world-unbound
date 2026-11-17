@@ -3,6 +3,7 @@ import { DEFAULT_DYNAMIC_RESOLUTION, DynamicResolution, snapRefreshPeriod } from
 import { FrameStats } from '../perf/frameStats';
 import { MemoryPartition, MemoryRegistry } from '../perf/memoryRegistry';
 import type { CapabilityReport } from '../platform/capabilities';
+import { WEATHER_WETNESS } from '../env/weather';
 import { Environment } from '../render/environment';
 import { attachSunShadows } from '../render/shadows';
 import { createRenderer, warmUp, whenDeviceLost, type RendererHandle } from '../render/renderer';
@@ -198,6 +199,7 @@ export class App {
     this.state.hour = params.hourExplicit ? params.hour : spec.hour ?? params.hour;
     const weather = params.weatherExplicit ? params.weather : spec.weather ?? params.weather;
     this.state.weather = weather;
+    this.chunks.setWetness(WEATHER_WETNESS[weather]);
     this.state.day = params.day;
     this.clock.configure(params.day, this.state.hour, weather, Math.max(2, this.eye.y));
     this.state.season = this.clock.season;
@@ -234,6 +236,7 @@ export class App {
   /** @hot */
   private placeWorld(): void {
     this.chunks.root.position.set(-this.eye.x, -this.eye.y, -this.eye.z);
+    this.chunks.setEyeOffset(this.eye.x, this.eye.y, this.eye.z);
     this.environment.sea.position.set(0, -this.eye.y, 0);
   }
 

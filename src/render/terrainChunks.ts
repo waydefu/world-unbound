@@ -1,11 +1,12 @@
 import {
-  BufferAttribute, BufferGeometry, BundleGroup, FrontSide, Group, Mesh, MeshStandardNodeMaterial, Sphere, Vector3,
+  BufferAttribute, BufferGeometry, BundleGroup, Group, Mesh, type MeshStandardNodeMaterial, Sphere, Vector3,
 } from 'three/webgpu';
 import type { TerrainResult } from '../world/terrainJob';
 import { MemoryPartition, type MemoryRegistry } from '../perf/memoryRegistry';
 import { CHUNK_COUNT, CHUNK_SIZE, MAX_LOD } from '../world/constants';
 import { lodIndexCount, lodVertexCount, slotCx, slotCz } from '../world/chunkGrid';
 import { buildLodIndices } from '../world/terrainMesh';
+import { createTerrainMaterial, type TerrainMaterial } from './terrainMaterial';
 
 const BYTES_PER_VERTEX = 12 + 12 + 4;
 const POOL_LIMIT = 24;
@@ -27,6 +28,7 @@ export class TerrainChunks {
   private readonly bundle = new BundleGroup();
   private bundled = false;
   readonly material: MeshStandardNodeMaterial;
+  private readonly terrainMaterial: TerrainMaterial = createTerrainMaterial();
   private readonly meshes: (Mesh | null)[] = new Array<Mesh | null>(CHUNK_COUNT).fill(null);
   private readonly meshLod = new Int8Array(CHUNK_COUNT).fill(-1);
   private readonly geometryPool: BufferGeometry[][] = [];
@@ -35,13 +37,7 @@ export class TerrainChunks {
   residentTriangles = 0;
 
   constructor(private readonly memory: MemoryRegistry) {
-    this.material = new MeshStandardNodeMaterial({
-      vertexColors: true,
-      roughness: 0.96,
-      metalness: 0,
-      side: FrontSide,
-    });
-    this.material.name = 'terrain';
+    this.material = this.terrainMaterial.material;
     for (let lod = 0; lod <= MAX_LOD; lod++) {
       this.geometryPool.push([]);
       const index = new BufferAttribute(buildLodIndices(lod), 1);
@@ -53,6 +49,15 @@ export class TerrainChunks {
     this.root.name = 'terrain-root';
     this.bundle.name = 'terrain-bundle';
     this.root.add(this.bundle);
+  }
+
+  /** @hot delegates to a uniform write */
+  setEyeOffset(x: number, y: number, z: number): void {
+    this.terrainMaterial.setEyeOffset(x, y, z);
+  }
+
+  setWetness(wetness: number): void {
+    this.terrainMaterial.setWetness(wetness);
   }
 
   /** Called once the backend is known (and again after a device-loss rebuild). */
