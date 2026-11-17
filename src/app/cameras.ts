@@ -1,6 +1,5 @@
-import { QUAY_Z, SEA_LEVEL } from '../world/constants';
+import { SEA_LEVEL, TOWN_X, TOWN_Z } from '../world/constants';
 import { heightAt } from '../world/heightField';
-import { coastlineZ } from '../world/terrainShape';
 import type { Weather } from '../env/weather';
 
 /**
@@ -23,24 +22,14 @@ export interface CameraSpec {
   readonly weather?: Weather;
 }
 
-const EAST_SHORE_X = 560;
-
+/** Interim poses around the village; the G1.5 phase C commit re-poses them from the baked data. */
 export const CAMERAS: readonly CameraSpec[] = [
-  {
-    name: 'coast-low', x: EAST_SHORE_X, z: coastlineZ(EAST_SHORE_X) + 14, lift: 1.5,
-    targetX: 300, targetZ: coastlineZ(300) - 60, targetLift: 0.5, fovDeg: 58,
-  },
-  { name: 'architecture-detail', x: 24, z: 36, lift: 1.7, targetX: -10, targetZ: -60, targetLift: 1.4, fovDeg: 55 },
-  { name: 'vegetation-near', x: 400, z: 340, lift: 1.2, targetX: 470, targetZ: 470, targetLift: 1, fovDeg: 60 },
-  {
-    name: 'backlit-dusk-water', x: -30, z: QUAY_Z + 8, lift: 2, targetX: -260, targetZ: QUAY_Z - 420, targetLift: 0,
-    fovDeg: 55, hour: 19.6,
-  },
-  {
-    name: 'rain-night', x: -70, z: -110, lift: 1.7, targetX: 30, targetZ: QUAY_Z, targetLift: 1.5,
-    fovDeg: 60, hour: 22.5, weather: 'rain',
-  },
-  { name: 'town-harbour-overview', x: -560, z: 640, lift: 170, targetX: 20, targetZ: -170, targetLift: 0, fovDeg: 50 },
+  { name: 'coast-low', x: TOWN_X + 40, z: TOWN_Z, lift: 1.5, targetX: TOWN_X + 300, targetZ: TOWN_Z - 200, targetLift: 0.5, fovDeg: 58 },
+  { name: 'architecture-detail', x: TOWN_X, z: TOWN_Z + 20, lift: 1.7, targetX: TOWN_X - 40, targetZ: TOWN_Z - 60, targetLift: 1.4, fovDeg: 55 },
+  { name: 'vegetation-near', x: TOWN_X - 100, z: TOWN_Z + 200, lift: 1.2, targetX: TOWN_X - 50, targetZ: TOWN_Z + 300, targetLift: 1, fovDeg: 60 },
+  { name: 'backlit-dusk-water', x: TOWN_X, z: TOWN_Z - 20, lift: 2, targetX: TOWN_X + 300, targetZ: TOWN_Z - 500, targetLift: 0, fovDeg: 55, hour: 19.6 },
+  { name: 'rain-night', x: TOWN_X - 50, z: TOWN_Z + 30, lift: 1.7, targetX: TOWN_X + 50, targetZ: TOWN_Z - 60, targetLift: 1.5, fovDeg: 60, hour: 22.5, weather: 'rain' },
+  { name: 'town-harbour-overview', x: TOWN_X - 300, z: TOWN_Z + 400, lift: 170, targetX: TOWN_X, targetZ: TOWN_Z - 100, targetLift: 0, fovDeg: 50 },
 ];
 
 export interface ResolvedCamera {

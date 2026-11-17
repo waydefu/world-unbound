@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { waveSet } from '../src/env/ocean';
 import { WEATHERS } from '../src/env/weather';
-import { WORLD_MAX, WORLD_MIN } from '../src/world/constants';
+import { TOWN_X, TOWN_Z, WORLD_MAX, WORLD_MIN } from '../src/world/constants';
 import { heightAt } from '../src/world/heightField';
 import { SEAFLOOR_DIM, SEAFLOOR_RES, buildSeaFloor } from '../src/world/seaFloor';
 
@@ -37,7 +37,7 @@ describe('buildSeaFloor', () => {
 
   it('has the documented size and is deterministic', () => {
     expect(floor.length).toBe(SEAFLOOR_DIM * SEAFLOOR_DIM);
-    expect(SEAFLOOR_DIM).toBe(512);
+    expect(SEAFLOOR_DIM).toBe(1024);
     const again = buildSeaFloor(new Float32Array(SEAFLOOR_DIM * SEAFLOOR_DIM));
     expect(again).toEqual(floor);
   });
@@ -51,14 +51,15 @@ describe('buildSeaFloor', () => {
     for (let n = 0; n < 20; n++) {
       const i = next();
       const j = next();
-      expect(Math.abs(floor[j * SEAFLOOR_DIM + i] - heightAt(centre(i), centre(j)))).toBeLessThan(1e-6);
+      // The map stores f32: compare against the f32 rounding of heightAt (terrain now reaches 1050 m, where one f32 step is 1e-4).
+      expect(Math.abs(floor[j * SEAFLOOR_DIM + i] - Math.fround(heightAt(centre(i), centre(j))))).toBeLessThan(1e-6);
     }
     expect(WORLD_MAX - WORLD_MIN).toBe(SEAFLOOR_DIM * SEAFLOOR_RES);
   });
 
-  it('is deep water far to the north and dry land at the town centre', () => {
-    const mid = SEAFLOOR_DIM / 2;
-    expect(floor[2 * SEAFLOOR_DIM + mid]).toBeLessThan(-2);
-    expect(floor[mid * SEAFLOOR_DIM + mid]).toBeGreaterThan(2);
+  it('is deep fjord water in the north-east and dry land at the village centre', () => {
+    const texel = (v: number): number => Math.floor((v - WORLD_MIN) / SEAFLOOR_RES);
+    expect(floor[texel(-1500) * SEAFLOOR_DIM + texel(1500)]).toBeLessThan(-2);
+    expect(floor[texel(TOWN_Z) * SEAFLOOR_DIM + texel(TOWN_X)]).toBeGreaterThan(0.5);
   });
 });

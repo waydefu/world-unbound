@@ -2,6 +2,7 @@ import { readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { HEIGHT_OFFSET, HEIGHT_QUANTUM, TERRAIN_VERSION } from '../src/world/constants';
 import {
   TERRAIN_SAMPLES, TERRAIN_TILE_COUNT, TERRAIN_TILE_SAMPLES, decodeTile, installTerrain, terrainGrid, terrainInstalled,
 } from '../src/world/terrainData';
@@ -74,6 +75,12 @@ describe('committed Hellesylt tiles', () => {
       expect(size).toBe(f.bytes);
       expect(size).toBeLessThanOrEqual(2 * 1024 * 1024);
     }
+  });
+
+  it('declares the same quantisation as the world core', () => {
+    expect(manifest.quantum_m).toBe(HEIGHT_QUANTUM);
+    expect(manifest.offset_m).toBe(HEIGHT_OFFSET);
+    expect(TERRAIN_VERSION).toBe(2);
   });
 
   it('is installed by the test setup with the sha256 of every file verified', () => {

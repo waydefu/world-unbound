@@ -35,7 +35,7 @@ export function vertexAo(tile: Int16Array, dim: number, apron: number, i: number
     for (let s = 0; s < 4; s++) {
       const k = STEPS[s];
       const hk = tile[(j + dz * k + apron) * dim + (i + dx * k + apron)];
-      const dh = (hk - h0) * HEIGHT_QUANTUM;
+      const dh = (hk - h0) * HEIGHT_QUANTUM; // differences: the offset cancels
       const dist = k * CELL_SIZE * diag;
       const sinElev = dh / Math.sqrt(dh * dh + dist * dist);
       if (sinElev > best) best = sinElev;

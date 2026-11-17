@@ -1,6 +1,6 @@
-import { CELL_SIZE, HEIGHT_QUANTUM } from './constants';
+import { CELL_SIZE } from './constants';
 import { lodIndexCount, lodSide, lodVertexCount } from './chunkGrid';
-import { tileIndex, tileNormal } from './heightField';
+import { dequantize, tileIndex, tileNormal } from './heightField';
 import { AO_APRON, AO_DIM, vertexAo } from './terrainAo';
 import { classifyTerrain } from './terrainMaterialWeights';
 
@@ -93,7 +93,7 @@ export function buildChunkMesh(
       const v = j * n + i;
       const si = i * step;
       const sj = j * step;
-      const y = tile[tileIndex(si, sj)] * HEIGHT_QUANTUM;
+      const y = dequantize(tile[tileIndex(si, sj)]);
       positions[v * 3] = si * CELL_SIZE;
       positions[v * 3 + 1] = y;
       positions[v * 3 + 2] = sj * CELL_SIZE;

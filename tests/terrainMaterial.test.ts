@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CHUNK_SAMPLES, WORLD_MAX, WORLD_MIN } from '../src/world/constants';
+import { CHUNK_SAMPLES, TOWN_X, TOWN_Z, WORLD_MAX, WORLD_MIN } from '../src/world/constants';
 import { lodSide } from '../src/world/chunkGrid';
 import { runTerrainJob } from '../src/world/terrainJob';
 import { AO_APRON, AO_DIM, vertexAo } from '../src/world/terrainAo';
@@ -34,7 +34,7 @@ describe('classifyTerrain', () => {
     expect(out[0]).toBeGreaterThan(0.5);
     classifyTerrain(900, 900, 20, 0.6, out);
     expect(out[1]).toBeGreaterThan(0.95);
-    classifyTerrain(0, 0, 2.6, 1, out);
+    classifyTerrain(TOWN_X, TOWN_Z, 1.6, 1, out);
     expect(out[2]).toBeGreaterThanOrEqual(0.8);
   });
 });

@@ -7,7 +7,7 @@ import {
 } from 'three/tsl';
 import { WORLD_MAX, WORLD_MIN } from '../world/constants';
 
-/** 256 x 256 quads over the whole world: 8 m spacing (128 x 128, 16 m, on the lite tier). */
+/** 256 x 256 quads over the whole 4096 m world: 16 m spacing (128 x 128, 32 m, on the lite tier). */
 const CELLS = 256;
 const CELLS_LITE = 128;
 const NOT_READY_Y = -50;

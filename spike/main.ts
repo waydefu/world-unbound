@@ -4,6 +4,7 @@ import { clearResults, downloadJson, loadResults, resultsTable, saveResult, type
 import type { RunnerFactory } from './runner';
 import { runLoadRamp, showRampResult } from './loadRamp';
 import { buildSpikeScene, orbitPose, type Pose } from './sceneData';
+import { loadAndInstallTerrain } from '../src/app/terrainAssets';
 
 /**
  * Renderer spike harness (ADR-0002 §8). One engine per page load: build the
@@ -100,6 +101,7 @@ async function run(engineId: string): Promise<void> {
   panel.replaceChildren(status);
   status.textContent = `${engineId}: building terrain…`;
   await new Promise((r) => setTimeout(r, 30));
+  await loadAndInstallTerrain(); // the world core has no procedural fallback
   const scene = buildSpikeScene();
 
   const cssW = window.innerWidth;

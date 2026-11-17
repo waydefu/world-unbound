@@ -94,7 +94,7 @@ export class Ocean {
    * Publishes the sea-floor height map (metres) as half floats. The texture
    * is allocated at full size up front (filled with deep water) so the upload
    * never has to resize a live GPU texture.
-   * @amortized once per session: 262 k conversions
+   * @amortized once per session: ~1 M conversions (1024 x 1024 texels)
    */
   setSeaFloor(heights: Float32Array): void {
     const n = Math.min(heights.length, this.floorData.length);

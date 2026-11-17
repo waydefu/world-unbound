@@ -17,6 +17,7 @@ import type { DebugParams } from './params';
 import { pixelRatioForBudget, type QualityTier } from './quality';
 import { EnvironmentClock } from './environmentClock';
 import { buildReport, type AppState } from './report';
+import { loadAndInstallTerrain } from './terrainAssets';
 import { TerrainStreamer } from './terrainStreamer';
 
 const LOW_FREQUENCY_MS = 500;
@@ -82,7 +83,7 @@ export class App {
       backend: 'none', fallbackReason: null, quality: tier.name, recoveredFromCrash: options.recoveredFromCrash,
       deviceLostCount: 0, cameraIndex: 0, cameraName: '', cssWidth: 0, cssHeight: 0,
       devicePixelRatio: 1, basePixelRatio: 1, bufferWidth: 0, bufferHeight: 0,
-      refreshHz: 60, refreshMeasured: false, warmupMs: 0, firstFrameMs: 0, worldReadyMs: 0,
+      refreshHz: 60, refreshMeasured: false, warmupMs: 0, firstFrameMs: 0, worldReadyMs: 0, terrainLoadMs: 0, terrainWorkerLoadMs: 0,
       materialVariants: 2, variantBudget: VARIANT_BUDGET[tier.name], drawCalls: 0, bundledDraws: 0, triangles: 0,
       chunksLoaded: 0, chunksInFlight: 0, staleResults: 0, lodBias: 0, terrainMode: 'worker',
       hour: params.hour, day: params.day, season: '', weather: params.weather, sunAltitudeDeg: 0,
@@ -92,7 +93,11 @@ export class App {
   }
 
   static async create(options: AppOptions): Promise<App> {
+    // The terrain must be installed before anything reads a height (cameras, streaming, sea floor).
+    // A failed download or digest mismatch rejects here and boot shows the error.
+    const terrainLoadMs = await loadAndInstallTerrain();
     const app = new App(options);
+    app.state.terrainLoadMs = terrainLoadMs;
     await app.start();
     return app;
   }
@@ -292,6 +297,7 @@ export class App {
     state.staleResults = streamer.requests.staleResults;
     state.lodBias = streamer.lodBias;
     state.terrainMode = streamer.client.mode;
+    state.terrainWorkerLoadMs = streamer.client.workerLoadMs;
     state.exposure = this.clock.exposure;
     state.gpuP50Ms = this.gpuTimer.p50();
     state.gpuP95Ms = this.gpuTimer.p95();

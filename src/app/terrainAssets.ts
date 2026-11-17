@@ -21,7 +21,7 @@ const MANIFESTS = import.meta.glob('../../assets/manifests/terrain-hellesylt.jso
 
 /** Tile URLs, resolved by the bundler relative to this module (never root-absolute in source). */
 const TILE_URLS = import.meta.glob('../../assets/terrain/hellesylt/t_*.bin', {
-  query: '?no-inline', import: 'default', eager: true,
+  query: '?url', import: 'default', eager: true,
 }) as Record<string, string>;
 
 function hex(bytes: ArrayBuffer): string {

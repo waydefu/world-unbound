@@ -1,12 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
-  CELL_SIZE, CHUNK_SIZE, HEIGHT_QUANTUM, QUAY_Z, TILE_DIM, TOWN_GROUND_HEIGHT, WORLD_MAX, WORLD_MIN,
+  CELL_SIZE, CHUNK_SIZE, HEIGHT_OFFSET, HEIGHT_QUANTUM, TILE_DIM, TOWN_RADIUS, TOWN_X, TOWN_Z, WORLD_MAX, WORLD_MIN,
 } from '../src/world/constants';
 import { lodIndexCount, lodSide, lodVertexCount, selectLod, slotCx, slotCz, slotOf } from '../src/world/chunkGrid';
 import { fnv1a16, hash2, valueNoise } from '../src/world/hash';
-import { generateTile, heightAt, interpolateCell, sampleQuantized, tileIndex } from '../src/world/heightField';
+import {
+  dequantize, generateTile, heightAt, interpolateCell, quantize, sampleQuantized, tileIndex,
+} from '../src/world/heightField';
 import { buildChunkMesh, buildLodIndices, createMeshBuffers } from '../src/world/terrainMesh';
-import { coastlineZ, rawHeight } from '../src/world/terrainShape';
 
 const tile = (cx: number, cz: number): Int16Array => generateTile(cx, cz, new Int16Array(TILE_DIM * TILE_DIM));
 
@@ -30,14 +31,14 @@ describe('deterministic noise', () => {
 });
 
 describe('authoritative height field', () => {
-  it('reproduces the pinned tile hashes (terrain golden baseline, TERRAIN_VERSION 1)', () => {
+  it('reproduces the pinned tile hashes (terrain golden baseline, TERRAIN_VERSION 2: Hellesylt)', () => {
     const hashes = [[0, 0], [-4, -6], [7, 9], [-16, 15]].map(([cx, cz]) => fnv1a16(tile(cx, cz)));
     expect(hashes).toMatchInlineSnapshot(`
       [
-        1934490966,
-        366429884,
-        509665157,
-        2530458873,
+        3864699462,
+        3553209285,
+        4108547081,
+        83870858,
       ]
     `);
   });
@@ -59,51 +60,78 @@ describe('authoritative height field', () => {
 
   it('heightAt equals the lattice value at lattice points and is continuous inside cells', () => {
     for (const [ix, iz] of [[0, 0], [-37, 12], [200, -150], [511, 511]]) {
-      expect(heightAt(ix * CELL_SIZE, iz * CELL_SIZE)).toBeCloseTo(sampleQuantized(ix, iz) * HEIGHT_QUANTUM, 9);
+      expect(heightAt(ix * CELL_SIZE, iz * CELL_SIZE)).toBeCloseTo(dequantize(sampleQuantized(ix, iz)), 9);
     }
     // Across the cell diagonal both triangle formulas must meet.
     expect(interpolateCell(1, 5, 9, 2, 0.4, 0.6)).toBeCloseTo(interpolateCell(1, 5, 9, 2, 0.4 + 1e-9, 0.6), 6);
   });
 
-  it('stays within Int16 range over the whole world', () => {
+  it('stays within the Int16 range over the whole world and beyond the baked square', () => {
     for (let z = WORLD_MIN; z <= WORLD_MAX; z += 16) {
       for (let x = WORLD_MIN; x <= WORLD_MAX; x += 16) {
-        const q = rawHeight(x, z) / HEIGHT_QUANTUM;
-        expect(Math.abs(q)).toBeLessThan(32000);
+        const q = sampleQuantized(Math.floor(x / CELL_SIZE), Math.floor(z / CELL_SIZE));
+        expect(Number.isInteger(q)).toBe(true);
+        expect(q).toBeGreaterThanOrEqual(-32768);
+        expect(q).toBeLessThanOrEqual(32767);
       }
     }
+  });
+
+  it('quantises as q * 0.02 + 600 m and round-trips', () => {
+    expect(HEIGHT_QUANTUM).toBe(0.02);
+    expect(HEIGHT_OFFSET).toBe(600);
+    expect(dequantize(-32768)).toBeCloseTo(-55.36, 9);
+    expect(dequantize(32767)).toBeCloseTo(1255.34, 9);
+    for (const q of [-32768, -27500, -1, 0, 1, 12345, 32767]) expect(quantize(dequantize(q))).toBe(q);
+    expect(quantize(1e6)).toBe(32767);
+    expect(quantize(-1e6)).toBe(-32768);
+  });
+
+  it('throws instead of falling back to procedural heights when no terrain is installed', async () => {
+    vi.resetModules();
+    const fresh = await import('../src/world/heightField');
+    expect(() => fresh.sampleQuantized(0, 0)).toThrow(/not installed/);
+    vi.resetModules();
   });
 });
 
-describe('world layout', () => {
-  it('has open sea to the north and land to the south', () => {
-    expect(heightAt(0, -900)).toBeLessThan(-8);
-    expect(heightAt(-700, -900)).toBeLessThan(-8);
-    expect(heightAt(0, 700)).toBeGreaterThan(3);
+describe('Hellesylt layout', () => {
+  it('peaks between 1000 and 1060 m inside the baked square', () => {
+    let highest = -Infinity;
+    for (let iz = -1024; iz < 1024; iz += 2) for (let ix = -1024; ix < 1024; ix += 2) highest = Math.max(highest, dequantize(sampleQuantized(ix, iz)));
+    expect(highest).toBeGreaterThan(1000);
+    expect(highest).toBeLessThan(1060);
   });
 
-  it('keeps the town ground level within a centimetre', () => {
-    for (let z = -190; z <= 190; z += 19) {
-      for (let x = -240; x <= 240; x += 24) {
-        expect(Math.abs(heightAt(x, z) - TOWN_GROUND_HEIGHT)).toBeLessThanOrEqual(0.011);
+  it('has deep fjord water to the north-east, over 10 m below sea level', () => {
+    expect(heightAt(1500, -1500)).toBeLessThan(-10);
+    expect(heightAt(1000, -1000)).toBeLessThan(-10);
+  });
+
+  it('has flat ground in the village disc with a mean slope under 6 degrees', () => {
+    let sum = 0;
+    let count = 0;
+    for (let dz = -TOWN_RADIUS; dz <= TOWN_RADIUS; dz += 4) {
+      for (let dx = -TOWN_RADIUS; dx <= TOWN_RADIUS; dx += 4) {
+        if (Math.hypot(dx, dz) > TOWN_RADIUS) continue;
+        const x = TOWN_X + dx;
+        const z = TOWN_Z + dz;
+        const gx = (heightAt(x + 1, z) - heightAt(x - 1, z)) / 2;
+        const gz = (heightAt(x, z + 1) - heightAt(x, z - 1)) / 2;
+        sum += (Math.atan(Math.hypot(gx, gz)) * 180) / Math.PI;
+        count++;
       }
     }
+    expect(count).toBeGreaterThan(100);
+    expect(sum / count).toBeLessThan(6);
+    expect(heightAt(TOWN_X, TOWN_Z)).toBeGreaterThan(0.5);
+    expect(heightAt(TOWN_X, TOWN_Z)).toBeLessThan(5);
   });
 
-  it('has a navigable dredged basin in front of the quay', () => {
-    expect(coastlineZ(0)).toBeCloseTo(QUAY_Z, 6);
-    for (let x = -180; x <= 180; x += 30) {
-      expect(heightAt(x, QUAY_Z - 12)).toBeLessThan(-5);
-      expect(heightAt(x, QUAY_Z - 100)).toBeLessThan(-5);
-      expect(heightAt(x, QUAY_Z + 6)).toBeCloseTo(TOWN_GROUND_HEIGHT, 1);
+  it('is open deep water (-55 m) outside the baked square', () => {
+    for (const [x, z] of [[2100, 0], [0, 2100], [-2100, 100], [0, -2100], [3000, 3000], [2048, 2048], [-2050, -2050]]) {
+      expect(Math.abs(heightAt(x, z) + 55)).toBeLessThanOrEqual(HEIGHT_QUANTUM);
     }
-  });
-
-  it('rises into hills away from the coast', () => {
-    let highest = -Infinity;
-    for (let z = 300; z <= 1000; z += 20) for (let x = -1000; x <= 1000; x += 20) highest = Math.max(highest, heightAt(x, z));
-    expect(highest).toBeGreaterThan(25);
-    expect(highest).toBeLessThan(120);
   });
 });
 
