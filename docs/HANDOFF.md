@@ -34,7 +34,7 @@ Owner's phone: Adreno 8xx, Chrome 157, WebGPU, 60 Hz, 2.2 MP drawing buffer.
 
 1. Review and merge PR #15 (and the stop-work changes).
 2. On the phone, open `?cam=5&hour=19.8` and `?cam=5&hour=19.8&shadows=0`, export telemetry JSON from each (HUD → JSON). This verifies bundles + shadows on WebGPU (untested in CI) and gives the shadow cost.
-3. Apply governance gaps 4 and 5 from [governance/status.md](governance/status.md) (`governance/` is owner-only).
+3. Merge PR #16 (governance gaps 4 and 5 from [governance/status.md](governance/status.md): `scripts/**` at R3, `src/env/**` owner domain; without the `tests/**` line).
 4. Optional: second GitHub account for T20.
 
 **Next agent session**

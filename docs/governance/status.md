@@ -46,12 +46,14 @@ G1 (PRs #13–#15) and the stop-work handoff needed no protected-path changes.
 | 1 | Deliberate CI weakening in a PR (T01) | Public personal repo: no push rulesets, no required workflows; `pull_request_target` blocked from 2026-12-02 | Platform; mitigated by owner review of `.github/` diffs |
 | 2 | Independent two-person review | Single maintainer; required approvals are 0 | Owner (second maintainer) |
 | 3 | T20 fork-PR CI without secrets not exercised | Needs a fork from a second account | Owner |
-| 4 | `scripts/audit.mjs` and `scripts/audit-visual.mjs` produce CI evidence but are not sensitive paths | `governance/sensitive-paths.yml` lists `.github/scripts/**` (R3) only; an edit that weakens the audit is classified R0/R1 | Owner: add `scripts/**` (R3, "Validators that produce CI evidence") and `tests/**` (R2, "Assertions must not be weakened") to `governance/sensitive-paths.yml` |
-| 5 | `src/env/**` (new in G1.1) has no owner domain | `governance/owners.yml` architecture domain predates it | Owner: add `src/env/**` to the architecture domain |
+| 4 | `scripts/audit.mjs` and `scripts/audit-visual.mjs` produce CI evidence but are not sensitive paths | `governance/sensitive-paths.yml` lists `.github/scripts/**` (R3) only; an edit that weakens the audit is classified R0/R1 | Owner: add `scripts/**` (R3, "Validators that produce CI evidence") to `governance/sensitive-paths.yml` — in PR #16 |
+| 5 | `src/env/**` (new in G1.1) has no owner domain | `governance/owners.yml` architecture domain predates it | Owner: add `src/env/**` to the architecture domain — in PR #16 |
 | 6 | No device regression path | Phone results are owner-run and uploaded by hand | M2 |
 | 7 | `materialVariants` telemetry is a hard-coded 2 | Not wired to the renderer's pipeline cache | Agent (G1.3) |
 
 Gaps 4 and 5 are edits to `governance/`, which agents may not make (AGENTS.md). They are listed here so the owner can apply them in one PR.
+
+`tests/**` is deliberately **not** a sensitive path. Proposed at R2 first, it failed the governance unit test `test_single_module_code_is_r1`: almost every pull request touches tests, so it would raise ordinary code changes to R2 and blur the tiers. Weakened assertions are covered by AGENTS.md ("never weaken assertions") and owner review of the diff instead.
 
 ## Process conventions in use
 
