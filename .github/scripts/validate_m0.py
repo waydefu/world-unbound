@@ -2,7 +2,11 @@
 """M0 structure verification. This is NOT a trusted base-branch policy evaluator."""
 from pathlib import Path
 import json
+import os
+import re
+import subprocess
 import sys
+import textwrap
 
 ROOT = Path(__file__).resolve().parents[2]
 REQUIRED = [
@@ -11,6 +15,7 @@ REQUIRED = [
     ".github/pull_request_template.md", ".github/workflows/ci.yml",
     ".github/ISSUE_TEMPLATE/bug.yml", ".github/ISSUE_TEMPLATE/feature.yml",
     ".github/ISSUE_TEMPLATE/performance.yml", ".github/ISSUE_TEMPLATE/config.yml",
+    ".github/ISSUE_TEMPLATE/task.yml",
     "governance/owners.yml", "governance/labels.yml", "governance/risk.yml",
     "governance/sensitive-paths.yml", "governance/exceptions.yml",
     "governance/exceptions.schema.json", "governance/release-policy.yml",
@@ -36,6 +41,10 @@ if (ROOT / ".github/CODEOWNERS").is_file():
     lines = (ROOT / ".github/CODEOWNERS").read_text(encoding="utf-8").splitlines()
     if "* @waydefu" not in lines:
         errors.append("CODEOWNERS must assign default @waydefu")
+    owned = {line.split()[0] for line in lines if line.strip() and not line.startswith("#")}
+    for protected in ["/.github/", "/governance/", "/AGENTS.md", "/.gitattributes", "/docs/contracts/"]:
+        if protected not in owned:
+            errors.append(f"CODEOWNERS missing explicit entry for protected path: {protected}")
 
 if (ROOT / "governance/exceptions.schema.json").is_file():
     try:
@@ -56,10 +65,55 @@ if workflow_path.is_file():
         if marker not in text:
             errors.append(f"workflow missing M0 marker: {marker}")
 
+# Static workflow hygiene across every workflow file (text scan, not a YAML policy engine).
+PINNED = re.compile(r"^[^@\s]+@[0-9a-f]{40}$")
+for wf in sorted((ROOT / ".github/workflows").glob("*.y*ml")):
+    rel = wf.relative_to(ROOT)
+    for number, raw in enumerate(wf.read_text(encoding="utf-8").splitlines(), 1):
+        line = raw.split(" #", 1)[0].strip()
+        if line.startswith("#"):
+            continue
+        match = re.match(r"^(?:-\s*)?uses:\s*(\S+)$", line)
+        if match:
+            target = match.group(1).strip("'\"")
+            if target.startswith("./"):
+                errors.append(f"{rel}:{number}: local action/workflow reference needs human-reviewed trust design: {target}")
+            elif not PINNED.match(target):
+                errors.append(f"{rel}:{number}: action not pinned to a full commit SHA: {target}")
+        for banned in ("pull_request_target", "workflow_run", "issue_comment"):
+            if re.search(rf"(^|[\s\[,]){banned}\s*(:|,|\]|$)", line):
+                errors.append(f"{rel}:{number}: privileged trigger {banned} is not allowed at M0")
+        if re.match(r"^secrets:\s*inherit$", line):
+            errors.append(f"{rel}:{number}: 'secrets: inherit' is not allowed")
+        if re.search(r"-all\s*$", line) and line.startswith("permissions:"):
+            errors.append(f"{rel}:{number}: blanket workflow permissions are not allowed")
+
+# Negative self-test of the final-gate logic (T05 at logic level only; real enforcement
+# still depends on the Ruleset requiring the final-gate check from GitHub Actions).
+if workflow_path.is_file():
+    gate = re.search(r"python3 - <<'PY'\n(.*?)\n[ \t]*PY\n", workflow_path.read_text(encoding="utf-8"), re.S)
+    if not gate:
+        errors.append("could not locate final-gate script in ci.yml")
+    else:
+        source = textwrap.dedent(gate.group(1))
+        good = {"m0-files": {"result": "success"}, "policy-syntax": {"result": "success"}}
+        cases = {"all-success": (good, 0), "empty": ({}, 1), "missing-job": ({"m0-files": good["m0-files"]}, 1)}
+        for bad in ("skipped", "failure", "cancelled", "neutral", ""):
+            cases[f"policy-syntax={bad or 'blank'}"] = ({**good, "policy-syntax": {"result": bad}}, 1)
+        for label, (needs, expected) in cases.items():
+            run = subprocess.run(
+                [sys.executable, "-c", source],
+                env={**os.environ, "NEEDS_JSON": json.dumps(needs)},
+                capture_output=True, text=True, timeout=60,
+            )
+            if run.returncode != expected:
+                errors.append(f"final-gate self-test '{label}': expected exit {expected}, got {run.returncode}")
+        print(f"final-gate self-test: {len(cases)} cases evaluated")
+
 if errors:
     print("M0 verification FAILED")
     for issue in errors:
         print("ERROR:", issue)
     sys.exit(1)
 
-print(f"M0 file contract PASS: {len(REQUIRED)} required files, license, CODEOWNERS and gate markers")
+print(f"M0 file contract PASS: {len(REQUIRED)} required files, license, CODEOWNERS, workflow hygiene and gate self-test")

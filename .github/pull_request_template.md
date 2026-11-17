@@ -12,6 +12,8 @@ Closes #
 
 ## 4. What could break?
 <!-- Security, save compatibility, performance, migration, rollback, device coverage. -->
+- [ ] Rollback path stated
+- [ ] Save/serialization change: schemaVersion, old-data fixture, migration test and backup/restore plan attached (or not applicable)
 
 ## 5. Who reviewed it?
 <!-- Human CODEOWNER(s), impacted modules, any sensitive workflows/policy changes. -->
