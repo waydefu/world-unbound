@@ -11,9 +11,12 @@ export function formatHud(state: AppState, stats: FrameStats, dyn: DynamicResolu
   const p = stats.percentiles(scratch, 600);
   const fps = p.mean > 0 ? 1000 / p.mean : 0;
   const pixels = state.bufferWidth * state.bufferHeight;
+  const gpu = state.gpuP50Ms === null || state.gpuP95Ms === null
+    ? 'gpu n/a'
+    : `gpu p50/p95 ${state.gpuP50Ms.toFixed(1)}/${state.gpuP95Ms.toFixed(1)} ms`;
   const lines = [
     `${state.backend}${state.fallbackReason ? ' (fallback)' : ''} · q=${state.quality} · cam ${state.cameraIndex} ${state.cameraName}`,
-    `fps ${fps.toFixed(1)} · p50 ${p.p50.toFixed(1)} p95 ${p.p95.toFixed(1)} p99 ${p.p99.toFixed(1)} ms · ${state.refreshHz.toFixed(0)} Hz${state.refreshMeasured ? '' : '?'}`,
+    `fps ${fps.toFixed(1)} · p50 ${p.p50.toFixed(1)} p95 ${p.p95.toFixed(1)} p99 ${p.p99.toFixed(1)} ms · ${gpu} · ${state.refreshHz.toFixed(0)} Hz${state.refreshMeasured ? '' : '?'}`,
     `long >50ms ${stats.longFrames50} · >100ms ${stats.longFrames100} · frames ${stats.totalFrames}`,
     `buffer ${state.bufferWidth}x${state.bufferHeight} (${(pixels / 1e6).toFixed(2)} MP) · css ${state.cssWidth}x${state.cssHeight} · dpr ${state.devicePixelRatio.toFixed(2)}`,
     `scale ${dyn.scale.toFixed(2)}${dyn.locked ? ' locked' : ''} · changes ${dyn.changes}`,
