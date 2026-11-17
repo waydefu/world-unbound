@@ -73,6 +73,7 @@ Governance milestones (AEGIS ∞ v2.0):
 Game milestones (specification v1.0, renamed G0–G3 to avoid clashing with the above):
 
 - **G0:** engine skeleton, authoritative terrain, telemetry baseline — implemented, device verification pending
+- **G0.5:** build-time bake pipeline (eroded terrain), shared environment and query contracts, worker skeletons, telemetry fixes — see [ADR-0002](docs/adr/0002-target-architecture.md)
 - **G1:** atmosphere, PBR weathering materials, multi-band ocean
 - **G2:** Hanseatic town architecture and period vegetation
 - **G3:** gameplay loop, procedural audio, saves

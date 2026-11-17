@@ -1,6 +1,6 @@
 # ADR-0001 — Engine architecture and repository layout
 
-- Status: accepted (owner authorised direct adoption in the agent session of 2026-11-17)
+- Status: accepted (owner authorised direct adoption in the agent session of 2026-11-17); partly superseded by [ADR-0002](0002-target-architecture.md) — WebGL2 role, three.js limitations, terrain source
 - Date: 2026-11-17
 - Owner: @waydefu
 - Sources: game specification v1.0 ("Sankt Aldric Harbour"), AEGIS ∞ v2.0
@@ -32,7 +32,7 @@ The game specification asks for an architecture decision before any game code, a
 
 ## Consequences
 
-- **Reduced control versus the specification, section 3.3.** three.js owns pass scheduling and attachment setup. An explicit Render Graph with per-pass `loadOp`/`storeOp`, `TRANSIENT_ATTACHMENT` handling and a central pipeline registry can only be built where three.js exposes the hooks. Those items are best-effort, to be revisited when post-processing passes arrive in G1.
+- **Reduced control versus the specification, section 3.3.** three.js owns pass scheduling and attachment setup. *Corrected by ADR-0002:* this overstated the gap — r187 already discards unneeded attachments, detects transient attachments, and offers compute, indirect draws, timestamps and many post-processing nodes. Custom passes are added only where three.js cannot do the job.
 - three.js allocates internally during `render()`. The zero-allocation rule is enforced for project code only (functions tagged `@hot`).
 - One draw call per terrain chunk (about 140–200 visible at the low tier). Merging far rings is a known follow-up if device profiling shows draw-call cost.
 - The dynamic-resolution thresholds are ratios of the measured refresh period, not the literal 21.5 ms / 16.5 ms: a vsynced 60 Hz page never averages below 16.67 ms, so a fixed "< 16.5 ms" recovery rule would never fire. At 60 Hz the defaults are 21.5 ms down and 17.2 ms up.
