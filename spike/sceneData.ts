@@ -1,5 +1,5 @@
-import { QUALITY } from '../src/app/quality';
 import { CHUNK_COUNT, CHUNK_SIZE, MAX_LOD, TILE_DIM } from '../src/world/constants';
+import type { LodPolicy } from '../src/world/chunkGrid';
 import { lodIndexCount, selectLod, slotCx, slotCz } from '../src/world/chunkGrid';
 import { generateTile, heightAt } from '../src/world/heightField';
 import { buildChunkMesh, buildLodIndices, createMeshBuffers, type ChunkMeshBuffers } from '../src/world/terrainMesh';
@@ -27,9 +27,12 @@ export interface SpikeScene {
   buildMs: number;
 }
 
+/** The benchmark scene is pinned (the med tier's ring before G1.4.1) so engine comparisons stay comparable when tiers are retuned. */
+const SPIKE_POLICY: LodPolicy = { lod0Distance: 150, viewRadius: 1300 };
+
 export function buildSpikeScene(): SpikeScene {
   const start = performance.now();
-  const policy = QUALITY.med.lod;
+  const policy = SPIKE_POLICY;
   const tile = new Int16Array(TILE_DIM * TILE_DIM);
   const chunks: SpikeChunk[] = [];
   let triangles = 0;
