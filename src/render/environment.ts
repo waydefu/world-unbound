@@ -28,6 +28,8 @@ const MOON_TINT = new Color(0.62, 0.74, 1);
 const TINT = [MOON_TINT.r, MOON_TINT.g, MOON_TINT.b];
 /** Starlight and airglow floor so moonless nights are dark but not black (radiance units). */
 const NIGHT_FLOOR = 3e-7;
+/** Share of the overcast zenith radiance added to the ambient light under full cloud. */
+const OVERCAST_LIFT = 1.2;
 const MIN_EXPOSURE = 0.4;
 /** Upper bound of adaptation: scotopic vision reaches roughly 1e-6 of daylight. */
 const MAX_EXPOSURE = 1e6;
@@ -88,10 +90,13 @@ export class Environment {
     const eLum = luminance(e);
     const overcastMix = (c: number): number => (e[c] + (eLum - e[c]) * w.overcast) * w.dim;
     const night = NIGHT_FLOOR * Math.PI;
+    // Under cloud the ground is lit by the whole deck: lift the floor by a share of the overcast zenith (not
+    // only by the starlight floor) so terrain stays readable against the brighter sky. Exposure does not see it.
+    const lift = (c: number): number => OVERCAST_LIFT * w.overcast * (9 / 7) * (eLum * w.dim + NIGHT_FLOOR * TINT[c]);
     this.ambient.color.setRGB(
-      Math.PI * overcastMix(0) + night * MOON_TINT.r,
-      Math.PI * overcastMix(1) + night * MOON_TINT.g,
-      Math.PI * overcastMix(2) + night * MOON_TINT.b,
+      Math.PI * (overcastMix(0) + lift(0)) + night * MOON_TINT.r,
+      Math.PI * (overcastMix(1) + lift(1)) + night * MOON_TINT.g,
+      Math.PI * (overcastMix(2) + lift(2)) + night * MOON_TINT.b,
     );
     // Ground bounce: 0.35 x sky plus 10% of the sun's irradiance scattered by average (0.25) ground albedo.
     const bounce = 0.1 * 0.25 * this.sunBase;
@@ -135,10 +140,13 @@ export class Environment {
       w.overcast, sunVisible * (1 - w.overcast), zenith);
 
     // White-surface radiance (sun on a horizontal surface + sky + moon + floor) sets exposure;
-    // nights keep a lower key so they read as night (dark adaptation), not as dim day.
+    // nights keep a lower key so they read as night (dark adaptation), not as dim day. Under cloud there
+    // is no direct sun, so the key ramp starts at the horizon instead of in twilight: a white surface lit
+    // only by sky ambient maps to ~0.12 until the sun is up, which keeps overcast dusk/night from
+    // showing a sky far brighter than the ground.
     const white = luminance(t) * Math.max(0, sinAlt) * w.sun * sunVisible + eLum * w.dim
       + moonIllum * Math.max(0, Math.sin(celestial.moonAltitude)) + NIGHT_FLOOR;
-    const key = 0.12 + 0.88 * smooth(-0.1, 0.06, sinAlt);
+    const key = 0.12 + 0.88 * smooth(-0.1 + 0.1 * w.overcast, 0.06 + 0.1 * w.overcast, sinAlt);
     this.targetExposure = Math.min(MAX_EXPOSURE, Math.max(MIN_EXPOSURE, key / white));
   }
 
