@@ -37,15 +37,20 @@ The first run on main succeeded on 2026-11-17 ([run 44000149061](https://github.
 
 ### M0 owner actions (GitHub Settings; not performable by AI agents)
 
-M0 is **not complete** until a human owner has done and checked the following:
+Settings below were applied by the owner and read back on 2026-11-17 (owner-reported; agents cannot read repository settings here). M0 is **not complete** until the negative test passes.
 
-- [ ] protect-main Ruleset is *Active*: require PR, block force-push and deletion, require status check `final-gate` with source *GitHub Actions*, require branches to be up to date, restrict bypass.
-- [ ] Negative test: a direct push to main is rejected (record the output as evidence).
-- [ ] Decide required approvals. With a single maintainer, a PR author cannot approve their own PR; requiring approvals or Code Owner review would block every owner-authored PR unless bypassed. Two-person control stays **unmet** either way.
-- [x] Labels are synced from [governance/labels.yml](governance/labels.yml) by `.github/workflows/labels.yml` on every merged change to the dictionary. GitHub's default labels (`bug`, `wontfix`, ...) are kept; run the workflow manually with *prune* to remove them. Verify in the Actions tab after merge.
-- [ ] Configure Issue Fields (Priority, Severity, Risk, Component, ...) and a Project whose automation maps PR merge to *Integrated*, not *Done*.
-- [ ] Enable Private Vulnerability Reporting, Dependabot alerts, secret scanning and push protection.
-- [ ] Enable GitHub Pages with source *GitHub Actions* (Settings → Pages) before the next merge to main, or the deploy job fails. Optionally restrict the `github-pages` environment to `main` and add yourself as a required reviewer.
+- [x] protect-main Ruleset *Active*: PR required with 0 approvals, stale approvals dismissed, conversation resolution, squash only, required check `final-gate` (source GitHub Actions) with strict up-to-date, force-push and deletion blocked, empty bypass list.
+- [ ] **Negative test:** a direct push to main is rejected. Record the command output as evidence.
+- [x] Labels synced from [governance/labels.yml](governance/labels.yml) by `.github/workflows/labels.yml`. GitHub's default labels (`bug`, `wontfix`, ...) are kept; run the workflow manually with *prune* to remove them.
+- [x] Issue Fields (Priority, Severity, Risk, Component, ...) pinned to Bug / Feature / Task. Impact and Verification Owner not created yet.
+- [x] Project *WORLD UNBOUND · Engineering*: AEGIS statuses incl. Blocked / Needs Evidence / Not Planned; auto-add `is:issue,pr is:open`; item added → Submitted, PR merged → Integrated, item reopened → Triage, item closed → Resolved.
+- [x] Auto-close of Issues by merged PRs is **off**, so a merge never skips Verified. PRs use `Refs #`.
+- [x] Private vulnerability reporting, dependency graph, Dependabot alerts and security updates, secret scanning with push protection, CodeQL default setup.
+- [x] Actions: only waydefu- and GitHub-authored actions, full-SHA pinning required, read-only default token, Actions cannot create or approve PRs, approval required for all external contributors' fork workflows.
+- [x] General: squash merging only, update-branch suggestion on, head branches deleted after merge, wiki off.
+- [x] Pages from GitHub Actions; `github-pages` environment limited to `main`.
+
+**Known gap:** with one maintainer, independent two-person review is **not satisfied**; required approvals are 0 so the owner can merge their own PRs. CI (`final-gate`) is the merge gate.
 
 ## Roadmap
 
