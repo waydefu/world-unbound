@@ -1,4 +1,5 @@
 import { type DataTexture, Color, DirectionalLight, FogExp2, HemisphereLight, type Scene } from 'three/webgpu';
+import type { SlidingRate } from '../perf/slidingRate';
 import type { Weather } from '../env/weather';
 import type { CelestialState } from '../env/ephemeris';
 import type { SkySummary } from '../env/skyView';
@@ -49,6 +50,8 @@ export class Environment {
   readonly ocean: Ocean;
   private readonly fog = new FogExp2(0x000000, 0.0002);
   sunAltitudeDeg = 0;
+  /** Receives the bytes of every sky-table upload (set by the app). */
+  uploads: SlidingRate | null = null;
   /** Exposure that would map this lighting to mid-grey; the app adapts towards it. */
   targetExposure = 1;
   private sunBase = 0;
@@ -136,6 +139,7 @@ export class Environment {
       top2 * k + (zenith[2] - top2 * k) * w.overcast,
     );
     this.sky.setTable(table);
+    this.uploads?.add(performance.now(), this.sky.tableBytes);
     this.sky.setCelestial(celestial.sun, celestial.moon, t, moonDisc, 4e-6 * (1 - sunVisible) * (1 - w.overcast),
       w.overcast, sunVisible * (1 - w.overcast), zenith);
 

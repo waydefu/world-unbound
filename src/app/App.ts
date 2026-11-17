@@ -7,12 +7,14 @@ import { WEATHER_WETNESS } from '../env/weather';
 import { Environment } from '../render/environment';
 import { createNoiseTexture } from '../render/noiseTextures';
 import { attachSunShadows } from '../render/shadows';
+import { SEAFLOOR_DIM } from '../world/seaFloor';
 import { createRenderer, warmUp, whenDeviceLost, type RendererHandle } from '../render/renderer';
 import { FarTerrain } from '../render/farTerrain';
 import { TerrainChunks } from '../render/terrainChunks';
 import { Hud, downloadJson } from '../ui/hud';
 import { CAMERAS, resolveCamera, type ResolvedCamera } from './cameras';
 import { GpuTimer } from './gpuTimer';
+import { Observer, initialObserved } from './observability';
 import { formatHud } from './hudText';
 import type { DebugParams } from './params';
 import { pixelRatioForBudget, type QualityTier } from './quality';
@@ -54,6 +56,7 @@ export class App {
   private readonly bufferSize = new Vector2();
   private handle!: RendererHandle;
   private gpuTimer!: GpuTimer;
+  private readonly observer = new Observer();
   private lastTime = 0;
   private lastLowFrequency = 0;
   private startTime = 0;
@@ -68,14 +71,18 @@ export class App {
     if (params.scale !== null) this.dyn.lock(params.scale);
     const noise = createNoiseTexture();
     this.memory.add(MemoryPartition.Gpu, noise.gpuBytes);
+    this.observer.uploads.add(performance.now(), noise.gpuBytes);
     this.environment = new Environment(this.scene, noise.texture, lite);
+    this.environment.uploads = this.observer.uploads;
     if (params.shadows) this.memory.add(MemoryPartition.Gpu, attachSunShadows(this.environment.sun, tier.shadows));
     this.memory.add(MemoryPartition.Gpu, this.environment.ocean.gpuBytes);
     this.clock = new EnvironmentClock(this.environment);
     this.chunks = new TerrainChunks(this.memory, noise.texture, lite);
+    this.chunks.uploads = this.observer.uploads;
     this.farTerrain = new FarTerrain(this.environment.ocean.floorTexture, noise.texture, lite);
     this.memory.add(MemoryPartition.Gpu, this.farTerrain.gpuBytes);
     this.chunks.root.add(this.farTerrain.mesh);
+    this.observer.setMeshes(this.environment.sky.mesh, this.environment.ocean.mesh, this.farTerrain.mesh);
     this.scene.add(this.chunks.root);
     this.streamer = new TerrainStreamer(this.chunks, this.memory, tier.lod);
     this.hud = new Hud(options.hudRoot, {
@@ -92,6 +99,7 @@ export class App {
       hour: params.hour, day: params.day, season: '', weather: params.weather, sunAltitudeDeg: 0,
       moonIllumination: 0, exposure: 1, atmosphereLutMs: this.clock.lutMs, backgroundSuspends: 0,
       gpuPassSumP50Ms: null, gpuPassSumP95Ms: null, gpuSamples: null, gpuPassesPerFrame: null,
+      ...initialObserved(),
     };
   }
 
@@ -133,9 +141,11 @@ export class App {
       this.attachRenderer();
       this.state.warmupMs = await warmUp(this.handle, this.scene, this.camera, WARMUP_TIMEOUT_MS);
     }
+    this.observer.markWarm(this.handle.renderer, this.scene, this.state);
     this.running = true;
     void this.streamer.client.requestSeaFloor().then((heights) => {
       this.environment.ocean.setSeaFloor(heights);
+      this.observer.uploads.add(performance.now(), SEAFLOOR_DIM * SEAFLOOR_DIM * 2);
       this.farTerrain.setReady();
     });
 
@@ -202,6 +212,8 @@ export class App {
       this.handle.fallbackReason = 'WebGPU device lost and no adapter was available';
     }
     this.attachRenderer();
+    // The new renderer rebuilds every pipeline: all of them count as created after warm-up.
+    this.observer.pipelineBaseline = 0;
     this.state.fallbackReason = this.handle.fallbackReason;
     this.updateStatus();
     this.lastTime = 0;
@@ -306,6 +318,7 @@ export class App {
     state.gpuPassSumP95Ms = this.gpuTimer.p95();
     state.gpuPassesPerFrame = this.gpuTimer.passesPerFrame();
     state.gpuSamples = this.gpuTimer.samples;
+    this.observer.sample(this.state, now, this.chunks, this.camera, this.environment.sun, streamer, this.handle.renderer);
     if (!this.ready && streamer.settled) {
       this.ready = true;
       if (state.worldReadyMs === 0) state.worldReadyMs = performance.now() - this.startTime;

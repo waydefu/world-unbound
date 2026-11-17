@@ -1,7 +1,8 @@
 import {
   BufferAttribute, BufferGeometry, BundleGroup, type DataTexture, Group, Mesh, type MeshStandardNodeMaterial, Sphere, Vector3,
 } from 'three/webgpu';
-import type { TerrainResult } from '../world/terrainJob';
+import { resultBytes, type TerrainResult } from '../world/terrainJob';
+import type { SlidingRate } from '../perf/slidingRate';
 import { MemoryPartition, type MemoryRegistry } from '../perf/memoryRegistry';
 import { CHUNK_COUNT, CHUNK_SIZE, MAX_LOD } from '../world/constants';
 import { lodIndexCount, lodVertexCount, slotCx, slotCz } from '../world/chunkGrid';
@@ -37,6 +38,14 @@ export class TerrainChunks {
   private readonly meshPool: Mesh[] = [];
   private readonly indices: BufferAttribute[] = [];
   residentTriangles = 0;
+  /** Per slot: bounding sphere (x, y, z, radius) in `root` space; telemetry reads it (frustum counts). */
+  readonly chunkSpheres = new Float32Array(CHUNK_COUNT * 4);
+  /** Per slot: triangles of the resident mesh (0 = not resident). */
+  readonly chunkTriangles = new Int32Array(CHUNK_COUNT);
+  /** Per slot: 1 when the chunk casts shadows. */
+  readonly casterMask = new Uint8Array(CHUNK_COUNT);
+  /** Receives the bytes of every geometry upload (set by the app). */
+  uploads: SlidingRate | null = null;
 
   constructor(private readonly memory: MemoryRegistry, noise: DataTexture, lite = false) {
     this.terrainMaterial = createTerrainMaterial(noise, lite);
@@ -131,6 +140,14 @@ export class TerrainChunks {
     sphere.center.set(half, midY, half);
     sphere.radius = Math.hypot(half, half, (result.maxY - result.minY) / 2);
     mesh.geometry = geometry;
+    const o = slot * 4;
+    this.chunkSpheres[o] = mesh.position.x + half;
+    this.chunkSpheres[o + 1] = midY;
+    this.chunkSpheres[o + 2] = mesh.position.z + half;
+    this.chunkSpheres[o + 3] = sphere.radius;
+    this.chunkTriangles[slot] = lodIndexCount(lod) / 3;
+    this.casterMask[slot] = mesh.castShadow ? 1 : 0;
+    this.uploads?.add(performance.now(), resultBytes(result));
     this.meshLod[slot] = lod;
     this.residentTriangles += lodIndexCount(lod) / 3;
     this.bundle.needsUpdate = true;
@@ -154,6 +171,8 @@ export class TerrainChunks {
     this.bundle.needsUpdate = true;
     this.meshes[slot] = null;
     this.meshLod[slot] = -1;
+    this.chunkTriangles[slot] = 0;
+    this.casterMask[slot] = 0;
     this.residentChunkCount--;
     this.meshPool.push(mesh);
   }

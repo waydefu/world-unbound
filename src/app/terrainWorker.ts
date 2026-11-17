@@ -26,6 +26,8 @@ scope.onmessage = async (event: MessageEvent<TerrainRequest | { kind: 'seafloor'
     scope.postMessage({ kind: 'seafloor', heights }, [heights.buffer]);
     return;
   }
+  const started = performance.now();
   const result = runTerrainJob(data);
+  result.buildMs = performance.now() - started;
   scope.postMessage(result, [result.positions.buffer, result.normals.buffer, result.colors.buffer]);
 };

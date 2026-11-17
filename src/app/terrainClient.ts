@@ -90,7 +90,11 @@ export class TerrainClient {
   poll(): TerrainResult | undefined {
     if (this.results.length > 0) return this.results.shift();
     const job = this.fallbackJobs.shift();
-    return job ? runTerrainJob(job) : undefined;
+    if (!job) return undefined;
+    const started = performance.now();
+    const result = runTerrainJob(job);
+    result.buildMs = performance.now() - started;
+    return result;
   }
 
   dispose(): void {

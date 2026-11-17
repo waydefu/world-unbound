@@ -66,6 +66,11 @@ export class SkyDome {
     return this.sunRadianceUniform;
   }
 
+  /** Bytes uploaded to the GPU by each `setTable` (half-float RGBA). */
+  get tableBytes(): number {
+    return this.halfData.byteLength;
+  }
+
   /** Pre-exposure multiplier uniform, so other materials can fold it into their own emission. */
   get exposureNode() {
     return this.exposure;
