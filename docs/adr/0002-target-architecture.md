@@ -1,6 +1,6 @@
 # ADR-0002 — Target architecture: platform tiers, build-time generation, art direction
 
-- Status: proposed — the owner confirms or amends the four decisions marked **(owner)** on the pull request
+- Status: accepted — the owner confirmed all four points marked **(owner)** in the agent session of 2026-11-17: WebGL2 as a flagged Lite tier, build-time generation and baking, physically based light with curated materials, and real-town reference boards plus blind review
 - Date: 2026-11-17
 - Owner: @waydefu
 - Supersedes: parts of ADR-0001 (WebGL2 role, three.js limitations, terrain source)
