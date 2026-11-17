@@ -1,9 +1,8 @@
-import {
-  Color, DirectionalLight, FogExp2, HemisphereLight, Mesh, MeshStandardNodeMaterial, PlaneGeometry, type Scene,
-} from 'three/webgpu';
+import { Color, DirectionalLight, FogExp2, HemisphereLight, type Scene } from 'three/webgpu';
 import type { Weather } from '../env/weather';
 import type { CelestialState } from '../env/ephemeris';
 import type { SkySummary } from '../env/skyView';
+import { Ocean } from './ocean';
 import { SkyDome } from './sky';
 
 /**
@@ -43,9 +42,8 @@ export class Environment {
   readonly sun = new DirectionalLight(0xffffff, 1);
   readonly moon = new DirectionalLight(0xffffff, 0);
   readonly ambient = new HemisphereLight(0xffffff, 0x3a3428, 1);
-  readonly sea: Mesh;
-  readonly seaMaterial: MeshStandardNodeMaterial;
   readonly sky = new SkyDome();
+  readonly ocean: Ocean;
   private readonly fog = new FogExp2(0x000000, 0.0002);
   sunAltitudeDeg = 0;
   /** Exposure that would map this lighting to mid-grey; the app adapts towards it. */
@@ -55,22 +53,9 @@ export class Environment {
   private readonly fogBase = new Color();
   private readonly overcastZenith = new Float64Array(3);
 
-  constructor(scene: Scene) {
-    this.seaMaterial = new MeshStandardNodeMaterial({
-      color: new Color(0.012, 0.07, 0.095),
-      roughness: 0.22,
-      metalness: 0,
-      transparent: true,
-      opacity: 0.86,
-    });
-    this.seaMaterial.name = 'sea';
-    const plane = new PlaneGeometry(9000, 9000, 1, 1);
-    plane.rotateX(-Math.PI / 2);
-    this.sea = new Mesh(plane, this.seaMaterial);
-    this.sea.name = 'sea';
-    this.sea.renderOrder = 1;
-    this.sea.receiveShadow = true;
-    scene.add(this.sun, this.sun.target, this.moon, this.moon.target, this.ambient, this.sea, this.sky.mesh);
+  constructor(scene: Scene, lite = false) {
+    this.ocean = new Ocean(this.sky, lite);
+    scene.add(this.sun, this.sun.target, this.moon, this.moon.target, this.ambient, this.ocean.mesh, this.sky.mesh);
     scene.fog = this.fog;
     scene.background = null;
   }
@@ -121,6 +106,7 @@ export class Environment {
     this.fog.density = w.fog;
 
     const moonDisc = Math.PI * MOON_ILLUMINANCE * celestial.moonIllumination * (1 / 6.4e-5) * (1 - 0.9 * w.overcast);
+    this.ocean.setWeather(weather);
     this.sky.setTable(table);
     this.sky.setCelestial(celestial.sun, celestial.moon, t, moonDisc, 4e-6 * (1 - sunVisible) * (1 - w.overcast),
       w.overcast, sunVisible * (1 - w.overcast), zenith);

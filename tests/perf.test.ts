@@ -3,6 +3,7 @@ import { parseParams } from '../src/app/params';
 import { chooseQuality, pixelRatioForBudget } from '../src/app/quality';
 import { DEFAULT_DYNAMIC_RESOLUTION, DynamicResolution, snapRefreshPeriod } from '../src/perf/dynamicResolution';
 import { FrameStats } from '../src/perf/frameStats';
+import { SampleRing } from '../src/perf/sampleRing';
 import { BUDGET_BALANCED, MemoryPartition, MemoryRegistry, Pressure } from '../src/perf/memoryRegistry';
 
 const P60 = 1000 / 60;
@@ -166,5 +167,29 @@ describe('debug parameters and quality', () => {
     expect(chooseQuality(null, { mobile: false, recoveredFromCrash: true, webgpu: true })).toBe('low');
     expect(chooseQuality(null, { mobile: true, recoveredFromCrash: false, webgpu: true })).toBe('med');
     expect(chooseQuality('high', { mobile: true, recoveredFromCrash: true, webgpu: false })).toBe('high');
+  });
+});
+
+describe('SampleRing', () => {
+  it('reports null until it has samples', () => {
+    expect(new SampleRing(8).percentile(0.5)).toBeNull();
+  });
+
+  it('computes nearest-rank percentiles over a partly filled ring', () => {
+    const ring = new SampleRing(240);
+    for (let i = 1; i <= 100; i++) ring.push(i);
+    expect(ring.count).toBe(100);
+    expect(ring.percentile(0.5)).toBe(51);
+    expect(ring.percentile(0.95)).toBe(96);
+    expect(ring.percentile(0)).toBe(1);
+    expect(ring.percentile(1)).toBe(100);
+  });
+
+  it('keeps only the most recent samples once full', () => {
+    const ring = new SampleRing(4);
+    for (let i = 1; i <= 10; i++) ring.push(i);
+    expect(ring.count).toBe(4);
+    expect(ring.percentile(0)).toBe(7);
+    expect(ring.percentile(1)).toBe(10);
   });
 });

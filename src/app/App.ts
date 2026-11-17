@@ -7,9 +7,11 @@ import { WEATHER_WETNESS } from '../env/weather';
 import { Environment } from '../render/environment';
 import { attachSunShadows } from '../render/shadows';
 import { createRenderer, warmUp, whenDeviceLost, type RendererHandle } from '../render/renderer';
+import { FarTerrain } from '../render/farTerrain';
 import { TerrainChunks } from '../render/terrainChunks';
 import { Hud, downloadJson } from '../ui/hud';
 import { CAMERAS, resolveCamera, type ResolvedCamera } from './cameras';
+import { GpuTimer } from './gpuTimer';
 import { formatHud } from './hudText';
 import type { DebugParams } from './params';
 import { pixelRatioForBudget, type QualityTier } from './quality';
@@ -43,11 +45,13 @@ export class App {
   private readonly environment: Environment;
   private readonly clock: EnvironmentClock;
   private readonly chunks: TerrainChunks;
+  private readonly farTerrain: FarTerrain;
   private readonly streamer: TerrainStreamer;
   private readonly hud: Hud;
   private readonly eye: ResolvedCamera = { x: 0, y: 0, z: 0, targetX: 0, targetY: 0, targetZ: 0, fovDeg: 55 };
   private readonly bufferSize = new Vector2();
   private handle!: RendererHandle;
+  private gpuTimer!: GpuTimer;
   private lastTime = 0;
   private lastLowFrequency = 0;
   private startTime = 0;
@@ -56,13 +60,18 @@ export class App {
 
   private constructor(private readonly options: AppOptions) {
     const { params, tier } = options;
+    const lite = tier.name === 'low';
     this.memory = new MemoryRegistry(tier.memoryBudgetMiB);
     this.dyn = new DynamicResolution({ ...DEFAULT_DYNAMIC_RESOLUTION, maxScale: tier.maxScale, initialScale: tier.maxScale });
     if (params.scale !== null) this.dyn.lock(params.scale);
-    this.environment = new Environment(this.scene);
+    this.environment = new Environment(this.scene, lite);
     if (params.shadows) this.memory.add(MemoryPartition.Gpu, attachSunShadows(this.environment.sun, tier.shadows));
+    this.memory.add(MemoryPartition.Gpu, this.environment.ocean.gpuBytes);
     this.clock = new EnvironmentClock(this.environment);
-    this.chunks = new TerrainChunks(this.memory);
+    this.chunks = new TerrainChunks(this.memory, lite);
+    this.farTerrain = new FarTerrain(this.environment.ocean.floorTexture, lite);
+    this.memory.add(MemoryPartition.Gpu, this.farTerrain.gpuBytes);
+    this.chunks.root.add(this.farTerrain.mesh);
     this.scene.add(this.chunks.root);
     this.streamer = new TerrainStreamer(this.chunks, this.memory, tier.lod);
     this.hud = new Hud(options.hudRoot, {
@@ -78,6 +87,7 @@ export class App {
       chunksLoaded: 0, chunksInFlight: 0, staleResults: 0, lodBias: 0, terrainMode: 'worker',
       hour: params.hour, day: params.day, season: '', weather: params.weather, sunAltitudeDeg: 0,
       moonIllumination: 0, exposure: 1, atmosphereLutMs: this.clock.lutMs, backgroundSuspends: 0,
+      gpuP50Ms: null, gpuP95Ms: null, gpuSamples: null,
     };
   }
 
@@ -92,13 +102,14 @@ export class App {
     this.startTime = performance.now();
     this.setCamera(params.cam);
     this.streamer.prime(this.eye.x, this.eye.z);
-    this.placeWorld();
+    this.placeWorld(0);
 
     this.handle = await createRenderer({
       container: viewportRoot,
       choice: params.backend,
       webgpuUsable: capabilities.webgpu.adapter,
       antialias: tier.antialias,
+      timestampQuery: capabilities.webgpu.features.includes('timestamp-query'),
     });
     this.attachRenderer();
     try {
@@ -115,6 +126,10 @@ export class App {
       this.state.warmupMs = await warmUp(this.handle, this.scene, this.camera, WARMUP_TIMEOUT_MS);
     }
     this.running = true;
+    void this.streamer.client.requestSeaFloor().then((heights) => {
+      this.environment.ocean.setSeaFloor(heights);
+      this.farTerrain.setReady();
+    });
 
     window.addEventListener('resize', () => this.resize());
     document.addEventListener('visibilitychange', () => {
@@ -132,6 +147,7 @@ export class App {
   private attachRenderer(): void {
     const handle = this.handle;
     this.state.backend = handle.backend;
+    this.gpuTimer = new GpuTimer(handle.renderer, handle.backend === 'webgpu');
     handle.renderer.shadowMap.enabled = this.options.params.shadows;
     this.chunks.setBundled(handle.backend === 'webgpu');
     this.state.fallbackReason = handle.fallbackReason;
@@ -172,6 +188,7 @@ export class App {
       choice: webgpuUsable ? this.options.params.backend : 'webgl2',
       webgpuUsable,
       antialias: this.options.tier.antialias,
+      timestampQuery: this.options.capabilities.webgpu.features.includes('timestamp-query'),
     });
     if (old.backend === 'webgpu' && this.handle.backend === 'webgl2' && !this.handle.fallbackReason) {
       this.handle.fallbackReason = 'WebGPU device lost and no adapter was available';
@@ -234,10 +251,11 @@ export class App {
   }
 
   /** @hot */
-  private placeWorld(): void {
+  private placeWorld(seconds: number): void {
     this.chunks.root.position.set(-this.eye.x, -this.eye.y, -this.eye.z);
     this.chunks.setEyeOffset(this.eye.x, this.eye.y, this.eye.z);
-    this.environment.sea.position.set(0, -this.eye.y, 0);
+    this.farTerrain.setEyeOffset(this.eye.x, this.eye.y, this.eye.z);
+    this.environment.ocean.update(this.eye.x, this.eye.y, this.eye.z, seconds);
   }
 
   /** @hot */
@@ -247,9 +265,10 @@ export class App {
     this.stats.push(interval, this.dyn.scale);
     if (this.dyn.update(interval)) this.applyRenderScale();
     this.streamer.update(now, this.eye.x, this.eye.z, 0, 0);
-    this.placeWorld();
+    this.placeWorld(now / 1000);
     this.environment.setExposure(this.clock.update(interval));
     this.handle.renderer.render(this.scene, this.camera);
+    this.gpuTimer.afterRender();
     if (now - this.lastLowFrequency >= LOW_FREQUENCY_MS) this.lowFrequency(now);
   };
 
@@ -274,6 +293,9 @@ export class App {
     state.lodBias = streamer.lodBias;
     state.terrainMode = streamer.client.mode;
     state.exposure = this.clock.exposure;
+    state.gpuP50Ms = this.gpuTimer.p50();
+    state.gpuP95Ms = this.gpuTimer.p95();
+    state.gpuSamples = this.gpuTimer.samples;
     if (!this.ready && streamer.settled) {
       this.ready = true;
       if (state.worldReadyMs === 0) state.worldReadyMs = performance.now() - this.startTime;

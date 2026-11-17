@@ -17,6 +17,8 @@ export interface RendererOptions {
   choice: BackendChoice;
   webgpuUsable: boolean;
   antialias: boolean;
+  /** The adapter exposes `timestamp-query`; enables GPU timing on the WebGPU backend. */
+  timestampQuery?: boolean;
 }
 
 /**
@@ -48,6 +50,8 @@ async function attempt(options: RendererOptions, forceWebGL: boolean, fallbackRe
     antialias: options.antialias,
     forceWebGL,
     powerPreference: 'high-performance',
+    // Explicit and WebGPU-only: harmless without the feature, but keep the request honest.
+    trackTimestamp: !forceWebGL && options.timestampQuery === true,
   });
   try {
     await renderer.init();

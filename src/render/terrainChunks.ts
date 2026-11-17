@@ -30,7 +30,7 @@ export class TerrainChunks {
   /** Chunk meshes currently installed (counted in apply/evict, not by scanning). */
   private residentChunkCount = 0;
   readonly material: MeshStandardNodeMaterial;
-  private readonly terrainMaterial: TerrainMaterial = createTerrainMaterial();
+  private readonly terrainMaterial: TerrainMaterial;
   private readonly meshes: (Mesh | null)[] = new Array<Mesh | null>(CHUNK_COUNT).fill(null);
   private readonly meshLod = new Int8Array(CHUNK_COUNT).fill(-1);
   private readonly geometryPool: BufferGeometry[][] = [];
@@ -38,7 +38,8 @@ export class TerrainChunks {
   private readonly indices: BufferAttribute[] = [];
   residentTriangles = 0;
 
-  constructor(private readonly memory: MemoryRegistry) {
+  constructor(private readonly memory: MemoryRegistry, lite = false) {
+    this.terrainMaterial = createTerrainMaterial(lite);
     this.material = this.terrainMaterial.material;
     for (let lod = 0; lod <= MAX_LOD; lod++) {
       this.geometryPool.push([]);
