@@ -1,7 +1,8 @@
 import { AgXToneMapping, WebGPURenderer, type Camera, type Scene } from 'three/webgpu';
-import type { BackendChoice } from '../app/params';
 
 export type BackendName = 'webgpu' | 'webgl2';
+/** Requested backend (URL ?backend=); 'auto' prefers WebGPU and falls back to WebGL2. */
+export type BackendChoice = 'auto' | BackendName;
 
 export interface RendererHandle {
   renderer: WebGPURenderer;

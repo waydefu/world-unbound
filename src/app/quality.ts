@@ -1,4 +1,5 @@
 import { BUDGET_BALANCED, BUDGET_HIGH } from '../perf/memoryRegistry';
+import type { ShadowSettings } from '../render/shadows';
 import type { LodPolicy } from '../world/chunkGrid';
 import type { QualityName } from './params';
 
@@ -12,7 +13,9 @@ export interface QualityTier {
   readonly pixelBudget: number;
   readonly memoryBudgetMiB: readonly number[];
   readonly antialias: boolean;
+  readonly shadows: ShadowSettings;
 }
+
 
 export const QUALITY: Record<QualityName, QualityTier> = {
   low: {
@@ -22,6 +25,7 @@ export const QUALITY: Record<QualityName, QualityTier> = {
     pixelBudget: 1_300_000,
     memoryBudgetMiB: BUDGET_BALANCED,
     antialias: false,
+    shadows: { cascades: 2, mapSize: 1024, maxFar: 600 },
   },
   med: {
     name: 'med',
@@ -30,6 +34,7 @@ export const QUALITY: Record<QualityName, QualityTier> = {
     pixelBudget: 2_200_000,
     memoryBudgetMiB: BUDGET_BALANCED,
     antialias: true,
+    shadows: { cascades: 3, mapSize: 1024, maxFar: 1000 },
   },
   high: {
     name: 'high',
@@ -39,6 +44,7 @@ export const QUALITY: Record<QualityName, QualityTier> = {
     pixelBudget: 3_200_000,
     memoryBudgetMiB: BUDGET_HIGH,
     antialias: true,
+    shadows: { cascades: 3, mapSize: 2048, maxFar: 1600 },
   },
 };
 

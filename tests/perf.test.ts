@@ -138,10 +138,10 @@ describe('MemoryRegistry', () => {
 
 describe('debug parameters and quality', () => {
   it('parses valid parameters', () => {
-    const p = parseParams('?cam=3&backend=webgl2&q=high&scale=0.75&hour=18.5&wx=storm&day=20.5&hud=0');
+    const p = parseParams('?cam=3&backend=webgl2&q=high&scale=0.75&hour=18.5&wx=storm&day=20.5&shadows=0&hud=0');
     expect(p).toMatchObject({
       cam: 3, backend: 'webgl2', quality: 'high', scale: 0.75, hour: 18.5, weather: 'storm', day: 20.5,
-      hourExplicit: true, weatherExplicit: true, dayExplicit: true, hud: false,
+      hourExplicit: true, weatherExplicit: true, dayExplicit: true, shadows: false, hud: false,
     });
   });
 
@@ -149,7 +149,7 @@ describe('debug parameters and quality', () => {
     const p = parseParams('?cam=9&backend=vulkan&q=ultra&scale=4&hour=-2&wx=snow&day=40');
     expect(p).toMatchObject({
       cam: 5, backend: 'auto', quality: null, scale: null, hour: 13, weather: 'clear', day: 6,
-      hourExplicit: false, weatherExplicit: false, dayExplicit: false, hud: true,
+      hourExplicit: false, weatherExplicit: false, dayExplicit: false, shadows: true, hud: true,
     });
     expect(parseParams('?hour=24').hour).toBe(0);
     expect(parseParams('?day=32').day).toBe(0);

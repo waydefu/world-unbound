@@ -1,7 +1,9 @@
 /** URL debug parameters (pure parsing; invalid values fall back to defaults). */
-export type BackendChoice = 'auto' | 'webgpu' | 'webgl2';
+import { WEATHERS, type Weather } from '../env/weather';
+import type { BackendChoice } from '../render/renderer';
+
+export type { BackendChoice, Weather };
 export type QualityName = 'low' | 'med' | 'high';
-export type Weather = 'clear' | 'cloudy' | 'rain' | 'storm';
 
 export interface DebugParams {
   /** Fixed test camera 0..5. */
@@ -20,13 +22,14 @@ export interface DebugParams {
   hourExplicit: boolean;
   weatherExplicit: boolean;
   dayExplicit: boolean;
+  /** Sun shadows; ?shadows=0 turns them off for A/B cost measurements. */
+  shadows: boolean;
   hud: boolean;
 }
 
 export const CAMERA_COUNT = 6;
 /** Late spring: long evenings, so the dusk camera gets a real golden hour. */
 export const DEFAULT_DAY = 6;
-const WEATHERS: readonly Weather[] = ['clear', 'cloudy', 'rain', 'storm'];
 const QUALITIES: readonly QualityName[] = ['low', 'med', 'high'];
 
 function numberIn(raw: string | null, min: number, max: number): number | null {
@@ -54,6 +57,7 @@ export function parseParams(search: string): DebugParams {
     hourExplicit: hour !== null,
     weatherExplicit: wx !== null && WEATHERS.includes(wx),
     dayExplicit: day !== null,
+    shadows: p.get('shadows') !== '0',
     hud: p.get('hud') !== '0',
   };
 }
