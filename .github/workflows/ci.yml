@@ -9,6 +9,11 @@ on:
 permissions:
   contents: read
 
+# GitHub only enables pipefail when the shell is named explicitly.
+defaults:
+  run:
+    shell: bash
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -44,6 +49,78 @@ jobs:
       - name: Validate the label dictionary (names, colours, exclusive groups)
         run: |
           ruby -ryaml -rjson -e 'puts JSON.generate(YAML.safe_load(File.read("governance/labels.yml"), permitted_classes: [], permitted_symbols: [], aliases: false))' | python3 .github/scripts/sync_labels.py --check
+      - name: Governance script tests (risk tiers T31/T32, exception expiry T36/T37)
+        run: python3 -m unittest discover -s .github/scripts -p 'test_*.py'
+      - name: List files changed by this pull request
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          git diff --name-only "$BASE_SHA" HEAD > "$RUNNER_TEMP/changed.txt"
+      - name: Validate governance exceptions (schema, expiry against changed paths)
+        run: |
+          touch "$RUNNER_TEMP/changed.txt"
+          ruby -ryaml -rjson -e 'puts JSON.generate(YAML.safe_load(File.read("governance/exceptions.yml"), permitted_classes: [], permitted_symbols: [], aliases: false))' | python3 -I .github/scripts/check_exceptions.py --changed "$RUNNER_TEMP/changed.txt"
+
+  base-policy:
+    name: base-policy
+    # Advisory (AEGIS D03 "warn" stage), deliberately not part of final-gate.
+    # It re-runs the protected base commit's validator and risk classifier
+    # against this pull request. Red means the change fails the rules as they
+    # stand on main, which is expected only when it changes those rules on
+    # purpose. It cannot stop a pull request that edits this workflow itself.
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+    steps:
+      - name: Checkout untrusted source for no-secret validation
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Fetch the protected base commit and the change set
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          git diff --name-only "$BASE_SHA" HEAD > "$RUNNER_TEMP/changed.txt"
+          git diff "$BASE_SHA" HEAD > "$RUNNER_TEMP/pr.diff"
+      - name: Re-run the base commit's validator against this pull request
+        run: |
+          git show "$BASE_SHA:.github/scripts/validate_m0.py" > .github/scripts/.base_validate_m0.py
+          python3 -I .github/scripts/.base_validate_m0.py
+      - name: Risk tier from the base policy (advisory)
+        if: ${{ always() }}
+        run: |
+          git show "$BASE_SHA:governance/sensitive-paths.yml" > "$RUNNER_TEMP/sensitive-paths.yml"
+          ruby -ryaml -rjson -e 'puts JSON.generate(YAML.safe_load(File.read(ARGV[0]), permitted_classes: [], permitted_symbols: [], aliases: false))' "$RUNNER_TEMP/sensitive-paths.yml" > "$RUNNER_TEMP/policy.json"
+          if git cat-file -e "$BASE_SHA:.github/scripts/classify_risk.py" 2>/dev/null; then
+            git show "$BASE_SHA:.github/scripts/classify_risk.py" > "$RUNNER_TEMP/classify_risk.py"
+            source="protected base"
+          else
+            cp .github/scripts/classify_risk.py "$RUNNER_TEMP/classify_risk.py"
+            source="this pull request (the classifier is not on the base yet)"
+          fi
+          python3 -I "$RUNNER_TEMP/classify_risk.py" --policy "$RUNNER_TEMP/policy.json" \
+            --changed "$RUNNER_TEMP/changed.txt" --diff "$RUNNER_TEMP/pr.diff" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "_Policy from the protected base; classifier from ${source}._" >> "$GITHUB_STEP_SUMMARY"
+
+  dependency-review:
+    name: dependency-review
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Block vulnerable or non-allow-listed dependency changes
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+          allow-licenses: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, MPL-2.0, CC0-1.0, Unlicense, BlueOak-1.0.0, Python-2.0, CC-BY-4.0
+          comment-summary-in-pr: never
+      - name: Nothing to compare on a push
+        if: ${{ github.event_name != 'pull_request' }}
+        run: echo "Dependency review compares a pull request with its base; main only changes through reviewed pull requests."
 
   app-checks:
     name: app-checks
@@ -99,7 +176,7 @@ jobs:
 
   final-gate:
     name: final-gate
-    needs: [m0-files, policy-syntax, app-checks, visual-audit]
+    needs: [m0-files, policy-syntax, app-checks, visual-audit, dependency-review]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -115,7 +192,7 @@ jobs:
           import sys
 
           data = json.loads(os.environ["NEEDS_JSON"])
-          expected = {"m0-files", "policy-syntax", "app-checks", "visual-audit"}
+          expected = {"m0-files", "policy-syntax", "app-checks", "visual-audit", "dependency-review"}
           problems = []
           if set(data) != expected:
               problems.append(f"unexpected job set: expected {sorted(expected)}, got {sorted(data)}")

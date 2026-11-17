@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""M0 structure verification. This is NOT a trusted base-branch policy evaluator."""
+"""Repository contract and workflow hygiene checks.
+
+CI runs this file twice: the pull request's own copy (m0-files, required) and the
+protected base commit's copy against the pull request (base-policy, advisory).
+"""
 from pathlib import Path
 import json
 import os
@@ -29,6 +33,8 @@ REQUIRED = [
     "scripts/audit.mjs", "scripts/audit-visual.mjs", "src/main.ts",
     ".github/workflows/pages.yml", "docs/adr/0001-engine-architecture.md",
     ".github/workflows/labels.yml", ".github/scripts/sync_labels.py",
+    ".github/scripts/classify_risk.py", ".github/scripts/check_exceptions.py",
+    ".github/scripts/test_governance.py", "docs/governance/m1.md",
 ]
 errors = []
 for name in REQUIRED:
@@ -64,16 +70,20 @@ if workflow_path.is_file():
     required_markers = [
         "contents: read", "final-gate:", "if: ${{ always() }}",
         "NEEDS_JSON:", "toJSON(needs)", "m0-files", "policy-syntax", "app-checks", "visual-audit",
-        "npm ci --ignore-scripts",
+        "npm ci --ignore-scripts", "dependency-review", "fail-on-severity:", "allow-licenses:",
+        "base-policy", "check_exceptions.py", "unittest discover",
     ]
     for marker in required_markers:
         if marker not in text:
             errors.append(f"workflow missing M0 marker: {marker}")
 
 # Static workflow hygiene across every workflow file (text scan, not a YAML policy engine).
+DEFAULT_SHELL = re.compile(r"^defaults:\n  run:\n    shell: bash\n", re.M)
 PINNED = re.compile(r"^[^@\s]+@[0-9a-f]{40}$")
 for wf in sorted((ROOT / ".github/workflows").glob("*.y*ml")):
     rel = wf.relative_to(ROOT)
+    if not DEFAULT_SHELL.search(wf.read_text(encoding="utf-8")):
+        errors.append(f"{rel}: must set 'defaults: run: shell: bash' so piped steps fail on any error (pipefail)")
     for number, raw in enumerate(wf.read_text(encoding="utf-8").splitlines(), 1):
         line = raw.split(" #", 1)[0].strip()
         if line.startswith("#"):
@@ -92,6 +102,10 @@ for wf in sorted((ROOT / ".github/workflows").glob("*.y*ml")):
             errors.append(f"{rel}:{number}: 'secrets: inherit' is not allowed")
         if re.search(r"-all\s*$", line) and line.startswith("permissions:"):
             errors.append(f"{rel}:{number}: blanket workflow permissions are not allowed")
+        # AEGIS A01 / T17: no dependency or build caches anywhere, so nothing a pull
+        # request writes can be restored into a trusted or release job.
+        if re.match(r"^(?:-\s*)?uses:\s*actions/cache(/\w+)?@", line) or re.match(r"^cache(-dependency-path)?:\s*\S", line):
+            errors.append(f"{rel}:{number}: caches are not allowed (AEGIS A01)")
 
 # Negative self-test of the final-gate logic (T05 at logic level only; real enforcement
 # still depends on the Ruleset requiring the final-gate check from GitHub Actions).
@@ -101,7 +115,7 @@ if workflow_path.is_file():
         errors.append("could not locate final-gate script in ci.yml")
     else:
         source = textwrap.dedent(gate.group(1))
-        jobs = ["m0-files", "policy-syntax", "app-checks", "visual-audit"]
+        jobs = ["m0-files", "policy-syntax", "app-checks", "visual-audit", "dependency-review"]
         good = {name: {"result": "success"} for name in jobs}
         cases = {"all-success": (good, 0), "empty": ({}, 1)}
         for name in jobs:

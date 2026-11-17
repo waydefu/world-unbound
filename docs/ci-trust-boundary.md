@@ -16,3 +16,10 @@ The final-gate checks exact prerequisite job IDs and requires each conclusion to
 Do not use untrusted local actions inside privileged workflow_run/pull_request_target processes, nor inherit all secrets into high-trust reusable workflows. Do not restore untrusted caches into releases.
 
 The label sync workflow runs only from main (merged dictionary changes or manual dispatch). Its single job holds `issues: write`, reads the dictionary from the checked-out default branch, and never deletes labels unless the dispatching maintainer selects *prune*. API errors fail the job instead of being skipped.
+
+## M1 additions
+
+- `base-policy` (pull requests, advisory) re-runs the **protected base commit's** validator and risk classifier against the pull request. Base files are read with `git show` and executed with `python3 -I`; nothing from the pull request runs with more privilege than in its own CI. It catches accidental weakening of validator rules, but it is defined in the pull request's own workflow file, so a pull request that edits `.github/workflows/` can remove it. See [governance/m1.md](governance/m1.md) for why `pull_request_target` and push rulesets are not available as stronger anchors here.
+- `dependency-review` (pull requests) blocks new dependencies with high or critical advisories or licences outside the allow-list. It uses the GitHub API with the job's read-only token and fails on API errors.
+- No workflow may restore or save caches (AEGIS A01); the validator enforces this.
+
