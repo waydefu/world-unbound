@@ -1,7 +1,8 @@
 import { CELL_SIZE, HEIGHT_QUANTUM } from './constants';
 import { lodIndexCount, lodSide, lodVertexCount } from './chunkGrid';
 import { tileIndex, tileNormal } from './heightField';
-import { shadeTerrain } from './terrainColor';
+import { AO_APRON, AO_DIM, vertexAo } from './terrainAo';
+import { classifyTerrain } from './terrainMaterialWeights';
 
 /**
  * Renderer-agnostic chunk mesh data built straight from an authoritative tile.
@@ -11,7 +12,7 @@ import { shadeTerrain } from './terrainColor';
 export interface ChunkMeshBuffers {
   positions: Float32Array;
   normals: Float32Array;
-  /** RGBA8, linear-sRGB values. */
+  /** RGBA8: sand, rock, earth material weights and baked AO (1 = open sky). */
   colors: Uint8Array;
   minY: number;
   maxY: number;
@@ -73,8 +74,13 @@ function edgeVertex(side: number, s: number, n: number): number {
 
 const scratchColor = new Float32Array(3);
 
-/** Fills `out` for chunk (cx, cz) at `lod` from its apron tile. Allocation-free. */
-export function buildChunkMesh(tile: Int16Array, cx: number, cz: number, lod: number, out: ChunkMeshBuffers): void {
+/**
+ * Fills `out` for chunk (cx, cz) at `lod` from its apron tile. Allocation-free.
+ * `aoTile` (generateAoTile) supplies baked AO; without it AO is 1.
+ */
+export function buildChunkMesh(
+  tile: Int16Array, cx: number, cz: number, lod: number, out: ChunkMeshBuffers, aoTile?: Int16Array,
+): void {
   const n = lodSide(lod);
   const step = 1 << lod;
   const originX = cx * 32 * CELL_SIZE;
@@ -92,11 +98,11 @@ export function buildChunkMesh(tile: Int16Array, cx: number, cz: number, lod: nu
       positions[v * 3 + 1] = y;
       positions[v * 3 + 2] = sj * CELL_SIZE;
       tileNormal(tile, si, sj, normals, v * 3);
-      shadeTerrain(originX + si * CELL_SIZE, originZ + sj * CELL_SIZE, y, normals[v * 3 + 1], scratchColor);
-      colors[v * 4] = scratchColor[0] * 255;
-      colors[v * 4 + 1] = scratchColor[1] * 255;
-      colors[v * 4 + 2] = scratchColor[2] * 255;
-      colors[v * 4 + 3] = 255;
+      classifyTerrain(originX + si * CELL_SIZE, originZ + sj * CELL_SIZE, y, normals[v * 3 + 1], scratchColor);
+      colors[v * 4] = Math.round(scratchColor[0] * 255);
+      colors[v * 4 + 1] = Math.round(scratchColor[1] * 255);
+      colors[v * 4 + 2] = Math.round(scratchColor[2] * 255);
+      colors[v * 4 + 3] = aoTile ? Math.round(vertexAo(aoTile, AO_DIM, AO_APRON, si, sj) * 255) : 255;
       if (y < minY) minY = y;
       if (y > maxY) maxY = y;
     }
@@ -117,7 +123,7 @@ export function buildChunkMesh(tile: Int16Array, cx: number, cz: number, lod: nu
       colors[dst * 4] = colors[src * 4];
       colors[dst * 4 + 1] = colors[src * 4 + 1];
       colors[dst * 4 + 2] = colors[src * 4 + 2];
-      colors[dst * 4 + 3] = 255;
+      colors[dst * 4 + 3] = colors[src * 4 + 3];
     }
   }
   out.minY = minY - drop;

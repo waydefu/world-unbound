@@ -18,7 +18,7 @@ export function formatHud(state: AppState, stats: FrameStats, dyn: DynamicResolu
     `buffer ${state.bufferWidth}x${state.bufferHeight} (${(pixels / 1e6).toFixed(2)} MP) · css ${state.cssWidth}x${state.cssHeight} · dpr ${state.devicePixelRatio.toFixed(2)}`,
     `scale ${dyn.scale.toFixed(2)}${dyn.locked ? ' locked' : ''} · changes ${dyn.changes}`,
     `chunks ${state.chunksLoaded} · in-flight ${state.chunksInFlight} · stale ${state.staleResults} · lod bias ${state.lodBias} · ${state.terrainMode}`,
-    `draws ${state.drawCalls} · tris ${(state.triangles / 1000).toFixed(1)}k`,
+    `draws ${state.drawCalls} (+${state.bundledDraws} bundled) · tris ${(state.triangles / 1000).toFixed(1)}k`,
     `variants ${state.materialVariants}/${state.variantBudget} · warm-up ${state.warmupMs.toFixed(0)} ms · first frame ${state.firstFrameMs.toFixed(0)} ms · world ${state.worldReadyMs.toFixed(0)} ms`,
   ];
   let mem = 'mem MiB';

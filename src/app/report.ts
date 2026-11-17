@@ -28,6 +28,7 @@ export interface AppState {
   materialVariants: number;
   variantBudget: number;
   drawCalls: number;
+  bundledDraws: number;
   triangles: number;
   chunksLoaded: number;
   chunksInFlight: number;
@@ -116,6 +117,7 @@ export function buildReport(
       lodBias: state.lodBias,
       terrainBuild: state.terrainMode,
       drawCalls: state.drawCalls,
+      bundledDraws: state.bundledDraws,
       triangles: state.triangles,
     },
     environment: {

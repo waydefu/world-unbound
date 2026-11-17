@@ -3,6 +3,7 @@ import { DEFAULT_DYNAMIC_RESOLUTION, DynamicResolution, snapRefreshPeriod } from
 import { FrameStats } from '../perf/frameStats';
 import { MemoryPartition, MemoryRegistry } from '../perf/memoryRegistry';
 import type { CapabilityReport } from '../platform/capabilities';
+import { WEATHER_WETNESS } from '../env/weather';
 import { Environment } from '../render/environment';
 import { attachSunShadows } from '../render/shadows';
 import { createRenderer, warmUp, whenDeviceLost, type RendererHandle } from '../render/renderer';
@@ -73,7 +74,7 @@ export class App {
       deviceLostCount: 0, cameraIndex: 0, cameraName: '', cssWidth: 0, cssHeight: 0,
       devicePixelRatio: 1, basePixelRatio: 1, bufferWidth: 0, bufferHeight: 0,
       refreshHz: 60, refreshMeasured: false, warmupMs: 0, firstFrameMs: 0, worldReadyMs: 0,
-      materialVariants: 2, variantBudget: VARIANT_BUDGET[tier.name], drawCalls: 0, triangles: 0,
+      materialVariants: 2, variantBudget: VARIANT_BUDGET[tier.name], drawCalls: 0, bundledDraws: 0, triangles: 0,
       chunksLoaded: 0, chunksInFlight: 0, staleResults: 0, lodBias: 0, terrainMode: 'worker',
       hour: params.hour, day: params.day, season: '', weather: params.weather, sunAltitudeDeg: 0,
       moonIllumination: 0, exposure: 1, atmosphereLutMs: this.clock.lutMs, backgroundSuspends: 0,
@@ -198,6 +199,7 @@ export class App {
     this.state.hour = params.hourExplicit ? params.hour : spec.hour ?? params.hour;
     const weather = params.weatherExplicit ? params.weather : spec.weather ?? params.weather;
     this.state.weather = weather;
+    this.chunks.setWetness(WEATHER_WETNESS[weather]);
     this.state.day = params.day;
     this.clock.configure(params.day, this.state.hour, weather, Math.max(2, this.eye.y));
     this.state.season = this.clock.season;
@@ -234,6 +236,7 @@ export class App {
   /** @hot */
   private placeWorld(): void {
     this.chunks.root.position.set(-this.eye.x, -this.eye.y, -this.eye.z);
+    this.chunks.setEyeOffset(this.eye.x, this.eye.y, this.eye.z);
     this.environment.sea.position.set(0, -this.eye.y, 0);
   }
 
@@ -263,6 +266,7 @@ export class App {
     }
     const info = this.handle.renderer.info.render;
     state.drawCalls = info.drawCalls;
+    state.bundledDraws = this.chunks.bundledCount;
     state.triangles = info.triangles;
     state.chunksLoaded = streamer.requests.loadedCount;
     state.chunksInFlight = streamer.requests.inFlightCount;

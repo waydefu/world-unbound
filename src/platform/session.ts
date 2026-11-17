@@ -2,6 +2,10 @@
  * Lightweight abnormal-reload detection. iOS can discard a page under memory
  * pressure without any event; a flag that is set while running and cleared on
  * a clean exit lets the next start choose a safe low configuration.
+ *
+ * The flag is kept in sessionStorage, which is scoped to one tab: a second tab
+ * or a tab switch (Android) must not look like a crash of the first one, while
+ * a reload of the same tab, the case being detected, still does.
  */
 const KEY = 'world-unbound.session';
 
@@ -12,21 +16,21 @@ export interface SessionStart {
 export function beginSession(): SessionStart {
   let recoveredFromCrash = false;
   try {
-    recoveredFromCrash = localStorage.getItem(KEY) === 'running';
-    localStorage.setItem(KEY, 'running');
+    recoveredFromCrash = sessionStorage.getItem(KEY) === 'running';
+    sessionStorage.setItem(KEY, 'running');
   } catch {
     // Storage may be blocked (private mode); run without the safety net.
   }
   const markClean = (): void => {
     try {
-      localStorage.setItem(KEY, 'clean');
+      sessionStorage.setItem(KEY, 'clean');
     } catch {
       /* ignore */
     }
   };
   const markRunning = (): void => {
     try {
-      localStorage.setItem(KEY, 'running');
+      sessionStorage.setItem(KEY, 'running');
     } catch {
       /* ignore */
     }
