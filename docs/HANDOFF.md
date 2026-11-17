@@ -32,8 +32,8 @@ Owner's phone: Adreno 8xx, Chrome 157, WebGPU, 60 Hz, 2.2 MP drawing buffer.
 
 **Owner**
 
-1. Review and merge PR #15 (and the stop-work changes).
-2. On the phone, open `?cam=5&hour=19.8` and `?cam=5&hour=19.8&shadows=0`, export telemetry JSON from each (HUD → JSON). This verifies bundles + shadows on WebGPU (untested in CI) and gives the shadow cost.
+1. Review and merge the G1.3 PR.
+2. Bundles + shadows are verified on the phone (WebGPU, med tier, 58.7 FPS at 2.2 MP). The shadows-off A/B was invalid (a false crash-recovery forced the low tier; fixed in G1.3), so after merging: in **one tab**, open `?cam=5&hour=19.8`, export JSON, then change the URL to `?cam=5&hour=19.8&shadows=0`, reload, export JSON.
 3. Optional: second GitHub account for T20.
 
 **Next agent session**
