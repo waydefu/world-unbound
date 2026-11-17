@@ -1,6 +1,8 @@
 ## 1. Why is this change needed?
-<!-- Related Issue / RFC / approved exception. State acceptance criteria. -->
-Closes #
+<!-- Related Issue / RFC / approved exception. State acceptance criteria.
+     Use "Refs #" — merging does not close Issues here. Merge means Integrated;
+     the owner moves the Issue to Verified after checking evidence, then closes it (Resolved). -->
+Refs #
 
 ## 2. What changed?
 <!-- Files, components, public API/ABI, behavior and dependency impact. -->
