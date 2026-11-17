@@ -24,3 +24,12 @@ Projects the owner pointed to as references. Links only: no code is copied into 
 - Desktop RTX target; the phone figure above shows how far a mobile GPU falls behind with this approach.
 - A bounded art scene: no streaming world, gameplay, saves, determinism or governance.
 - Hand-written WGSL and a custom renderer; ADR-0001/0002 keep three.js + TSL and allow hand-written WGSL only where profiling justifies it.
+
+## Grass and foliage references (for G2)
+
+Looked at 2026-11-17 from page source and marketing text only (not run; no performance verified).
+
+| Project | What it is | Licence | Ideas for G2 |
+| --- | --- | --- | --- |
+| Duskward (https://agnt.gg/creation?id=DmDSpPYm) | Single-file raw WebGPU/WGSL world by a user of the AGNT platform; instanced terrain, trees, grass, water, birds; packed vertex formats; desktop only per the page | None stated: learn only | Per-instance variation from a hash of the instance index, nothing stored per blade |
+| Three.js Grassworks (https://grassworks.techredux.co/forest-demo) | Commercial three.js WebGPURenderer + TSL grass system (Tech Redux): instanced blades, distance/frustum culling, LODs, billboard mode, wind, terrain-aware placement, camera-recentred grid | All rights reserved; paid licence: do not copy code | Camera-centred cell grid; blades near, cards mid-distance, nothing far, density fading with distance; density as a quality setting (WebGL2 Lite: hash placement in the vertex stage, lower density) |
