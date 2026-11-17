@@ -1,0 +1,26 @@
+// Lint only (formatter off): AEGIS M1 lint gate. See docs/governance/m1.md.
+{
+	"$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+	"files": {
+		"includes": [
+			"src/**",
+			"spike/**",
+			"tests/**",
+			"scripts/**",
+			"vite.config.ts"
+		]
+	},
+	"formatter": { "enabled": false },
+	"assist": { "enabled": false },
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"preset": "recommended",
+			"complexity": {
+				// Ternary min/max is deliberate: in the deterministic world core it keeps
+				// NaN and -0 behaviour explicit, and changing it could move terrain hashes.
+				"useMathMinMax": "off"
+			}
+		}
+	}
+}

@@ -1,5 +1,5 @@
 import {
-  Color, DirectionalLight, Fog, HemisphereLight, Mesh, MeshStandardNodeMaterial, PlaneGeometry, Scene,
+  Color, DirectionalLight, Fog, HemisphereLight, Mesh, MeshStandardNodeMaterial, PlaneGeometry, type Scene,
 } from 'three/webgpu';
 import type { Weather } from '../app/params';
 

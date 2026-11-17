@@ -73,7 +73,7 @@ async function attempt(options: RendererOptions, forceWebGL: boolean, fallbackRe
  */
 export function whenDeviceLost(renderer: WebGPURenderer): Promise<string> {
   const device = (renderer.backend as { device?: GPUDevice }).device;
-  if (!device || !device.lost) return new Promise<string>(() => undefined);
+  if (!device?.lost) return new Promise<string>(() => undefined);
   return device.lost.then((info) => `${info.reason ?? 'unknown'}: ${info.message || 'no message'}`);
 }
 
