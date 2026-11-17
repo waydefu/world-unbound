@@ -75,6 +75,8 @@ Game milestones (specification v1.0, renamed G0–G3 to avoid clashing with the 
 - **G0:** engine skeleton, authoritative terrain, telemetry baseline — implemented, device verification pending
 - **G0.5:** engine spike done — three.js stays, render bundles mandatory for static geometry ([results](docs/spikes/engine-spike.md)); erosion prototype not yet good enough, deferred until after G1 ([findings](docs/spikes/terrain-erosion.md)); build-time bake pipeline (eroded terrain), shared environment and query contracts, worker skeletons, telemetry fixes — see [ADR-0002](docs/adr/0002-target-architecture.md)
 - **G1:** atmosphere, PBR weathering materials, multi-band ocean
+  - G1.0 GPU load ramp (spike page) to measure headroom before effects
+  - G1.1 physical sky and atmosphere: 32-day calendar at 53.9° N, sun/moon ephemeris, Hillaire 2020 transmittance / multiple-scattering / sky-view tables (CPU, identical on WebGPU and WebGL2), CIE overcast cloud deck, aerial-perspective fog, auto-exposure with pre-exposure; `?day=0..32` (default 6)
 - **G2:** Hanseatic town architecture and period vegetation
 - **G3:** gameplay loop, procedural audio, saves
 

@@ -14,13 +14,18 @@ export interface DebugParams {
   /** Local solar hour in [0, 24). */
   hour: number;
   weather: Weather;
+  /** Day of the 32-day year in [0, 32): 0 spring equinox, 8 summer solstice. */
+  day: number;
   /** False when the value is a default, so a camera preset may override it. */
   hourExplicit: boolean;
   weatherExplicit: boolean;
+  dayExplicit: boolean;
   hud: boolean;
 }
 
 export const CAMERA_COUNT = 6;
+/** Late spring: long evenings, so the dusk camera gets a real golden hour. */
+export const DEFAULT_DAY = 6;
 const WEATHERS: readonly Weather[] = ['clear', 'cloudy', 'rain', 'storm'];
 const QUALITIES: readonly QualityName[] = ['low', 'med', 'high'];
 
@@ -37,6 +42,7 @@ export function parseParams(search: string): DebugParams {
   const q = p.get('q') as QualityName | null;
   const wx = p.get('wx') as Weather | null;
   const hour = numberIn(p.get('hour'), 0, 24);
+  const day = numberIn(p.get('day'), 0, 32);
   return {
     cam: cam === null ? 5 : Math.floor(cam),
     backend: backend === 'webgpu' || backend === 'webgl2' ? backend : 'auto',
@@ -44,8 +50,10 @@ export function parseParams(search: string): DebugParams {
     scale: numberIn(p.get('scale'), 0.5, 1.5),
     hour: hour === null ? 13 : hour % 24,
     weather: wx !== null && WEATHERS.includes(wx) ? wx : 'clear',
+    day: day === null ? DEFAULT_DAY : day % 32,
     hourExplicit: hour !== null,
     weatherExplicit: wx !== null && WEATHERS.includes(wx),
+    dayExplicit: day !== null,
     hud: p.get('hud') !== '0',
   };
 }

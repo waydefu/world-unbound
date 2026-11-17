@@ -35,8 +35,13 @@ export interface AppState {
   lodBias: number;
   terrainMode: string;
   hour: number;
+  day: number;
+  season: string;
   weather: string;
   sunAltitudeDeg: number;
+  moonIllumination: number;
+  exposure: number;
+  atmosphereLutMs: number;
   backgroundSuspends: number;
 }
 
@@ -113,7 +118,16 @@ export function buildReport(
       drawCalls: state.drawCalls,
       triangles: state.triangles,
     },
-    environment: { hour: state.hour, weather: state.weather, sunAltitudeDeg: round(state.sunAltitudeDeg, 1) },
+    environment: {
+      day: state.day,
+      season: state.season,
+      hour: state.hour,
+      weather: state.weather,
+      sunAltitudeDeg: round(state.sunAltitudeDeg, 1),
+      moonIllumination: round(state.moonIllumination, 2),
+      exposure: round(state.exposure, 3),
+      atmosphereLutMs: round(state.atmosphereLutMs, 1),
+    },
     capabilities,
   };
 }

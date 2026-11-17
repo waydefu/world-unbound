@@ -11,6 +11,7 @@ import { CAMERAS, resolveCamera, type ResolvedCamera } from './cameras';
 import { formatHud } from './hudText';
 import type { DebugParams } from './params';
 import { pixelRatioForBudget, type QualityTier } from './quality';
+import { EnvironmentClock } from './environmentClock';
 import { buildReport, type AppState } from './report';
 import { TerrainStreamer } from './terrainStreamer';
 
@@ -38,6 +39,7 @@ export class App {
   private readonly scene = new Scene();
   private readonly camera = new PerspectiveCamera(55, 1, 0.3, 7000);
   private readonly environment: Environment;
+  private readonly clock: EnvironmentClock;
   private readonly chunks: TerrainChunks;
   private readonly streamer: TerrainStreamer;
   private readonly hud: Hud;
@@ -56,6 +58,7 @@ export class App {
     this.dyn = new DynamicResolution({ ...DEFAULT_DYNAMIC_RESOLUTION, maxScale: tier.maxScale, initialScale: tier.maxScale });
     if (params.scale !== null) this.dyn.lock(params.scale);
     this.environment = new Environment(this.scene);
+    this.clock = new EnvironmentClock(this.environment);
     this.chunks = new TerrainChunks(this.memory);
     this.scene.add(this.chunks.root);
     this.streamer = new TerrainStreamer(this.chunks, this.memory, tier.lod);
@@ -70,7 +73,8 @@ export class App {
       refreshHz: 60, refreshMeasured: false, warmupMs: 0, firstFrameMs: 0, worldReadyMs: 0,
       materialVariants: 2, variantBudget: VARIANT_BUDGET[tier.name], drawCalls: 0, triangles: 0,
       chunksLoaded: 0, chunksInFlight: 0, staleResults: 0, lodBias: 0, terrainMode: 'worker',
-      hour: params.hour, weather: params.weather, sunAltitudeDeg: 0, backgroundSuspends: 0,
+      hour: params.hour, day: params.day, season: '', weather: params.weather, sunAltitudeDeg: 0,
+      moonIllumination: 0, exposure: 1, atmosphereLutMs: this.clock.lutMs, backgroundSuspends: 0,
     };
   }
 
@@ -190,8 +194,11 @@ export class App {
     this.state.hour = params.hourExplicit ? params.hour : spec.hour ?? params.hour;
     const weather = params.weatherExplicit ? params.weather : spec.weather ?? params.weather;
     this.state.weather = weather;
-    this.environment.set(this.state.hour, weather);
+    this.state.day = params.day;
+    this.clock.configure(params.day, this.state.hour, weather, Math.max(2, this.eye.y));
+    this.state.season = this.clock.season;
     this.state.sunAltitudeDeg = this.environment.sunAltitudeDeg;
+    this.state.moonIllumination = this.clock.celestial.moonIllumination;
     this.streamer.invalidate();
     this.ready = false;
   }
@@ -234,6 +241,7 @@ export class App {
     if (this.dyn.update(interval)) this.applyRenderScale();
     this.streamer.update(now, this.eye.x, this.eye.z, 0, 0);
     this.placeWorld();
+    this.environment.setExposure(this.clock.update(interval));
     this.handle.renderer.render(this.scene, this.camera);
     if (now - this.lastLowFrequency >= LOW_FREQUENCY_MS) this.lowFrequency(now);
   };
@@ -257,6 +265,7 @@ export class App {
     state.staleResults = streamer.requests.staleResults;
     state.lodBias = streamer.lodBias;
     state.terrainMode = streamer.client.mode;
+    state.exposure = this.clock.exposure;
     if (!this.ready && streamer.settled) {
       this.ready = true;
       if (state.worldReadyMs === 0) state.worldReadyMs = performance.now() - this.startTime;
