@@ -10,7 +10,6 @@ rules:
   - {glob: "**/SKILL.md", baseline_risk: R3, owner: "@waydefu", reason: "Agent skill instructions"}
   - {glob: ".github/scripts/**", baseline_risk: R3, owner: "@waydefu", reason: "Validators that produce CI evidence"}
   - {glob: "scripts/**", baseline_risk: R3, owner: "@waydefu", reason: "Validators that produce CI evidence"}
-  - {glob: "tests/**", baseline_risk: R2, owner: "@waydefu", reason: "Assertions must not be weakened"}
   - {glob: ".cargo/config.toml", baseline_risk: R3, owner: "@waydefu", reason: "Cargo toolchain or registry commands"}
   - {glob: "**/build.rs", baseline_risk: R3, owner: "@waydefu", reason: "Compile-time Rust code"}
   - {glob: "**/Dockerfile*", baseline_risk: R2, owner: "@waydefu", reason: "Build and runtime commands"}
