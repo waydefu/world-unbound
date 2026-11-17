@@ -8,6 +8,10 @@ export default defineConfig({
     target: 'es2022',
     sourcemap: false,
     chunkSizeWarningLimit: 1500,
+    rollupOptions: {
+      // The engine spike (ADR-0002 §8) ships as a second page; it is not linked from the game.
+      input: { main: 'index.html', spike: 'spike/engines.html' },
+    },
   },
   worker: { format: 'es' },
   test: {

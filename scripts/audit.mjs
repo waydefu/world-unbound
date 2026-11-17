@@ -42,6 +42,7 @@ const checkedFiles = [
   ...sourceFiles,
   ...walk(path.join(root, 'scripts')).filter((f) => f.endsWith('.mjs')),
   ...walk(path.join(root, 'tests')).filter((f) => f.endsWith('.ts')),
+  ...walk(path.join(root, 'spike')).filter((f) => /\.(ts|html)$/.test(f)),
   path.join(root, 'index.html'),
   path.join(root, 'vite.config.ts'),
 ];

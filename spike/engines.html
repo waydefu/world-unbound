@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <title>WORLD UNBOUND — engine spike</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #05070a; color: #e6e9ee; font: 14px/1.4 ui-monospace, Menlo, Consolas, monospace; }
+      canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; display: block; }
+      #panel { position: relative; padding: max(12px, env(safe-area-inset-top)) 16px 16px; max-width: 980px; }
+      #panel h1 { font-size: 18px; margin: 0 0 8px; }
+      .links { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+      .links a, button { padding: 8px 12px; border: 1px solid #5d6672; border-radius: 4px; background: #121820; color: inherit; font: inherit; text-decoration: none; }
+      .note { background: #2a2310; padding: 6px 8px; border-radius: 4px; }
+      table { border-collapse: collapse; margin-top: 12px; font-size: 12px; }
+      td { border: 1px solid #333b46; padding: 3px 6px; text-align: right; white-space: nowrap; }
+      tr:first-child td { background: #1a2029; }
+      canvas:not([hidden]) ~ #panel { background: rgba(8, 11, 16, 0.72); width: fit-content; }
+    </style>
+  </head>
+  <body>
+    <canvas id="view" hidden></canvas>
+    <div id="panel"></div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

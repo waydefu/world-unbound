@@ -21,6 +21,7 @@
     "three": "0.187.0"
   },
   "devDependencies": {
+    "@babylonjs/core": "9.33.2",
     "@types/three": "0.187.0",
     "@webgpu/types": "0.1.74",
     "playwright": "1.63.0",
