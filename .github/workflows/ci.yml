@@ -41,6 +41,9 @@ jobs:
           ruby -ryaml -e 'ARGV.each { |p| YAML.safe_load(File.read(p), permitted_classes: [], permitted_symbols: [], aliases: false); puts "YAML OK: #{p}" }' .github/workflows/*.yml .github/ISSUE_TEMPLATE/*.yml governance/*.yml
       - name: Parse JSON exception schema
         run: python3 -m json.tool governance/exceptions.schema.json > /dev/null
+      - name: Validate the label dictionary (names, colours, exclusive groups)
+        run: |
+          ruby -ryaml -rjson -e 'puts JSON.generate(YAML.safe_load(File.read("governance/labels.yml"), permitted_classes: [], permitted_symbols: [], aliases: false))' | python3 .github/scripts/sync_labels.py --check
 
   app-checks:
     name: app-checks
