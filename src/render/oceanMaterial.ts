@@ -12,6 +12,8 @@ import type { SkyDome } from './sky';
 const WAVE_COUNT = 4;
 const SUN_SOLID_ANGLE = 6.8e-5;
 const DEEP_FLOOR = -40;
+/** The sea-floor texture stores h - FLOOR_OFFSET so half floats keep <= 0.25 m steps up to 1050 m. */
+export const FLOOR_OFFSET = 500;
 /** Detail-normal finite-difference step in metres (as in terrainMaterial). */
 const E = 0.08;
 const DEEP = vec3(0.004, 0.016, 0.022);
@@ -70,7 +72,7 @@ export function createOceanMaterial(sky: SkyDome, floor: DataTexture, u: OceanUn
   const seaDepth = (p: Node<'vec2'>): Node<'float'> => {
     const uv = p.sub(WORLD_MIN).div(WORLD_MAX - WORLD_MIN);
     const inside = step(0, uv.x).mul(step(uv.x, 1)).mul(step(0, uv.y)).mul(step(uv.y, 1));
-    return mix(float(-DEEP_FLOOR), texture(floor, uv).level(float(0)).r.negate(), inside);
+    return mix(float(-DEEP_FLOOR), texture(floor, uv).level(float(0)).r.add(FLOOR_OFFSET).negate(), inside);
   };
 
   const vertex = Fn(() => {

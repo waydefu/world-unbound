@@ -1,12 +1,12 @@
-import { QUAY_Z, SEA_LEVEL } from '../world/constants';
+import { SEA_LEVEL } from '../world/constants';
 import { heightAt } from '../world/heightField';
-import { coastlineZ } from '../world/terrainShape';
 import type { Weather } from '../env/weather';
 
 /**
- * The six fixed acceptance cameras. Positions are given relative to the
- * authoritative ground (or the sea surface when over water) so they stay
- * valid when the terrain shape is tuned.
+ * The six fixed acceptance cameras at Hellesylt. Positions are plain constants
+ * read off the baked terrain (the village shore faces north-east: the flat
+ * ground lies south-west of the waterline); heights are given relative to the
+ * authoritative ground (or the sea surface when over water).
  */
 export interface CameraSpec {
   readonly name: string;
@@ -23,24 +23,27 @@ export interface CameraSpec {
   readonly weather?: Weather;
 }
 
-const EAST_SHORE_X = 560;
-
 export const CAMERAS: readonly CameraSpec[] = [
+  // Village shore at the head of the fjord, looking along the waterline (water on the left).
+  { name: 'coast-low', x: 70, z: -324, lift: 1.5, targetX: 240, targetZ: -215, targetLift: 0.5, fovDeg: 58 },
+  // Village ground (flat, ~1.7 m) looking across the harbour basin towards the dock.
+  { name: 'architecture-detail', x: 150, z: -170, lift: 1.7, targetX: 232, targetZ: -112, targetLift: 1.4, fovDeg: 55 },
+  // Grass slope rising behind the village, looking up it.
+  { name: 'vegetation-near', x: 20, z: -40, lift: 1.2, targetX: -40, targetZ: 30, targetLift: 1, fovDeg: 60 },
+  // Waterfront on the fjord shore, looking up the open fjord (azimuth 42 deg, no terrain above 0 deg). From
+  // here the western evening sun (azimuth ~313 deg at 4 deg) is behind a 600 m mountain wall, so the
+  // visible-direction sun is the early one: 03:30 puts it 3.7 deg up at azimuth 48 deg, just right of centre.
   {
-    name: 'coast-low', x: EAST_SHORE_X, z: coastlineZ(EAST_SHORE_X) + 14, lift: 1.5,
-    targetX: 300, targetZ: coastlineZ(300) - 60, targetLift: 0.5, fovDeg: 58,
+    name: 'backlit-dusk-water', x: 220, z: -252, lift: 2, targetX: 634, targetZ: -684, targetLift: 0,
+    fovDeg: 55, hour: 3.5,
   },
-  { name: 'architecture-detail', x: 24, z: 36, lift: 1.7, targetX: -10, targetZ: -60, targetLift: 1.4, fovDeg: 55 },
-  { name: 'vegetation-near', x: 400, z: 340, lift: 1.2, targetX: 470, targetZ: 470, targetLift: 1, fovDeg: 60 },
+  // Village ground towards the dock.
   {
-    name: 'backlit-dusk-water', x: -30, z: QUAY_Z + 8, lift: 2, targetX: -260, targetZ: QUAY_Z - 420, targetLift: 0,
-    fovDeg: 55, hour: 19.6,
-  },
-  {
-    name: 'rain-night', x: -70, z: -110, lift: 1.7, targetX: 30, targetZ: QUAY_Z, targetLift: 1.5,
+    name: 'rain-night', x: 60, z: -200, lift: 1.7, targetX: 240, targetZ: -100, targetLift: 1.2,
     fovDeg: 60, hour: 22.5, weather: 'rain',
   },
-  { name: 'town-harbour-overview', x: -560, z: 640, lift: 170, targetX: 20, targetZ: -170, targetLift: 0, fovDeg: 50 },
+  // South-west of the village, ~230 m above its ground, looking over the harbour and up the fjord.
+  { name: 'town-harbour-overview', x: -100, z: 60, lift: 170, targetX: 350, targetZ: -400, targetLift: 0, fovDeg: 50 },
 ];
 
 export interface ResolvedCamera {

@@ -6,8 +6,9 @@ import {
   transformNormalToView, uniform, varyingProperty, vec2, vec3,
 } from 'three/tsl';
 import { WORLD_MAX, WORLD_MIN } from '../world/constants';
+import { FLOOR_OFFSET } from './oceanMaterial';
 
-/** 256 x 256 quads over the whole world: 8 m spacing (128 x 128, 16 m, on the lite tier). */
+/** 256 x 256 quads over the whole 4096 m world: 16 m spacing (128 x 128, 32 m, on the lite tier). */
 const CELLS = 256;
 const CELLS_LITE = 128;
 const NOT_READY_Y = -50;
@@ -89,7 +90,7 @@ export class FarTerrain {
     const vNormal = varyingProperty('vec3', 'farNormal');
     const vHeight = varyingProperty('float', 'farHeight');
     const height = (p: Node<'vec2'>) =>
-      texture(floor, p.sub(WORLD_MIN).div(WORLD_MAX - WORLD_MIN)).level(float(0)).r;
+      texture(floor, p.sub(WORLD_MIN).div(WORLD_MAX - WORLD_MIN)).level(float(0)).r.add(FLOOR_OFFSET);
 
     const material = new MeshStandardNodeMaterial({ metalness: 0, side: FrontSide });
     material.name = 'far-terrain';

@@ -21,6 +21,7 @@ declare global {
 
 async function boot(): Promise<void> {
   const bootScreen = document.getElementById('boot') as HTMLElement;
+  const bootMessage = document.getElementById('boot-message') as HTMLElement;
   const viewportRoot = document.getElementById('viewport-root') as HTMLElement;
   const hudRoot = document.getElementById('hud-root') as HTMLElement;
   try {
@@ -52,7 +53,7 @@ async function boot(): Promise<void> {
     bootScreen.hidden = true;
   } catch (err) {
     console.error(err);
-    bootScreen.textContent = `Could not start: ${err instanceof Error ? err.message : String(err)}`;
+    bootMessage.textContent = `Could not start: ${err instanceof Error ? err.message : String(err)}`;
   }
 }
 

@@ -25,6 +25,10 @@ export interface AppState {
   warmupMs: number;
   firstFrameMs: number;
   worldReadyMs: number;
+  /** Main-thread time to fetch, verify and decode the terrain tiles. */
+  terrainLoadMs: number;
+  /** Same for the terrain worker's own copy (0 until it reports). */
+  terrainWorkerLoadMs: number;
   materialVariants: number;
   variantBudget: number;
   drawCalls: number;
@@ -118,6 +122,8 @@ export function buildReport(
     },
     world: {
       readyMs: round(state.worldReadyMs, 1),
+      terrainLoadMs: round(state.terrainLoadMs, 1),
+      terrainWorkerLoadMs: round(state.terrainWorkerLoadMs, 1),
       chunksLoaded: state.chunksLoaded,
       chunksInFlight: state.chunksInFlight,
       staleResults: state.staleResults,

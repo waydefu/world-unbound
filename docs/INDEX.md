@@ -25,6 +25,7 @@ Where everything is. Start with [HANDOFF.md](HANDOFF.md) to pick up the work.
 | [reference/external-projects.md](reference/external-projects.md) | External reference projects (Abyssal Garden: blind visual critic, fly-through benchmark, adaptive quality) |
 | [reference/game-spec-v1.md](reference/game-spec-v1.md) | Game specification v1.0 (owner's source document) |
 | [reference/aegis-v2.md](reference/aegis-v2.md) | AEGIS ∞ v2.0 governance specification (owner's source document) |
+| [process/visual-review.md](process/visual-review.md) | Blind visual critic step for every visual PR (`wu-critic` subagent) |
 
 ## Governance and security
 

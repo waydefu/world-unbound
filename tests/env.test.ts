@@ -24,16 +24,17 @@ describe('calendar', () => {
   });
 });
 
-describe('ephemeris at 53.9 N', () => {
+describe('ephemeris at 62.083 N', () => {
   const state = createCelestialState();
 
   it('gives the textbook noon altitude 90 - latitude + declination', () => {
     // Declination advances through the day, so use the value at that same noon.
     for (const day of [0, 8, 16, 24]) {
-      expect(deg(computeCelestial(day, 12, state).sunAltitude)).toBeCloseTo(90 - 53.9 + deg(solarDeclination(day, 12)), 6);
+      expect(deg(computeCelestial(day, 12, state).sunAltitude)).toBeCloseTo(90 - 62.083 + deg(solarDeclination(day, 12)), 6);
     }
-    expect(deg(computeCelestial(8, 12, state).sunAltitude)).toBeCloseTo(59.5, 0);
-    expect(deg(computeCelestial(24, 12, state).sunAltitude)).toBeCloseTo(12.7, 0);
+    // 90 - 62.083 + 23.44 and 90 - 62.083 - 23.44.
+    expect(deg(computeCelestial(8, 12, state).sunAltitude)).toBeCloseTo(51.4, 0);
+    expect(deg(computeCelestial(24, 12, state).sunAltitude)).toBeCloseTo(4.5, 0);
   });
 
   it('puts the noon sun due south (+z) and the morning sun in the east (+x)', () => {
@@ -45,10 +46,11 @@ describe('ephemeris at 53.9 N', () => {
   });
 
   it('has long summer days and short winter days', () => {
-    expect(dayLengthHours(8)).toBeGreaterThan(16.5);
-    expect(dayLengthHours(8)).toBeLessThan(17.2);
-    expect(dayLengthHours(24)).toBeLessThan(7.6);
-    expect(dayLengthHours(0)).toBeCloseTo(12, 0);
+    // cos H = -tan(62.083 deg) tan(23.44 deg) => 19.3 h of daylight at the solstice, 4.7 h in winter.
+    expect(Math.abs(dayLengthHours(8) - 19.3)).toBeLessThanOrEqual(0.3);
+    expect(Math.abs(dayLengthHours(24) - 4.7)).toBeLessThanOrEqual(0.3);
+    // Day 0 noon already has declination +2.2 deg (the calendar day starts at the equinox), which at 62 deg adds half an hour.
+    expect(Math.abs(dayLengthHours(0) - 12.56)).toBeLessThanOrEqual(0.3);
   });
 
   it('cycles the moon phase every 8 days', () => {

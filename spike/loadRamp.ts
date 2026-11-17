@@ -3,6 +3,7 @@ import { FrameStats, type Percentiles } from '../src/perf/frameStats';
 import { downloadJson } from './results';
 import { buildSpikeScene, orbitPose, type Pose } from './sceneData';
 import { createThreeRunner } from './threeRunner';
+import { loadAndInstallTerrain } from '../src/app/terrainAssets';
 
 /**
  * GPU headroom ramp (ADR-0002 §10). A 60 Hz cap lets mobile DVFS lower GPU
@@ -43,6 +44,7 @@ const pct = (): Percentiles => ({ p50: 0, p95: 0, p99: 0, mean: 0 });
 export async function runLoadRamp(canvas: HTMLCanvasElement, status: HTMLElement): Promise<RampResult> {
   status.textContent = 'GPU ramp: building terrain…';
   await new Promise((r) => setTimeout(r, 30));
+  await loadAndInstallTerrain(); // the world core has no procedural fallback
   const scene = buildSpikeScene();
   const ratio = pixelRatioForBudget(window.innerWidth, window.innerHeight, window.devicePixelRatio || 1, QUALITY.med.pixelBudget);
   const width = Math.round(window.innerWidth * ratio);

@@ -6,8 +6,15 @@ import { runTerrainJob, type TerrainRequest, type TerrainResult } from '../world
  * If the worker cannot be created or crashes, jobs run on the main thread
  * (one per poll) so the world still streams, only with more frame cost.
  */
+type WorkerNotice =
+  | { kind: 'seafloor'; heights: Float32Array }
+  | { kind: 'terrain-ready'; ms: number }
+  | { kind: 'terrain-error'; message: string };
+
 export class TerrainClient {
   mode: 'worker' | 'main-thread' = 'worker';
+  /** Milliseconds the worker needed to fetch, verify and decode the terrain tiles (0 until it reports). */
+  workerLoadMs = 0;
   private worker: Worker | null = null;
   private readonly results: TerrainResult[] = [];
   private readonly fallbackJobs: TerrainRequest[] = [];
@@ -20,9 +27,18 @@ export class TerrainClient {
     try {
       // Relative to this module so the URL is correct under any deploy base.
       this.worker = new Worker(new URL('./terrainWorker.ts', import.meta.url), { type: 'module' });
-      this.worker.onmessage = (event: MessageEvent<TerrainResult | { kind: 'seafloor'; heights: Float32Array }>): void => {
+      this.worker.onmessage = (event: MessageEvent<TerrainResult | WorkerNotice>): void => {
         const data = event.data;
         if ('kind' in data) {
+          if (data.kind === 'terrain-ready') {
+            this.workerLoadMs = data.ms;
+            return;
+          }
+          if (data.kind === 'terrain-error') {
+            console.warn(`[world-unbound] terrain worker could not load the tiles: ${data.message}`);
+            this.fallBack();
+            return;
+          }
           const waiters = this.seaFloorWaiters;
           this.seaFloorWaiters = [];
           for (const resolve of waiters) resolve(data.heights);

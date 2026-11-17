@@ -54,12 +54,18 @@ export interface Pose {
   target: [number, number, number];
 }
 
-const centreY = Math.max(heightAt(ORBIT.x, ORBIT.z), 0);
+/** Ground height under the orbit centre; the terrain must be installed (buildSpikeScene's callers do that). */
+let centreCache = Number.NaN;
+const centreHeight = (): number => {
+  if (Number.isNaN(centreCache)) centreCache = Math.max(heightAt(ORBIT.x, ORBIT.z), 0);
+  return centreCache;
+};
 
 /** Camera pose for a frame index (frame-based, so every engine sees the same views). */
 export function orbitPose(frame: number, out: Pose): Pose {
   const angle = (frame / ORBIT.framesPerTurn) * Math.PI * 2;
   out.eye[0] = ORBIT.x + Math.sin(angle) * ORBIT.radius;
+  const centreY = centreHeight();
   out.eye[1] = centreY + ORBIT.height;
   out.eye[2] = ORBIT.z + Math.cos(angle) * ORBIT.radius;
   out.target[0] = ORBIT.x;
