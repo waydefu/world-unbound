@@ -15,6 +15,7 @@ html, body {
   inset: 0;
   width: 100vw;
   height: 100vh;
+  /* biome-ignore lint/suspicious/noDuplicateProperties: 100vh is the fallback for browsers without dvh units */
   height: 100dvh;
   touch-action: none;
 }

@@ -25,7 +25,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout untrusted source for no-secret validation
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Verify initial M0 repository file contract
@@ -37,7 +37,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout untrusted source for no-secret validation
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Parse YAML safely (syntax only, not policy authorization)
@@ -77,7 +77,7 @@ jobs:
       BASE_SHA: ${{ github.event.pull_request.base.sha }}
     steps:
       - name: Checkout untrusted source for no-secret validation
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Fetch the protected base commit and the change set
@@ -128,7 +128,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout untrusted source for no-secret validation
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Set up pinned Node.js
@@ -137,6 +137,8 @@ jobs:
           node-version-file: .nvmrc
       - name: Install locked dependencies without lifecycle scripts
         run: npm ci --ignore-scripts
+      - name: Lint (Biome, warnings fail)
+        run: npm run lint
       - name: Typecheck
         run: npm run typecheck
       - name: Unit tests
@@ -152,7 +154,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout untrusted source for no-secret validation
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Set up pinned Node.js

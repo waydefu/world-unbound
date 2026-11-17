@@ -34,7 +34,7 @@ REQUIRED = [
     ".github/workflows/pages.yml", "docs/adr/0001-engine-architecture.md",
     ".github/workflows/labels.yml", ".github/scripts/sync_labels.py",
     ".github/scripts/classify_risk.py", ".github/scripts/check_exceptions.py",
-    ".github/scripts/test_governance.py", "docs/governance/m1.md",
+    ".github/scripts/test_governance.py", "docs/governance/m1.md", ".github/scripts/test_validator.py", "biome.jsonc",
 ]
 errors = []
 for name in REQUIRED:
@@ -71,7 +71,7 @@ if workflow_path.is_file():
         "contents: read", "final-gate:", "if: ${{ always() }}",
         "NEEDS_JSON:", "toJSON(needs)", "m0-files", "policy-syntax", "app-checks", "visual-audit",
         "npm ci --ignore-scripts", "dependency-review", "fail-on-severity:", "allow-licenses:",
-        "base-policy", "check_exceptions.py", "unittest discover",
+        "base-policy", "check_exceptions.py", "unittest discover", "npm run lint",
     ]
     for marker in required_markers:
         if marker not in text:

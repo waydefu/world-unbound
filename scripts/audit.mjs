@@ -131,7 +131,7 @@ function projectDeclaration(expression, call) {
       declaration = declaration.initializer ?? declaration;
     }
   }
-  if (!declaration || !declaration.getSourceFile().fileName.startsWith(srcRoot)) return undefined;
+  if (!declaration?.getSourceFile().fileName.startsWith(srcRoot)) return undefined;
   return isFunctionLike(declaration) ? declaration : undefined;
 }
 
