@@ -11,9 +11,9 @@ export function formatHud(state: AppState, stats: FrameStats, dyn: DynamicResolu
   const p = stats.percentiles(scratch, 600);
   const fps = p.mean > 0 ? 1000 / p.mean : 0;
   const pixels = state.bufferWidth * state.bufferHeight;
-  const gpu = state.gpuP50Ms === null || state.gpuP95Ms === null
-    ? 'gpu n/a'
-    : `gpu p50/p95 ${state.gpuP50Ms.toFixed(1)}/${state.gpuP95Ms.toFixed(1)} ms`;
+  const gpu = state.gpuPassSumP50Ms === null || state.gpuPassSumP95Ms === null
+    ? 'gpu Σpass n/a'
+    : `gpu Σpass ${state.gpuPassSumP50Ms.toFixed(1)}/${state.gpuPassSumP95Ms.toFixed(1)} ms${state.gpuPassesPerFrame === null ? '' : ` (${state.gpuPassesPerFrame})`}`;
   const lines = [
     `${state.backend}${state.fallbackReason ? ' (fallback)' : ''} · q=${state.quality} · cam ${state.cameraIndex} ${state.cameraName}`,
     `fps ${fps.toFixed(1)} · p50 ${p.p50.toFixed(1)} p95 ${p.p95.toFixed(1)} p99 ${p.p99.toFixed(1)} ms · ${gpu} · ${state.refreshHz.toFixed(0)} Hz${state.refreshMeasured ? '' : '?'}`,

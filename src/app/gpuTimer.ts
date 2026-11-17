@@ -3,16 +3,25 @@ import { SampleRing } from '../perf/sampleRing';
 
 const SAMPLES = 240;
 
+/** The part of three.js' timestamp query pool read here. */
+interface TimestampPool {
+  frames: number[];
+  timestamps: Map<string, number>;
+}
+
 /**
  * Main-app GPU timing from WebGPU timestamp queries (mirrors spike/threeRunner.ts).
  *
- * three.js keeps one timestamp pair per render context and overwrites it every
- * frame, so each resolve returns the most recent frame's GPU time, not a sum.
- * Resolving is asynchronous; only one resolve is in flight at a time, so not
- * every frame produces a sample.
- *
- * Mobile GPUs down-clock when lightly loaded, so absolute values are inflated:
- * compare A/B runs of the same build and device, never read them as a budget.
+ * The value is NOT a frame span. three.js allocates one begin/end timestamp
+ * pair per render pass (each shadow cascade, the main pass, ...) and
+ * `WebGPUTimestampQueryPool.resolveQueriesAsync` returns the SUM of the
+ * per-pass durations of the last frame (`framesDuration[frame] += duration`).
+ * On tiled mobile GPUs passes overlap and include waits, and the GPU
+ * down-clocks when lightly loaded, so the sum can exceed the frame interval
+ * (owner telemetry: sum p50 26 ms while frames held 60 FPS). It is a
+ * relative A/B signal only; frame-interval statistics are the acceptance
+ * evidence. Resolving is asynchronous and only one resolve is in flight at a
+ * time, so not every frame produces a sample.
  * Never active on WebGL2 or when the adapter lacks `timestamp-query`.
  */
 export class GpuTimer {
@@ -43,6 +52,21 @@ export class GpuTimer {
   /** Samples in the ring, or null when GPU timing is unavailable. */
   get samples(): number | null {
     return this.active ? this.ring.count : null;
+  }
+
+  /**
+   * Number of timestamped passes in the last resolved frame (read from the render pool's
+   * `frames` and per-context `timestamps`, keys `<context>:f<frame>`), or null when unavailable.
+   * @amortized telemetry only
+   */
+  passesPerFrame(): number | null {
+    if (!this.active) return null;
+    const pool = (this.renderer.backend as unknown as { timestampQueryPool?: { render?: TimestampPool } }).timestampQueryPool?.render;
+    if (!pool || pool.frames.length === 0) return null;
+    const suffix = `:f${pool.frames[pool.frames.length - 1]}`;
+    let count = 0;
+    for (const uid of pool.timestamps.keys()) if (uid.endsWith(suffix)) count++;
+    return count;
   }
 
   /** @amortized telemetry only */

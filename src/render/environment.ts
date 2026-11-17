@@ -1,7 +1,8 @@
-import { Color, DirectionalLight, FogExp2, HemisphereLight, type Scene } from 'three/webgpu';
+import { type DataTexture, Color, DirectionalLight, FogExp2, HemisphereLight, type Scene } from 'three/webgpu';
 import type { Weather } from '../env/weather';
 import type { CelestialState } from '../env/ephemeris';
 import type { SkySummary } from '../env/skyView';
+import { SV_H, SV_W } from '../env/skyView';
 import { Ocean } from './ocean';
 import { SkyDome } from './sky';
 
@@ -53,8 +54,8 @@ export class Environment {
   private readonly fogBase = new Color();
   private readonly overcastZenith = new Float64Array(3);
 
-  constructor(scene: Scene, lite = false) {
-    this.ocean = new Ocean(this.sky, lite);
+  constructor(scene: Scene, noise: DataTexture, lite = false) {
+    this.ocean = new Ocean(this.sky, noise, lite);
     scene.add(this.sun, this.sun.target, this.moon, this.moon.target, this.ambient, this.ocean.mesh, this.sky.mesh);
     scene.fog = this.fog;
     scene.background = null;
@@ -113,6 +114,22 @@ export class Environment {
 
     const moonDisc = Math.PI * MOON_ILLUMINANCE * celestial.moonIllumination * (1 / 6.4e-5) * (1 - 0.9 * w.overcast);
     this.ocean.setWeather(weather);
+    // Zenith radiance as the dome shows it: the table's top row (azimuth-averaged), mixed with the overcast deck.
+    let top0 = 0;
+    let top1 = 0;
+    let top2 = 0;
+    const row = (SV_H - 1) * SV_W * 4;
+    for (let i = 0; i < SV_W; i++) {
+      top0 += table[row + i * 4];
+      top1 += table[row + i * 4 + 1];
+      top2 += table[row + i * 4 + 2];
+    }
+    const k = Math.PI / SV_W;
+    this.ocean.setZenith(
+      top0 * k + (zenith[0] - top0 * k) * w.overcast,
+      top1 * k + (zenith[1] - top1 * k) * w.overcast,
+      top2 * k + (zenith[2] - top2 * k) * w.overcast,
+    );
     this.sky.setTable(table);
     this.sky.setCelestial(celestial.sun, celestial.moon, t, moonDisc, 4e-6 * (1 - sunVisible) * (1 - w.overcast),
       w.overcast, sunVisible * (1 - w.overcast), zenith);
@@ -137,5 +154,6 @@ export class Environment {
     this.ambient.intensity = exposure;
     this.fog.color.copy(this.fogBase).multiplyScalar(exposure);
     this.sky.setExposure(exposure);
+    this.ocean.setExposure(exposure);
   }
 }

@@ -48,10 +48,15 @@ export interface AppState {
   exposure: number;
   atmosphereLutMs: number;
   backgroundSuspends: number;
-  /** GPU frame time percentiles from timestamp queries; null on WebGL2 or without the feature. */
-  gpuP50Ms: number | null;
-  gpuP95Ms: number | null;
+  /**
+   * Sum of per-pass GPU durations of the last frame (timestamp queries; NOT a frame span, see gpuTimer.ts);
+   * null on WebGL2 or without the feature.
+   */
+  gpuPassSumP50Ms: number | null;
+  gpuPassSumP95Ms: number | null;
   gpuSamples: number | null;
+  /** Timestamped passes in the last resolved frame. */
+  gpuPassesPerFrame: number | null;
 }
 
 const scratch: Percentiles = { p50: 0, p95: 0, p99: 0, mean: 0 };
@@ -103,8 +108,9 @@ export function buildReport(
       p50Ms: round(p.p50),
       p95Ms: round(p.p95),
       p99Ms: round(p.p99),
-      gpuP50Ms: state.gpuP50Ms === null ? null : round(state.gpuP50Ms),
-      gpuP95Ms: state.gpuP95Ms === null ? null : round(state.gpuP95Ms),
+      gpuPassSumP50Ms: state.gpuPassSumP50Ms === null ? null : round(state.gpuPassSumP50Ms),
+      gpuPassSumP95Ms: state.gpuPassSumP95Ms === null ? null : round(state.gpuPassSumP95Ms),
+      gpuPassesPerFrame: state.gpuPassesPerFrame,
       gpuSamples: state.gpuSamples,
       longOver50Ms: stats.longFrames50,
       longOver100Ms: stats.longFrames100,

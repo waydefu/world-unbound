@@ -5,6 +5,7 @@ import { MemoryPartition, MemoryRegistry } from '../perf/memoryRegistry';
 import type { CapabilityReport } from '../platform/capabilities';
 import { WEATHER_WETNESS } from '../env/weather';
 import { Environment } from '../render/environment';
+import { createNoiseTexture } from '../render/noiseTextures';
 import { attachSunShadows } from '../render/shadows';
 import { createRenderer, warmUp, whenDeviceLost, type RendererHandle } from '../render/renderer';
 import { FarTerrain } from '../render/farTerrain';
@@ -65,7 +66,9 @@ export class App {
     this.memory = new MemoryRegistry(tier.memoryBudgetMiB);
     this.dyn = new DynamicResolution({ ...DEFAULT_DYNAMIC_RESOLUTION, maxScale: tier.maxScale, initialScale: tier.maxScale });
     if (params.scale !== null) this.dyn.lock(params.scale);
-    this.environment = new Environment(this.scene, lite);
+    const noise = createNoiseTexture();
+    this.memory.add(MemoryPartition.Gpu, noise.gpuBytes);
+    this.environment = new Environment(this.scene, noise.texture, lite);
     if (params.shadows) this.memory.add(MemoryPartition.Gpu, attachSunShadows(this.environment.sun, tier.shadows));
     this.memory.add(MemoryPartition.Gpu, this.environment.ocean.gpuBytes);
     this.clock = new EnvironmentClock(this.environment);
@@ -88,7 +91,7 @@ export class App {
       chunksLoaded: 0, chunksInFlight: 0, staleResults: 0, lodBias: 0, terrainMode: 'worker',
       hour: params.hour, day: params.day, season: '', weather: params.weather, sunAltitudeDeg: 0,
       moonIllumination: 0, exposure: 1, atmosphereLutMs: this.clock.lutMs, backgroundSuspends: 0,
-      gpuP50Ms: null, gpuP95Ms: null, gpuSamples: null,
+      gpuPassSumP50Ms: null, gpuPassSumP95Ms: null, gpuSamples: null, gpuPassesPerFrame: null,
     };
   }
 
@@ -299,8 +302,9 @@ export class App {
     state.terrainMode = streamer.client.mode;
     state.terrainWorkerLoadMs = streamer.client.workerLoadMs;
     state.exposure = this.clock.exposure;
-    state.gpuP50Ms = this.gpuTimer.p50();
-    state.gpuP95Ms = this.gpuTimer.p95();
+    state.gpuPassSumP50Ms = this.gpuTimer.p50();
+    state.gpuPassSumP95Ms = this.gpuTimer.p95();
+    state.gpuPassesPerFrame = this.gpuTimer.passesPerFrame();
     state.gpuSamples = this.gpuTimer.samples;
     if (!this.ready && streamer.settled) {
       this.ready = true;
