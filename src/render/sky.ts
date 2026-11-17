@@ -3,9 +3,10 @@ import {
   RGBAFormat, SphereGeometry, Vector3,
 } from 'three/webgpu';
 import {
-  Fn, PI, abs, acos, asin, clamp, dot, floor, fract, mix, normalize, positionLocal, sign, sin, smoothstep,
+  Fn, PI, abs, acos, asin, clamp, dot, floor, fract, max, mix, normalize, positionLocal, sign, sin, smoothstep,
   sqrt, texture, uniform, vec2, vec3,
 } from 'three/tsl';
+import type { Node } from 'three/webgpu';
 import { SV_H, SV_W } from '../env/skyView';
 
 /** Sun and moon angular radii (radians) and the sun's radiance per unit illuminance. */
@@ -35,6 +36,8 @@ export class SkyDome {
   private readonly overcastZenith = uniform(new Vector3());
   private readonly stars = uniform(0);
   private readonly exposure = uniform(1);
+  /** Sun disc radiance before the disc clamp and before exposure: pi * T * visibility / 6.8e-5. */
+  private readonly sunRadianceUniform = uniform(new Vector3());
 
   constructor() {
     this.table = new DataTexture(this.halfData, SV_W, SV_H, RGBAFormat, HalfFloatType);
@@ -53,22 +56,59 @@ export class SkyDome {
     this.mesh.frustumCulled = false;
   }
 
+  /** Sun direction uniform (world space, unit). Read-only use: the ocean glint reads it. */
+  get sunDirection() {
+    return this.sunDir;
+  }
+
+  /** Sun disc radiance (rgb, unclamped, before exposure). Read-only use. */
+  get sunRadiance() {
+    return this.sunRadianceUniform;
+  }
+
+  /** Pre-exposure multiplier uniform, so other materials can fold it into their own emission. */
+  get exposureNode() {
+    return this.exposure;
+  }
+
+  /**
+   * Table lookup shared by the dome and by reflections: sky radiance for the
+   * unit direction `d` (before exposure, no discs or stars), with the CIE
+   * overcast deck mixed in. Must be called while a TSL function is being built.
+   */
+  private readonly skyAir = Fn(([dir]: [Node<'vec3'>]) => {
+    const d = dir.toVar();
+    const { table, sunDir, radianceScale, overcast, overcastZenith } = this;
+    const lat = asin(clamp(d.y, -1, 1));
+    const dXZ = normalize(vec2(d.x, d.z).add(vec2(1e-5, 0)));
+    const sXZ = normalize(vec2(sunDir.x, sunDir.z).add(vec2(1e-5, 0)));
+    const u = acos(clamp(dot(dXZ, sXZ), -1, 1)).div(PI);
+    const v = sign(lat).mul(sqrt(abs(lat).div(PI.mul(0.5)))).mul(0.5).add(0.5);
+    // Texel centres: row/column i sits at i / (n - 1) in the table's own parameterisation.
+    const uv = vec2(u.mul((SV_W - 1) / SV_W).add(0.5 / SV_W), v.mul((SV_H - 1) / SV_H).add(0.5 / SV_H));
+    const sky = texture(table, uv).rgb.mul(radianceScale);
+    // CIE overcast: L = Lz (1 + 2 sin(elevation)) / 3, flat below the horizon.
+    const cloud = overcastZenith.mul(d.y.max(0).mul(2).add(1).div(3));
+    return mix(sky, cloud, overcast);
+  });
+
+  /**
+   * Pre-exposed sky radiance (vec3) for a world-space direction, exactly what
+   * the dome shows minus sun, moon and stars. Reflections never look below the
+   * horizon, so y is clamped to >= 0.01.
+   */
+  radiance(dir: Node<'vec3'>): Node<'vec3'> {
+    const d = normalize(vec3(dir.x, max(dir.y, 0.01), dir.z));
+    return this.skyAir(d).mul(this.exposure);
+  }
+
   private shader() {
-    const table = this.table;
-    const { sunDir, moonDir, sunDisc, moonDisc, radianceScale, overcast, overcastZenith, stars, exposure } = this;
+    const { sunDir, moonDir, sunDisc, moonDisc, stars, exposure } = this;
     return Fn(() => {
-      const d = normalize(positionLocal);
-      const lat = asin(clamp(d.y, -1, 1));
-      const dXZ = normalize(vec2(d.x, d.z).add(vec2(1e-5, 0)));
-      const sXZ = normalize(vec2(sunDir.x, sunDir.z).add(vec2(1e-5, 0)));
-      const u = acos(clamp(dot(dXZ, sXZ), -1, 1)).div(PI);
-      const v = sign(lat).mul(sqrt(abs(lat).div(PI.mul(0.5)))).mul(0.5).add(0.5);
-      // Texel centres: row/column i sits at i / (n - 1) in the table's own parameterisation.
-      const uv = vec2(u.mul((SV_W - 1) / SV_W).add(0.5 / SV_W), v.mul((SV_H - 1) / SV_H).add(0.5 / SV_H));
-      const sky = texture(table, uv).rgb.mul(radianceScale);
-      // CIE overcast: L = Lz (1 + 2 sin(elevation)) / 3, flat below the horizon.
-      const cloud = overcastZenith.mul(d.y.max(0).mul(2).add(1).div(3));
-      const air = mix(sky, cloud, overcast);
+      const d = normalize(positionLocal).toVar();
+      // Below the horizon the dome only shows what lies beyond the ocean's far edge: use the horizon
+      // radiance there (what distant water reflects) instead of the table's dark ground half.
+      const air = this.skyAir(normalize(vec3(d.x, max(d.y, 0), d.z).add(vec3(0, 1e-4, 0))));
       const sunMask = smoothstep(SUN_COS_OUTER, SUN_COS_INNER, dot(d, sunDir));
       const moonMask = smoothstep(Math.cos(0.009), Math.cos(0.0075), dot(d, moonDir));
       // Sparse hashed stars on a direction grid, fading towards the horizon.
@@ -113,6 +153,7 @@ export class SkyDome {
     this.sunDir.value.set(sun[0], sun[1], sun[2]);
     this.moonDir.value.set(moon[0], moon[1], moon[2]);
     const disc = Math.PI * SUN_RADIANCE_PER_ILLUMINANCE * sunVisibility;
+    this.sunRadianceUniform.value.set(sunTransmittance[0] * disc, sunTransmittance[1] * disc, sunTransmittance[2] * disc);
     this.sunDisc.value.set(
       Math.min(MAX_DISC_RADIANCE, sunTransmittance[0] * disc),
       Math.min(MAX_DISC_RADIANCE, sunTransmittance[1] * disc),

@@ -61,6 +61,7 @@ export class App {
     if (params.scale !== null) this.dyn.lock(params.scale);
     this.environment = new Environment(this.scene);
     if (params.shadows) this.memory.add(MemoryPartition.Gpu, attachSunShadows(this.environment.sun, tier.shadows));
+    this.memory.add(MemoryPartition.Gpu, this.environment.ocean.gpuBytes);
     this.clock = new EnvironmentClock(this.environment);
     this.chunks = new TerrainChunks(this.memory);
     this.scene.add(this.chunks.root);
@@ -92,7 +93,7 @@ export class App {
     this.startTime = performance.now();
     this.setCamera(params.cam);
     this.streamer.prime(this.eye.x, this.eye.z);
-    this.placeWorld();
+    this.placeWorld(0);
 
     this.handle = await createRenderer({
       container: viewportRoot,
@@ -115,6 +116,7 @@ export class App {
       this.state.warmupMs = await warmUp(this.handle, this.scene, this.camera, WARMUP_TIMEOUT_MS);
     }
     this.running = true;
+    void this.streamer.client.requestSeaFloor().then((heights) => this.environment.ocean.setSeaFloor(heights));
 
     window.addEventListener('resize', () => this.resize());
     document.addEventListener('visibilitychange', () => {
@@ -234,10 +236,10 @@ export class App {
   }
 
   /** @hot */
-  private placeWorld(): void {
+  private placeWorld(seconds: number): void {
     this.chunks.root.position.set(-this.eye.x, -this.eye.y, -this.eye.z);
     this.chunks.setEyeOffset(this.eye.x, this.eye.y, this.eye.z);
-    this.environment.sea.position.set(0, -this.eye.y, 0);
+    this.environment.ocean.update(this.eye.x, this.eye.y, this.eye.z, seconds);
   }
 
   /** @hot */
@@ -247,7 +249,7 @@ export class App {
     this.stats.push(interval, this.dyn.scale);
     if (this.dyn.update(interval)) this.applyRenderScale();
     this.streamer.update(now, this.eye.x, this.eye.z, 0, 0);
-    this.placeWorld();
+    this.placeWorld(now / 1000);
     this.environment.setExposure(this.clock.update(interval));
     this.handle.renderer.render(this.scene, this.camera);
     if (now - this.lastLowFrequency >= LOW_FREQUENCY_MS) this.lowFrequency(now);
