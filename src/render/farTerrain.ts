@@ -66,9 +66,9 @@ export class FarTerrain {
   private readonly eyeOffset = uniform(new Vector3());
   private readonly ready = uniform(0);
 
-  constructor(floor: DataTexture, noise: DataTexture, lite = false) {
+  constructor(floor: DataTexture, noise: DataTexture, viewRadius: number, lite = false) {
     const geometry = buildGrid(lite ? CELLS_LITE : CELLS);
-    this.mesh = new Mesh(geometry, this.createMaterial(floor, noise));
+    this.mesh = new Mesh(geometry, this.createMaterial(floor, noise, viewRadius));
     this.mesh.name = 'far-terrain';
     this.mesh.frustumCulled = false;
     this.mesh.castShadow = false;
@@ -86,7 +86,7 @@ export class FarTerrain {
     this.eyeOffset.value.set(x, y, z);
   }
 
-  private createMaterial(floor: DataTexture, noise: DataTexture): MeshStandardNodeMaterial {
+  private createMaterial(floor: DataTexture, noise: DataTexture, viewRadius: number): MeshStandardNodeMaterial {
     const eye = this.eyeOffset;
     const vNormal = varyingProperty('vec3', 'farNormal');
     const vHeight = varyingProperty('float', 'farHeight');
@@ -103,7 +103,12 @@ export class FarTerrain {
       const p = positionLocal.xz;
       const h = height(p);
       const dist = length(vec3(p.x.sub(eye.x), h.sub(eye.y), p.y.sub(eye.z)));
-      const lowered = h.sub(dist.mul(0.004).add(0.6));
+      // The skin hides below the streamed chunks (coarse LODs deviate from the true surface by more the
+      // farther they are). Beyond the ring there is nothing to hide behind, so the offset fades to a
+      // thin 0.4 m over the last ~120 m inside the ring edge instead of leaving a multi-metre step there.
+      const ring = length(p.sub(vec2(eye.x, eye.z)));
+      const offset = mix(dist.mul(0.004).add(0.6), float(0.4), smoothstep(viewRadius - 120, viewRadius, ring));
+      const lowered = h.sub(offset);
       const gx = height(p.add(vec2(STEP, 0))).sub(height(p.sub(vec2(STEP, 0)))).div(2 * STEP);
       const gz = height(p.add(vec2(0, STEP))).sub(height(p.sub(vec2(0, STEP)))).div(2 * STEP);
       vNormal.assign(normalize(vec3(gx.negate(), 1, gz.negate())));

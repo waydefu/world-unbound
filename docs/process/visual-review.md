@@ -17,3 +17,9 @@ Every PR that changes what the game looks like (rendering, materials, terrain, s
 
 - The critic sees still frames from a software renderer (SwiftShader WebGL2), not the phone's WebGPU output, and no motion: shimmer, popping and frame pacing still need the owner's device runs and, later, a scripted fly-through.
 - It is AI judgement, not owner approval; the owner's own look at the phone remains the acceptance.
+
+## Performance gate
+
+The GPU figure in telemetry is **not** a frame budget. three.js `WebGPUTimestampQueryPool.resolveQueriesAsync` returns the *sum of per-pass begin-to-end durations* of the last frame (3 shadow cascades + main + ...). On tiled mobile GPUs passes overlap and include waits, and the GPU down-clocks when lightly loaded, so the sum can exceed the frame interval (owner telemetry: sum p50 26.1 ms while frames held 60 FPS, p95 17.5 ms). It is reported as `frames.gpuPassSumP50Ms` / `gpuPassSumP95Ms` (HUD label `gpu Σpass`) with `frames.gpuPassesPerFrame`, for relative A/B comparison only.
+
+Acceptance uses frame-interval evidence only. On the owner's phone, med tier, for each of cam 3 and cam 5: render scale stays 1.0 for 60 s at 60 FPS (no frame > 50 ms after warm-up), **and** the G1.0 load ramp on the spike page shows at least 30 % headroom. The orchestrator states the numbers in the PR. A 10-minute soak is run at the end of G1.

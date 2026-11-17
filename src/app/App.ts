@@ -77,9 +77,9 @@ export class App {
     if (params.shadows) this.memory.add(MemoryPartition.Gpu, attachSunShadows(this.environment.sun, tier.shadows));
     this.memory.add(MemoryPartition.Gpu, this.environment.ocean.gpuBytes);
     this.clock = new EnvironmentClock(this.environment);
-    this.chunks = new TerrainChunks(this.memory, noise.texture, lite);
+    this.chunks = new TerrainChunks(this.memory, noise.texture, tier.shadows.maxFar, lite);
     this.chunks.uploads = this.observer.uploads;
-    this.farTerrain = new FarTerrain(this.environment.ocean.floorTexture, noise.texture, lite);
+    this.farTerrain = new FarTerrain(this.environment.ocean.floorTexture, noise.texture, tier.lod.viewRadius, lite);
     this.memory.add(MemoryPartition.Gpu, this.farTerrain.gpuBytes);
     this.chunks.root.add(this.farTerrain.mesh);
     this.observer.setMeshes(this.environment.sky.mesh, this.environment.ocean.mesh, this.farTerrain.mesh);
@@ -318,6 +318,7 @@ export class App {
     state.gpuPassSumP95Ms = this.gpuTimer.p95();
     state.gpuPassesPerFrame = this.gpuTimer.passesPerFrame();
     state.gpuSamples = this.gpuTimer.samples;
+    this.chunks.rebalanceCasters();
     this.observer.sample(this.state, now, this.chunks, this.camera, this.environment.sun, streamer, this.handle.renderer);
     if (!this.ready && streamer.settled) {
       this.ready = true;
