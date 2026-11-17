@@ -111,6 +111,10 @@ Smaller choices are settled inside their milestone: horizon-map terrain shadows,
 
 **Engine spike (G0.5, before significant renderer code):** the same terrain scene (about 800 chunks, 400+ draws) in three.js and in Babylon.js, measured on the owner's phone for CPU submission time and per-pass GPU time. The result decides whether the renderer changes.
 
+### 10. Render submission (decided by the engine spike, 2026-11-17)
+
+The renderer stays on three.js. The engine spike's rule was not met consistently (`docs/spikes/engine-spike.md`). Static geometry (terrain chunks, buildings, props) is grouped into `BundleGroup`s so WebGPU replays recorded render bundles instead of re-encoding draws each frame. On the owner's phone this cut CPU submission from about 7 ms to 1.6–2.3 ms. Dynamic objects and per-frame culling stay outside bundles. Streaming groups bundles by region so a chunk change re-records one region, not the world. Before G1 adds effects, a GPU load test measures real headroom, because a 60 Hz cap lets mobile DVFS stretch GPU time.
+
 ### 9. Revised milestones
 
 - **G0.5:** engine spike; bake pipeline with eroded terrain; EnvironmentSnapshot and query contracts; simulation and streaming worker skeletons (streaming over OPFS / Cache API); telemetry fixes (per-pass GPU time, measured pipeline count, soak mode, load bytes and cache hits).
