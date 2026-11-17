@@ -17,7 +17,7 @@ npm run dev      # http://localhost:5173/world-unbound/
 npm run check    # typecheck, tests, build, audits
 ```
 
-Once the Pages workflow is applied and Pages is enabled, the site is served at https://waydefu.github.io/world-unbound/. Debug parameters: `?cam=0..5 &backend=webgpu|webgl2 &q=low|med|high &scale=0.5..1.5 &hour=0..24 &wx=clear|cloudy|rain|storm`. Press `H` or tap **HUD** for telemetry; **JSON** exports a report.
+Once Pages is enabled, the site is served at https://waydefu.github.io/world-unbound/. Debug parameters: `?cam=0..5 &backend=webgpu|webgl2 &q=low|med|high &scale=0.5..1.5 &hour=0..24 &wx=clear|cloudy|rain|storm`. Press `H` or tap **HUD** for telemetry; **JSON** exports a report.
 
 ## Governance
 
@@ -29,9 +29,9 @@ The source of truth is AEGIS ∞ v2.0. Configuration files here are **declaratio
 
 ## CI / main protection
 
-On each push to main and each PR targeting main, CI runs two validation jobs and an unconditional final-gate. The final gate rejects failed, cancelled, skipped, and unknown prerequisite conclusions.
+On each push to main and each PR targeting main, CI runs four jobs (`m0-files`, `policy-syntax`, `app-checks`, `visual-audit`) and an unconditional `final-gate`. The final gate rejects failed, cancelled, skipped, and unknown prerequisite conclusions. The single Required Check stays `final-gate`.
 
-**CI does not yet build or test the game code, and nothing deploys to Pages.** Workflow files are human-maintained; the proposed `app-checks`, `visual-audit` and Pages deploy workflows are written out in [docs/runbooks/ci-and-pages-setup.md](docs/runbooks/ci-and-pages-setup.md) for the owner to review and apply. Until then, `npm run check` results are local evidence only.
+Pushes to main also run `.github/workflows/pages.yml`, which rebuilds and re-verifies the merged commit and deploys it to GitHub Pages.
 
 The first run on main succeeded on 2026-11-17 ([run 44000149061](https://github.com/waydefu/world-unbound/actions/runs/44000149061), commit `89b10bc`), so `final-gate` can now be selected as a Required Check.
 
@@ -45,7 +45,7 @@ M0 is **not complete** until a human owner has done and checked the following:
 - [ ] Create the labels declared in [governance/labels.yml](governance/labels.yml) (none exist on GitHub yet; Issue Forms reference `needs/triage` and `impact/performance`).
 - [ ] Configure Issue Fields (Priority, Severity, Risk, Component, ...) and a Project whose automation maps PR merge to *Integrated*, not *Done*.
 - [ ] Enable Private Vulnerability Reporting, Dependabot alerts, secret scanning and push protection.
-- [ ] Apply the CI and Pages workflows from [docs/runbooks/ci-and-pages-setup.md](docs/runbooks/ci-and-pages-setup.md), then enable GitHub Pages with source *GitHub Actions* (Settings → Pages).
+- [ ] Enable GitHub Pages with source *GitHub Actions* (Settings → Pages) before the next merge to main, or the deploy job fails. Optionally restrict the `github-pages` environment to `main` and add yourself as a required reviewer.
 
 ## Roadmap
 

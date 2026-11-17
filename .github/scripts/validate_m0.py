@@ -25,6 +25,9 @@ REQUIRED = [
     "docs/adr/0000-template.md", "docs/rfc/README.md",
     "docs/threat-model/README.md", "docs/release-policy/README.md",
     "assets/manifests/README.md",
+    "package.json", "package-lock.json", ".nvmrc", "index.html", "vite.config.ts", "tsconfig.json",
+    "scripts/audit.mjs", "scripts/audit-visual.mjs", "src/main.ts",
+    ".github/workflows/pages.yml", "docs/adr/0001-engine-architecture.md",
 ]
 errors = []
 for name in REQUIRED:
@@ -59,7 +62,8 @@ if workflow_path.is_file():
     text = workflow_path.read_text(encoding="utf-8")
     required_markers = [
         "contents: read", "final-gate:", "if: ${{ always() }}",
-        "NEEDS_JSON:", "toJSON(needs)", "m0-files", "policy-syntax",
+        "NEEDS_JSON:", "toJSON(needs)", "m0-files", "policy-syntax", "app-checks", "visual-audit",
+        "npm ci --ignore-scripts",
     ]
     for marker in required_markers:
         if marker not in text:
@@ -96,8 +100,12 @@ if workflow_path.is_file():
         errors.append("could not locate final-gate script in ci.yml")
     else:
         source = textwrap.dedent(gate.group(1))
-        good = {"m0-files": {"result": "success"}, "policy-syntax": {"result": "success"}}
-        cases = {"all-success": (good, 0), "empty": ({}, 1), "missing-job": ({"m0-files": good["m0-files"]}, 1)}
+        jobs = ["m0-files", "policy-syntax", "app-checks", "visual-audit"]
+        good = {name: {"result": "success"} for name in jobs}
+        cases = {"all-success": (good, 0), "empty": ({}, 1)}
+        for name in jobs:
+            cases[f"missing {name}"] = ({k: v for k, v in good.items() if k != name}, 1)
+            cases[f"{name}=skipped"] = ({**good, name: {"result": "skipped"}}, 1)
         for bad in ("skipped", "failure", "cancelled", "neutral", ""):
             cases[f"policy-syntax={bad or 'blank'}"] = ({**good, "policy-syntax": {"result": bad}}, 1)
         for label, (needs, expected) in cases.items():

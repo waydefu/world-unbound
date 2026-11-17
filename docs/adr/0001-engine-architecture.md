@@ -28,7 +28,7 @@ The game specification asks for an architecture decision before any game code, a
 4. **Threads:** terrain tiles and meshes are built in a Worker with a main-thread fallback. Rendering stays on the main thread; a render Worker is deferred until WebGPU-in-Worker is stable on Safari.
 5. **Milestones:** governance keeps M0–M4; game milestones are **G0–G3** (the specification's "Milestone 0–3").
 6. **WebGPU from day one:** `AGENTS.md` now states that WebGPU is the primary backend with WebGL2 as a required, flagged fallback; hand-written WGSL and Rust/Wasm still need profiling and device evidence.
-7. **Release:** a Pages workflow that builds, re-verifies and deploys `dist/` from main through the `github-pages` environment and OIDC. Workflow files are human-maintained, so it is proposed in `docs/runbooks/ci-and-pages-setup.md` and not yet applied.
+7. **Release:** `.github/workflows/pages.yml` builds, re-verifies and deploys `dist/` from main through the `github-pages` environment and OIDC. The owner must enable Pages (source: GitHub Actions) for it to succeed.
 
 ## Consequences
 
@@ -40,6 +40,6 @@ The game specification asks for an architecture decision before any game code, a
 
 ## Verification and rollback
 
-- `npm run check`: typecheck, unit tests, production build, static audit, six-camera headless sweep with resilience checks. These run locally; CI does not execute them until the proposed jobs are applied.
+- `npm run check`: typecheck, unit tests, production build, static audit, six-camera headless sweep with resilience checks., run in CI as `app-checks` and `visual-audit` behind `final-gate`.
 - Not verified here: any real device. Frame rate, thermals, memory and WebGPU rendering on POCO F8 Ultra, iPhone Safari and desktop GPUs need the owner's hardware; the headless environment used for development cannot create WebGPU pipelines at all, so only the WebGL2 path and the WebGPU-to-WebGL2 fallback were exercised.
 - Rollback: revert the introducing PR. No saved player data exists yet. `TERRAIN_VERSION` must be bumped whenever terrain shape or quantisation changes.

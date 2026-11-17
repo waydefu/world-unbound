@@ -27,7 +27,7 @@ Source files stay under 350 lines. Functions on the frame path are tagged `@hot`
 
 ## Scope of evidence
 
-CI currently verifies repository structure and policy syntax only. Types, unit tests, the production build, the static audit and the headless WebGL2 sweep run locally through `npm run check` until the owner applies the proposed CI jobs. Nothing here measures device performance, thermals, memory or WebGPU rendering; do not claim those without measurements from real hardware.
+CI verifies repository structure, policy syntax, types, unit tests, the production build, the static audit and a headless WebGL2 sweep (screenshots are uploaded as the `visual-audit` artifact). It does **not** measure device performance, thermals, memory or WebGPU rendering; do not claim those without measurements from real hardware.
 
 ## Sensitive paths
 
