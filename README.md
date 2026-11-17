@@ -4,7 +4,7 @@ An open-source project starting from a verifiable GitHub governance baseline.
 
 ## Current status
 
-- **Governance M0:** files in place; owner settings below still pending.
+- **Governance M0:** complete on 2026-11-17 (negative test passed). Independent two-person review remains an unmet control.
 - **Game G0 (engine skeleton):** Vite + TypeScript + three.js WebGPURenderer (WebGL2 fallback), deterministic terrain and coastline, chunk streaming in a Worker, hysteresis dynamic resolution, telemetry HUD with JSON export, six fixed test cameras, static and headless audits. There is no gameplay, architecture, vegetation, real sky or ocean yet.
 
 Not verified on any real device. Performance, thermal and WebGPU results must come from hardware tests.
@@ -37,10 +37,18 @@ The first run on main succeeded on 2026-11-17 ([run 44000149061](https://github.
 
 ### M0 owner actions (GitHub Settings; not performable by AI agents)
 
-Settings below were applied by the owner and read back on 2026-11-17 (owner-reported; agents cannot read repository settings here). M0 is **not complete** until the negative test passes.
+Settings below were applied by the owner and read back on 2026-11-17 (owner-reported; agents cannot read repository settings here). **M0 is complete.**
 
 - [x] protect-main Ruleset *Active*: PR required with 0 approvals, stale approvals dismissed, conversation resolution, squash only, required check `final-gate` (source GitHub Actions) with strict up-to-date, force-push and deletion blocked, empty bypass list.
-- [ ] **Negative test:** a direct push to main is rejected. Record the command output as evidence.
+- [x] **Negative test (2026-11-17, run by the owner):** a direct push of an empty commit to main was rejected:
+
+  ```
+  remote: error: GH013: Repository rule violations
+  - Changes must be made through a pull request.
+  - Required status check "final-gate" is expected.
+  ! [remote rejected] HEAD -> main
+  ```
+
 - [x] Labels synced from [governance/labels.yml](governance/labels.yml) by `.github/workflows/labels.yml`. GitHub's default labels (`bug`, `wontfix`, ...) are kept; run the workflow manually with *prune* to remove them.
 - [x] Issue Fields (Priority, Severity, Risk, Component, ...) pinned to Bug / Feature / Task. Impact and Verification Owner not created yet.
 - [x] Project *WORLD UNBOUND · Engineering*: AEGIS statuses incl. Blocked / Needs Evidence / Not Planned; auto-add `is:issue,pr is:open`; item added → Submitted, PR merged → Integrated, item reopened → Triage, item closed → Resolved.
@@ -56,7 +64,7 @@ Settings below were applied by the owner and read back on 2026-11-17 (owner-repo
 
 Governance milestones (AEGIS ∞ v2.0):
 
-- **M0:** repository and governance skeleton (files in place; owner settings above pending)
+- **M0:** repository and governance skeleton — complete
 - **M1:** protected base-policy evaluation, code/secret/dependency scanning
 - **M2:** AI isolation, architecture contracts, device regression paths
 - **M3:** artifact integrity, environment/OIDC deployment gates, rollback
