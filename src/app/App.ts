@@ -1,9 +1,10 @@
 import { PerspectiveCamera, Scene, Vector2 } from 'three/webgpu';
 import { DEFAULT_DYNAMIC_RESOLUTION, DynamicResolution, snapRefreshPeriod } from '../perf/dynamicResolution';
 import { FrameStats } from '../perf/frameStats';
-import { MemoryRegistry } from '../perf/memoryRegistry';
+import { MemoryPartition, MemoryRegistry } from '../perf/memoryRegistry';
 import type { CapabilityReport } from '../platform/capabilities';
 import { Environment } from '../render/environment';
+import { attachSunShadows } from '../render/shadows';
 import { createRenderer, warmUp, whenDeviceLost, type RendererHandle } from '../render/renderer';
 import { TerrainChunks } from '../render/terrainChunks';
 import { Hud, downloadJson } from '../ui/hud';
@@ -58,6 +59,7 @@ export class App {
     this.dyn = new DynamicResolution({ ...DEFAULT_DYNAMIC_RESOLUTION, maxScale: tier.maxScale, initialScale: tier.maxScale });
     if (params.scale !== null) this.dyn.lock(params.scale);
     this.environment = new Environment(this.scene);
+    if (params.shadows) this.memory.add(MemoryPartition.Gpu, attachSunShadows(this.environment.sun, tier.shadows));
     this.clock = new EnvironmentClock(this.environment);
     this.chunks = new TerrainChunks(this.memory);
     this.scene.add(this.chunks.root);
@@ -129,6 +131,8 @@ export class App {
   private attachRenderer(): void {
     const handle = this.handle;
     this.state.backend = handle.backend;
+    handle.renderer.shadowMap.enabled = this.options.params.shadows;
+    this.chunks.setBundled(handle.backend === 'webgpu');
     this.state.fallbackReason = handle.fallbackReason;
     const onLost = (message: string): void => {
       // Losses during warm-up are handled by start(); stale handles are ours.

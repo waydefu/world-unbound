@@ -20,6 +20,8 @@ export interface DebugParams {
   hourExplicit: boolean;
   weatherExplicit: boolean;
   dayExplicit: boolean;
+  /** Sun shadows; ?shadows=0 turns them off for A/B cost measurements. */
+  shadows: boolean;
   hud: boolean;
 }
 
@@ -54,6 +56,7 @@ export function parseParams(search: string): DebugParams {
     hourExplicit: hour !== null,
     weatherExplicit: wx !== null && WEATHERS.includes(wx),
     dayExplicit: day !== null,
+    shadows: p.get('shadows') !== '0',
     hud: p.get('hud') !== '0',
   };
 }

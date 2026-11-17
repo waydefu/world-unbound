@@ -77,6 +77,7 @@ Game milestones (specification v1.0, renamed G0–G3 to avoid clashing with the 
 - **G1:** atmosphere, PBR weathering materials, multi-band ocean
   - G1.0 GPU load ramp (spike page) to measure headroom before effects
   - G1.1 physical sky and atmosphere: 32-day calendar at 53.9° N, sun/moon ephemeris, Hillaire 2020 transmittance / multiple-scattering / sky-view tables (CPU, identical on WebGPU and WebGL2), CIE overcast cloud deck, aerial-perspective fog, auto-exposure with pre-exposure; `?day=0..32` (default 6)
+  - G1.2 cascaded sun shadows (2-3 cascades per tier, `?shadows=0` for A/B) and main-app terrain in a render bundle on WebGPU
 - **G2:** Hanseatic town architecture and period vegetation
 - **G3:** gameplay loop, procedural audio, saves
 

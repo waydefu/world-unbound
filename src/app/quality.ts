@@ -12,6 +12,15 @@ export interface QualityTier {
   readonly pixelBudget: number;
   readonly memoryBudgetMiB: readonly number[];
   readonly antialias: boolean;
+  readonly shadows: ShadowSettings;
+}
+
+/** Cascaded sun shadows (G1.2). Budgeted from the phone GPU ramp: about 1.5-3 ms for three cascades. */
+export interface ShadowSettings {
+  readonly cascades: number;
+  readonly mapSize: number;
+  /** Distance (m) covered by the cascades; beyond it terrain is unshadowed and fog takes over. */
+  readonly maxFar: number;
 }
 
 export const QUALITY: Record<QualityName, QualityTier> = {
@@ -22,6 +31,7 @@ export const QUALITY: Record<QualityName, QualityTier> = {
     pixelBudget: 1_300_000,
     memoryBudgetMiB: BUDGET_BALANCED,
     antialias: false,
+    shadows: { cascades: 2, mapSize: 1024, maxFar: 600 },
   },
   med: {
     name: 'med',
@@ -30,6 +40,7 @@ export const QUALITY: Record<QualityName, QualityTier> = {
     pixelBudget: 2_200_000,
     memoryBudgetMiB: BUDGET_BALANCED,
     antialias: true,
+    shadows: { cascades: 3, mapSize: 1024, maxFar: 1000 },
   },
   high: {
     name: 'high',
@@ -39,6 +50,7 @@ export const QUALITY: Record<QualityName, QualityTier> = {
     pixelBudget: 3_200_000,
     memoryBudgetMiB: BUDGET_HIGH,
     antialias: true,
+    shadows: { cascades: 3, mapSize: 2048, maxFar: 1600 },
   },
 };
 
