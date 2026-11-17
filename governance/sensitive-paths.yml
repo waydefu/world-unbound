@@ -1,0 +1,23 @@
+schema_version: 1
+# Classify by actual diff semantics. Path matching alone never grants approval.
+rules:
+  - {glob: ".github/workflows/**", baseline_risk: R3, owner: "@waydefu", reason: "CI permissions and workflow logic"}
+  - {glob: ".github/actions/**", baseline_risk: R3, owner: "@waydefu", reason: "Local actions execute code"}
+  - {glob: ".github/CODEOWNERS", baseline_risk: R3, owner: "@waydefu", reason: "Ownership authority"}
+  - {glob: "governance/**", baseline_risk: R3, owner: "@waydefu", reason: "Governance control plane"}
+  - {glob: "AGENTS.md", baseline_risk: R3, owner: "@waydefu", reason: "Agent instruction trust boundary"}
+  - {glob: ".cargo/config.toml", baseline_risk: R3, owner: "@waydefu", reason: "Cargo toolchain or registry commands"}
+  - {glob: "**/build.rs", baseline_risk: R3, owner: "@waydefu", reason: "Compile-time Rust code"}
+  - {glob: "**/Dockerfile*", baseline_risk: R2, owner: "@waydefu", reason: "Build and runtime commands"}
+  - {glob: "**/package.json", baseline_risk: R2, owner: "@waydefu", reason: "Review dependency scripts and registry changes"}
+  - {glob: "**/pnpm-lock.yaml", baseline_risk: R2, owner: "@waydefu", reason: "Review lockfile source and integrity"}
+  - {glob: "**/Cargo.lock", baseline_risk: R2, owner: "@waydefu", reason: "Review lockfile source and integrity"}
+  - {glob: ".devcontainer/**", baseline_risk: R2, owner: "@waydefu", reason: "Developer execution environment"}
+  - {glob: ".vscode/**", baseline_risk: R2, owner: "@waydefu", reason: "Editor tasks or launch commands"}
+  - {glob: "docs/contracts/save-schema.md", baseline_risk: R2, owner: "@waydefu", reason: "Persistent player-data compatibility"}
+escalate_to_R3_on:
+  - "new_unapproved_registry"
+  - "new_install_or_compile_script"
+  - "privileged_docker_configuration"
+  - "elevated_workflow_permissions"
+  - "irreversible_save_migration"

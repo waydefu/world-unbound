@@ -1,0 +1,77 @@
+name: M0 / Initial Governance CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  m0-files:
+    name: m0-files
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout untrusted source for no-secret validation
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Verify initial M0 repository file contract
+        run: python3 .github/scripts/validate_m0.py
+
+  policy-syntax:
+    name: policy-syntax
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout untrusted source for no-secret validation
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Parse YAML safely (syntax only, not policy authorization)
+        shell: bash
+        run: |
+          ruby -ryaml -e 'ARGV.each { |p| YAML.safe_load(File.read(p), permitted_classes: [], permitted_symbols: [], aliases: false); puts "YAML OK: #{p}" }' .github/workflows/ci.yml .github/ISSUE_TEMPLATE/*.yml governance/*.yml
+      - name: Parse JSON exception schema
+        run: python3 -m json.tool governance/exceptions.schema.json > /dev/null
+
+  final-gate:
+    name: final-gate
+    needs: [m0-files, policy-syntax]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      NEEDS_JSON: ${{ toJSON(needs) }}
+    steps:
+      - name: Explicitly reject failed, cancelled, skipped, or missing prerequisites
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+
+          data = json.loads(os.environ["NEEDS_JSON"])
+          expected = {"m0-files", "policy-syntax"}
+          problems = []
+          if set(data) != expected:
+              problems.append(f"unexpected job set: expected {sorted(expected)}, got {sorted(data)}")
+          for name in sorted(expected):
+              result = data.get(name, {}).get("result", "missing")
+              print(f"{name}: {result}")
+              if result != "success":
+                  problems.append(f"{name} is {result}, not success")
+          if problems:
+              for message in problems:
+                  print("ERROR:", message)
+              sys.exit(1)
+          print("final-gate PASS: all required M0 jobs executed successfully")
+          PY

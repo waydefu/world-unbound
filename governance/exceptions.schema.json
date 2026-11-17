@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/waydefu/world-unbound/blob/main/governance/exceptions.schema.json",
+  "title": "AEGIS M0 governance exceptions",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "exceptions"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "exceptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "scope",
+          "control_id",
+          "reason",
+          "owner",
+          "approved_by",
+          "created_at",
+          "expires_at",
+          "compensating_control",
+          "linked_issue",
+          "risk",
+          "review_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^EX-[0-9]{4}-[0-9]+$"
+          },
+          "scope": {
+            "type": "string",
+            "minLength": 1
+          },
+          "control_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 8
+          },
+          "owner": {
+            "type": "string",
+            "minLength": 2
+          },
+          "approved_by": {
+            "type": "string",
+            "minLength": 2
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "review_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "compensating_control": {
+            "type": "string",
+            "minLength": 4
+          },
+          "linked_issue": {
+            "type": "string",
+            "minLength": 2
+          },
+          "risk": {
+            "enum": [
+              "R0",
+              "R1",
+              "R2",
+              "R3"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

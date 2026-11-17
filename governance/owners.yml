@@ -1,0 +1,17 @@
+schema_version: 1
+repository: waydefu/world-unbound
+default_owner: "@waydefu"
+domain_owners:
+  governance:
+    paths: ["governance/**", ".github/workflows/**", ".github/actions/**", ".github/CODEOWNERS", "AGENTS.md"]
+    owners: ["@waydefu"]
+    sensitivity: critical
+  architecture:
+    paths: ["docs/contracts/**", "packages/core/**", "packages/ecs/**", "packages/physics/**"]
+    owners: ["@waydefu"]
+    sensitivity: high
+  rendering:
+    paths: ["packages/renderer/**", "shaders/**", "assets/**"]
+    owners: ["@waydefu"]
+    sensitivity: high
+approval_note: "Single human owner: independent two-person approval is NOT satisfied at M0."

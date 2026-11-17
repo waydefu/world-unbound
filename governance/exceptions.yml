@@ -1,0 +1,3 @@
+schema_version: 1
+# No active exceptions at M0. A future approved entry must match exceptions.schema.json.
+exceptions: []

@@ -1,0 +1,19 @@
+schema_version: 1
+environment: production
+release_branch_patterns: ["main", "release/*"]
+must_verify:
+  - source_commit_sha
+  - trusted_ci_conclusions
+  - artifact_sha256
+  - approved_release_identity
+require:
+  protected_environment: true
+  prevent_self_review_if_supported: true
+  short_lived_oidc_credentials_if_supported: true
+  rollback_document: docs/runbooks/break-glass.md
+break_glass:
+  incident_id_required: true
+  post_review_hours: 24
+  postmortem_hours: 72
+  hotfix_backport_to_main: true
+deployment_status: "M0 policy declaration only; no release workflow configured"

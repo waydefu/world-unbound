@@ -1,0 +1,7 @@
+# M0: one human maintainer owns the repository.
+* @waydefu
+/.github/ @waydefu
+/governance/ @waydefu
+/AGENTS.md @waydefu
+/.gitattributes @waydefu
+/docs/contracts/ @waydefu

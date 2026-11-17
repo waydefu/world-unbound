@@ -1,0 +1,21 @@
+schema_version: 1
+default_tier: R1
+tiers:
+  R0:
+    description: "Documentation-only non-executable changes"
+    required: ["format", "structure"]
+  R1:
+    description: "Ordinary single-component code changes"
+    required: ["format", "typecheck", "unit", "owner_review"]
+  R2:
+    description: "Cross-component, performance, lockfile or save-schema changes"
+    required: ["R1", "integration", "architecture", "dependency_review"]
+  R3:
+    description: "Sensitive permissions, workflow, release or irreversible migration changes"
+    required: ["R2", "security_owner_review", "protected_release_gate"]
+sensitive_paths_file: governance/sensitive-paths.yml
+exception_policy_file: governance/exceptions.yml
+notes:
+  - "M0 defines risk intent; enforcing these requirements belongs to M1+."
+  - "Ordinary lockfile updates are R2; untrusted registries, privilege changes or executable install scripts escalate to R3."
+  - "Single-maintainer repositories cannot claim independent second-human approval."

@@ -1,0 +1,40 @@
+name: "Bug report"
+description: "Report a reproducible functional defect (not a security vulnerability)."
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: "Security vulnerabilities must be reported privately via the Security tab."
+  - type: textarea
+    id: expected
+    attributes:
+      label: "Expected behavior"
+      placeholder: "What should happen?"
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: "Actual behavior"
+      placeholder: "What happens instead?"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: "Reproduction steps"
+      placeholder: "1. Open...\n2. Select...\n3. Observe..."
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: "Revision / version"
+      placeholder: "Commit SHA or release"
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: "Environment and sanitized logs"
+      description: "Include OS, browser/device, GPU and safe logs. Remove secrets and personal information."

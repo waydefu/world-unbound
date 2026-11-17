@@ -1,0 +1,45 @@
+schema_version: 1
+# Dictionary only; this file does not create GitHub labels by itself.
+labels:
+  - {name: "area/core", color: "2F81F7", description: "Core application and runtime"}
+  - {name: "area/ecs", color: "2F81F7", description: "Entity-component systems"}
+  - {name: "area/renderer", color: "2F81F7", description: "Rendering pipeline"}
+  - {name: "area/shader", color: "2F81F7", description: "WGSL and GPU shaders"}
+  - {name: "area/physics", color: "2F81F7", description: "Physics and simulation"}
+  - {name: "area/world", color: "2F81F7", description: "World generation and terrain"}
+  - {name: "area/platform", color: "2F81F7", description: "Platform and compatibility"}
+  - {name: "area/ui", color: "2F81F7", description: "Interface and accessibility"}
+  - {name: "area/infra", color: "2F81F7", description: "Build, release and infrastructure"}
+  - {name: "impact/security", color: "D73A4A", description: "Security impact"}
+  - {name: "impact/performance", color: "D73A4A", description: "Performance impact"}
+  - {name: "impact/correctness", color: "D73A4A", description: "Behavioral correctness"}
+  - {name: "impact/compatibility", color: "D73A4A", description: "Compatibility impact"}
+  - {name: "impact/accessibility", color: "D73A4A", description: "Accessibility impact"}
+  - {name: "risk/low", color: "0E8A16", description: "Low change risk"}
+  - {name: "risk/medium", color: "FBCA04", description: "Moderate change risk"}
+  - {name: "risk/high", color: "D93F0B", description: "High change risk"}
+  - {name: "risk/critical", color: "B60205", description: "Critical change risk"}
+  - {name: "needs/triage", color: "EDEDED", description: "Needs human triage"}
+  - {name: "needs/reproduction", color: "EDEDED", description: "Needs reproduction"}
+  - {name: "needs/benchmark", color: "EDEDED", description: "Needs measured benchmark"}
+  - {name: "needs/design", color: "EDEDED", description: "Needs design"}
+  - {name: "needs/review", color: "EDEDED", description: "Needs review"}
+  - {name: "platform/android", color: "5319E7", description: "Android"}
+  - {name: "platform/ios", color: "5319E7", description: "iOS"}
+  - {name: "platform/desktop", color: "5319E7", description: "Desktop"}
+  - {name: "platform/web", color: "5319E7", description: "Web"}
+  - {name: "release/breaking", color: "B60205", description: "Breaking change"}
+  - {name: "release/migration", color: "D93F0B", description: "Requires migration"}
+  - {name: "release/blocker", color: "B60205", description: "Release blocker"}
+  - {name: "ai/assisted", color: "C5DEF5", description: "AI assistance self-disclosed"}
+  - {name: "ai/generated", color: "C5DEF5", description: "AI generation self-disclosed"}
+  - {name: "ai/reviewed", color: "C5DEF5", description: "AI review self-disclosed"}
+  - {name: "good first issue", color: "7057FF", description: "Good for new contributors"}
+  - {name: "help wanted", color: "008672", description: "Help welcome"}
+  - {name: "docs-needed", color: "0075CA", description: "Needs documentation"}
+exclusive_groups:
+  - ["risk/low", "risk/medium", "risk/high", "risk/critical"]
+source_of_truth:
+  status: "GitHub Projects Status"
+  priority: "GitHub Issue Fields, if enabled"
+  authorization: "GitHub Rulesets and trusted CI only"

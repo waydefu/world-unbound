@@ -1,0 +1,22 @@
+schema_version: 1
+# Project-level policy threshold; not a GitHub platform constraint.
+untracked_binary_max_mib: 2
+large_asset_storage: git-lfs
+lfs_patterns:
+  - "*.blend"
+  - "*.fbx"
+  - "*.glb"
+  - "*.gltf"
+  - "*.psd"
+  - "*.exr"
+  - "*.hdr"
+  - "*.ktx2"
+  - "*.wav"
+  - "*.flac"
+  - "*.tif"
+  - "*.tiff"
+manifest:
+  path: assets/manifests/
+  fields: ["path", "sha256", "origin", "license", "encoding", "pipeline_version"]
+release_digest_required: true
+implementation_status: "M0 declaration; binary size and manifest enforcement planned for M1/M3"

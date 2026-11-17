@@ -1,0 +1,26 @@
+name: "Feature request"
+description: "Propose a bounded user-facing capability."
+title: "[Feature] "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: "User problem"
+      placeholder: "What problem are we solving?"
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: "Required behavior and acceptance criteria"
+      placeholder: "Observable, testable completion criteria"
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: "Alternatives and non-goals"
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: "Compatibility, risks and rollback"

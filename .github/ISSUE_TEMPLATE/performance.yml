@@ -1,0 +1,32 @@
+name: "Performance issue"
+description: "Document a measured regression or optimization target."
+title: "[Performance] "
+body:
+  - type: textarea
+    id: scenario
+    attributes:
+      label: "Benchmark scenario and expected quality"
+      description: "Provide repeatable steps, scene, settings and visual constraints."
+    validations:
+      required: true
+  - type: textarea
+    id: device
+    attributes:
+      label: "Hardware, OS, browser and thermals"
+      placeholder: "CPU/GPU, device, OS/browser version, resolution, power/thermal state"
+    validations:
+      required: true
+  - type: textarea
+    id: baseline
+    attributes:
+      label: "Baseline P50/P95/P99 and samples"
+      description: "Specify frame time or measured metrics and number of runs."
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: "Target result and verification method"
+      description: "How will improvements be verified without lowering quality?"
+    validations:
+      required: true
