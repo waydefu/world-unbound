@@ -7,7 +7,7 @@ import { hash2 } from './hash';
  *   R, G  surface slope (dh/dx, dh/dz) of the height field B, centred on 128 (decode: c * 2 - 1,
  *         dimensionless; rms about 0.3, so a decoded slope is "unit-ish" and the shader scales it);
  *   B     the periodic multi-octave height itself, stretched to the full 0..255 range;
- *   A     an independent periodic value noise for breakup and grain, contrast-stretched around 0.5.
+ *   A     an independent periodic gradient noise for breakup and grain, contrast-stretched around 0.5.
  * Row j is the +z direction and column i the +x direction.
  */
 export const NOISE_TILE_SIZE = 256;
@@ -44,14 +44,46 @@ export function periodicNoise(x: number, z: number, period: number, seed: number
   return top + (bottom - top) * v;
 }
 
-/** Periodic fractal value noise in [0, 1): `octaves` octaves, lacunarity 2, the given gain. */
+/** 16 unit gradient directions at odd multiples of 11.25 degrees (no axis-aligned pair, so no visible lattice axes). */
+const GRAD_X = [0.980785, 0.83147, 0.55557, 0.19509, -0.19509, -0.55557, -0.83147, -0.980785,
+  -0.980785, -0.83147, -0.55557, -0.19509, 0.19509, 0.55557, 0.83147, 0.980785];
+const GRAD_Z = [0.19509, 0.55557, 0.83147, 0.980785, 0.980785, 0.83147, 0.55557, 0.19509,
+  -0.19509, -0.55557, -0.83147, -0.980785, -0.980785, -0.83147, -0.55557, -0.19509];
+
+function corner(ix: number, iz: number, dx: number, dz: number, period: number, seed: number): number {
+  const g = hash2(((ix % period) + period) % period, ((iz % period) + period) % period, seed) & 15;
+  return GRAD_X[g] * dx + GRAD_Z[g] * dz;
+}
+
+/**
+ * Periodic gradient (Perlin) noise in [0, 1] with quintic fade: the lattice wraps every `period` cells.
+ * Unlike value noise it has no visible diamond/checker lattice, because the extrema sit between lattice points.
+ */
+export function periodicGradientNoise(x: number, z: number, period: number, seed: number): number {
+  const fx = Math.floor(x);
+  const fz = Math.floor(z);
+  const dx = x - fx;
+  const dz = z - fz;
+  const u = fade(dx);
+  const v = fade(dz);
+  const n00 = corner(fx, fz, dx, dz, period, seed);
+  const n10 = corner(fx + 1, fz, dx - 1, dz, period, seed);
+  const n01 = corner(fx, fz + 1, dx, dz - 1, period, seed);
+  const n11 = corner(fx + 1, fz + 1, dx - 1, dz - 1, period, seed);
+  const top = n00 + (n10 - n00) * u;
+  const bottom = n01 + (n11 - n01) * u;
+  // Peak magnitude of 2D gradient noise with unit gradients is sqrt(2)/2.
+  return 0.5 + (top + (bottom - top) * v) * Math.SQRT1_2;
+}
+
+/** Periodic fractal gradient noise in [0, 1]: `octaves` octaves, lacunarity 2, the given gain. */
 function periodicFbm(i: number, j: number, size: number, octaves: number, gain: number, seed: number): number {
   let sum = 0;
   let amplitude = 1;
   let norm = 0;
   let cells = BASE_CELLS;
   for (let o = 0; o < octaves; o++) {
-    sum += amplitude * periodicNoise((i * cells) / size, (j * cells) / size, cells, seed + o * 1013);
+    sum += amplitude * periodicGradientNoise((i * cells) / size, (j * cells) / size, cells, seed + o * 1013);
     norm += amplitude;
     amplitude *= gain;
     cells *= 2;
@@ -63,7 +95,7 @@ const toByte = (v: number): number => (v <= 0 ? 0 : v >= 1 ? 255 : Math.round(v 
 
 /**
  * Generates the tile (deterministic: integer hashing and IEEE arithmetic only).
- * @amortized once at startup: ~0.5 M value-noise evaluations
+ * @amortized once at startup: ~0.5 M gradient-noise evaluations
  */
 export function generateNoiseTile(size = NOISE_TILE_SIZE): Uint8Array {
   const count = size * size;

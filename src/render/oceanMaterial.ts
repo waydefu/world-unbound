@@ -3,17 +3,15 @@ import {
   type Node, type UniformNode,
 } from 'three/webgpu';
 import {
-  Discard, Fn, clamp, cos, float, length, max, min, mix, normalize, positionLocal, positionWorld, pow, reflect,
-  smoothstep, sin, step, texture, uniform, varyingProperty, vec2, vec3,
+  Discard, Fn, clamp, cos, dFdx, dFdy, float, length, max, min, mix, normalize, positionLocal, positionWorld, pow, reflect,
+  smoothstep, sin, texture, uniform, varyingProperty, vec2, vec3,
 } from 'three/tsl';
-import { WORLD_MAX, WORLD_MIN } from '../world/constants';
+import { seaDepth as sampleSeaDepth } from './seaFloorSampling';
 import type { SkyDome } from './sky';
 
 const WAVE_COUNT = 4;
 const SUN_SOLID_ANGLE = 6.8e-5;
-const DEEP_FLOOR = -40;
-/** The sea-floor texture stores h - FLOOR_OFFSET so half floats keep <= 0.25 m steps up to 1050 m. */
-export const FLOOR_OFFSET = 500;
+export { FLOOR_OFFSET } from './seaFloorSampling';
 /** World-space size of one noise tile for the two detail-slope layers and the foam breakup (metres). */
 const DETAIL_A_METRES = 23;
 const DETAIL_B_METRES = 6.5;
@@ -70,18 +68,14 @@ export function createSeaFloorTexture(data: Uint16Array, size: number): DataText
  * reflection is exactly the dome the player sees.
  */
 export function createOceanMaterial(
-  sky: SkyDome, floor: DataTexture, noise: DataTexture, u: OceanUniforms, lite = false,
+  sky: SkyDome, floor: DataTexture, coast: DataTexture, noise: DataTexture, u: OceanUniforms, lite = false,
 ): MeshBasicNodeMaterial {
   const { eye, eyeSnap, time, waveA, waveB, weather, zenith } = u;
   const vNormal = varyingProperty('vec3', 'oceanNormal');
   const vWaveY = varyingProperty('float', 'oceanWaveY');
 
-  /** Water depth in metres at absolute world xz (negative on land); deep outside the world. */
-  const seaDepth = (p: Node<'vec2'>): Node<'float'> => {
-    const uv = p.sub(WORLD_MIN).div(WORLD_MAX - WORLD_MIN);
-    const inside = step(0, uv.x).mul(step(uv.x, 1)).mul(step(0, uv.y)).mul(step(uv.y, 1));
-    return mix(float(-DEEP_FLOOR), texture(floor, uv).level(float(0)).r.add(FLOOR_OFFSET).negate(), inside);
-  };
+  /** Vertex stage: one bilinear tap (the fade only needs a rough depth). */
+  const seaDepth = (p: Node<'vec2'>): Node<'float'> => sampleSeaDepth(floor, p, false);
 
   const vertex = Fn(() => {
     const p = positionLocal.xz.add(eyeSnap).toVar();
@@ -128,7 +122,17 @@ export function createOceanMaterial(
     // Foam breakup (alpha channel) at 1/3 m; lite uses the Gerstner phase instead.
     const grain = (lite ? float(0) : texture(noise, p.add(vec2(0.1, 0.25).mul(t)).div(FOAM_METRES)).a).toVar();
 
-    const sea = seaDepth(p).toVar();
+    // Fragment: bicubic near the shore (not in lite), so the waterline follows the terrain smoothly.
+    const sea = sampleSeaDepth(coast, p, !lite).toVar();
+    // Horizontal distance to the waterline ~ depth / |gradient|, the gradient from screen derivatives (uniform flow).
+    const dpx = dFdx(p);
+    const dpy = dFdy(p);
+    const dsx = dFdx(sea);
+    const dsy = dFdy(sea);
+    const det = dpx.x.mul(dpy.y).sub(dpx.y.mul(dpy.x));
+    const gradX = dsx.mul(dpy.y).sub(dsy.mul(dpx.y)).div(det);
+    const gradY = dsy.mul(dpx.x).sub(dsx.mul(dpy.x)).div(det);
+    const shoreSlope = max(length(vec2(gradX, gradY)), 0.03);
     // Land per the height map: terrain covers it where it is streamed in; where it is not, show the horizon haze instead of sea.
     Discard(sea.lessThan(-0.5));
 
@@ -170,7 +174,10 @@ export function createOceanMaterial(
 
     // Lite: breakup from the Gerstner phase (wave height) and no crest foam.
     const breakup = lite ? vWaveY.div(weather.y).mul(0.5).add(0.5) : smoothstep(0.3, 0.7, grain);
-    const shore = smoothstep(0.6, 0, depth).mul(breakup).mul(0.6);
+    // Thin broken band: ~0.6-1.8 m of horizontal distance from the waterline, ragged by the noise alpha channel.
+    const shoreDist = depth.div(shoreSlope);
+    const reach = lite ? float(1.2) : grain.mul(1.2).add(0.6);
+    const shore = smoothstep(1, 0, shoreDist.div(reach)).mul(breakup).mul(0.6);
     const foam = lite ? min(shore, 1) : min(shore.add(smoothstep(0.8, 1, crest).mul(0.4).mul(weather.z)), 1);
     const sunIrradianceTerm = sunE.mul(max(sunDir.y, 0).div(Math.PI));
     const foamColour = zenith.add(sunIrradianceTerm).mul(FOAM_ALBEDO);

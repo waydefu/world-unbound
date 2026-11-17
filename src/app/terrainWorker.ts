@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-import { SEAFLOOR_DIM, buildSeaFloor } from '../world/seaFloor';
+import { COAST_DIM, SEAFLOOR_DIM, buildCoastFloor, buildSeaFloor } from '../world/seaFloor';
 import { runTerrainJob, type TerrainRequest } from '../world/terrainJob';
 import { loadAndInstallTerrain } from './terrainAssets';
 
@@ -18,12 +18,15 @@ const ready: Promise<boolean> = loadAndInstallTerrain().then(
   },
 );
 
-scope.onmessage = async (event: MessageEvent<TerrainRequest | { kind: 'seafloor' }>): Promise<void> => {
+scope.onmessage = async (event: MessageEvent<TerrainRequest | { kind: 'seafloor'; fine?: boolean }>): Promise<void> => {
   const data = event.data;
   if (!(await ready)) return;
   if ('kind' in data) {
-    const heights = buildSeaFloor(new Float32Array(SEAFLOOR_DIM * SEAFLOOR_DIM));
-    scope.postMessage({ kind: 'seafloor', heights }, [heights.buffer]);
+    const fine = data.fine === true;
+    const heights = fine
+      ? buildCoastFloor(new Float32Array(COAST_DIM * COAST_DIM))
+      : buildSeaFloor(new Float32Array(SEAFLOOR_DIM * SEAFLOOR_DIM));
+    scope.postMessage({ kind: 'seafloor', fine, heights }, [heights.buffer]);
     return;
   }
   const started = performance.now();

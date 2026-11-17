@@ -7,7 +7,7 @@ import { WEATHER_WETNESS } from '../env/weather';
 import { Environment } from '../render/environment';
 import { createNoiseTexture } from '../render/noiseTextures';
 import { attachSunShadows } from '../render/shadows';
-import { SEAFLOOR_DIM } from '../world/seaFloor';
+import { COAST_DIM, SEAFLOOR_DIM } from '../world/seaFloor';
 import { createRenderer, warmUp, whenDeviceLost, type RendererHandle } from '../render/renderer';
 import { FarTerrain } from '../render/farTerrain';
 import { TerrainChunks } from '../render/terrainChunks';
@@ -147,6 +147,13 @@ export class App {
       this.environment.ocean.setSeaFloor(heights);
       this.observer.uploads.add(performance.now(), SEAFLOOR_DIM * SEAFLOOR_DIM * 2);
       this.farTerrain.setReady();
+      // The 2 m coast map follows (the lite tier shades the shore from the 4 m map instead).
+      if (this.environment.ocean.hasCoast) {
+        void this.streamer.client.requestSeaFloor(true).then((fine) => {
+          this.environment.ocean.setCoastFloor(fine);
+          this.observer.uploads.add(performance.now(), COAST_DIM * COAST_DIM * 2);
+        });
+      }
     });
 
     window.addEventListener('resize', () => this.resize());

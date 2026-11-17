@@ -31,6 +31,11 @@ const TINT = [MOON_TINT.r, MOON_TINT.g, MOON_TINT.b];
 const NIGHT_FLOOR = 3e-7;
 /** Share of the overcast zenith radiance added to the ambient light under full cloud. */
 const OVERCAST_LIFT = 1.2;
+/** Share of the overcast zenith radiance shown by the cloud deck under full cloud at night. */
+const NIGHT_DECK = 0.15;
+/** Exposure key of a sky-ambient-lit white surface at night: 0.12 in clear air, lower under cloud (night reads as night). */
+const NIGHT_KEY = 0.12;
+const NIGHT_KEY_OVERCAST = 0.09;
 const MIN_EXPOSURE = 0.4;
 /** Upper bound of adaptation: scotopic vision reaches roughly 1e-6 of daylight. */
 const MAX_EXPOSURE = 1e6;
@@ -111,8 +116,12 @@ export class Environment {
 
     // Cloud deck: CIE standard overcast sky with the same irradiance, E = 7 pi Lz / 9,
     // so the overcast sky and the ambient light it casts always agree.
+    // Under cloud at night the deck is only lit from below by town and moon: show it darker than the ground it
+    // lights (the ambient above keeps the full lift), otherwise the sky reads brighter than the land.
+    const darkSky = w.overcast * (1 - smooth(-0.1, 0.05, sinAlt));
+    const deck = 1 - (1 - NIGHT_DECK) * darkSky;
     const zenith = this.overcastZenith;
-    for (let c = 0; c < 3; c++) zenith[c] = (9 / 7) * (eLum * w.dim + NIGHT_FLOOR * TINT[c]);
+    for (let c = 0; c < 3; c++) zenith[c] = (9 / 7) * (eLum * w.dim + NIGHT_FLOOR * TINT[c]) * deck;
 
     // Aerial perspective approximated by exponential fog tinted with the horizon radiance.
     const h = summary.horizon;
@@ -150,7 +159,8 @@ export class Environment {
     // showing a sky far brighter than the ground.
     const white = luminance(t) * Math.max(0, sinAlt) * w.sun * sunVisible + eLum * w.dim
       + moonIllum * Math.max(0, Math.sin(celestial.moonAltitude)) + NIGHT_FLOOR;
-    const key = 0.12 + 0.88 * smooth(-0.1 + 0.1 * w.overcast, 0.06 + 0.1 * w.overcast, sinAlt);
+    const nightKey = NIGHT_KEY + (NIGHT_KEY_OVERCAST - NIGHT_KEY) * w.overcast;
+    const key = nightKey + (1 - nightKey) * smooth(-0.1 + 0.1 * w.overcast, 0.06 + 0.1 * w.overcast, sinAlt);
     this.targetExposure = Math.min(MAX_EXPOSURE, Math.max(MIN_EXPOSURE, key / white));
   }
 

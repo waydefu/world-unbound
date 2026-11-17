@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { NOISE_TILE_SIZE, generateNoiseTile, periodicNoise } from '../src/world/noiseTile';
+import { NOISE_TILE_SIZE, generateNoiseTile, periodicGradientNoise, periodicNoise } from '../src/world/noiseTile';
 
 const N = NOISE_TILE_SIZE;
 const tile = generateNoiseTile();
@@ -81,5 +81,27 @@ describe('periodicNoise', () => {
       expect(periodicNoise(x + 8, z, 8, 7)).toBeCloseTo(v, 12);
       expect(periodicNoise(x, z + 8, 8, 7)).toBeCloseTo(v, 12);
     }
+  });
+});
+
+describe('periodicGradientNoise', () => {
+  it('wraps at its period, stays in [0, 1] and is deterministic', () => {
+    for (let i = 0; i < 60; i++) {
+      const x = i * 0.37;
+      const z = i * 0.91;
+      const v = periodicGradientNoise(x, z, 8, 7);
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThanOrEqual(1);
+      expect(periodicGradientNoise(x + 8, z, 8, 7)).toBeCloseTo(v, 12);
+      expect(periodicGradientNoise(x, z + 8, 8, 7)).toBeCloseTo(v, 12);
+      expect(periodicGradientNoise(x, z, 8, 7)).toBe(v);
+    }
+  });
+
+  it('has no lattice: it is exactly mid-grey at lattice points and varies between them', () => {
+    expect(periodicGradientNoise(3, 5, 8, 7)).toBeCloseTo(0.5, 12);
+    let spread = 0;
+    for (let i = 0; i < 20; i++) spread += Math.abs(periodicGradientNoise(i * 0.5 + 0.5, 0.5, 8, 7) - 0.5);
+    expect(spread / 20).toBeGreaterThan(0.05);
   });
 });

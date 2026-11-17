@@ -1,4 +1,4 @@
-import { SEAFLOOR_DIM, buildSeaFloor } from '../world/seaFloor';
+import { COAST_DIM, SEAFLOOR_DIM, buildCoastFloor, buildSeaFloor } from '../world/seaFloor';
 import { runTerrainJob, type TerrainRequest, type TerrainResult } from '../world/terrainJob';
 
 /**
@@ -7,7 +7,7 @@ import { runTerrainJob, type TerrainRequest, type TerrainResult } from '../world
  * (one per poll) so the world still streams, only with more frame cost.
  */
 type WorkerNotice =
-  | { kind: 'seafloor'; heights: Float32Array }
+  | { kind: 'seafloor'; fine: boolean; heights: Float32Array }
   | { kind: 'terrain-ready'; ms: number }
   | { kind: 'terrain-error'; message: string };
 
@@ -21,7 +21,7 @@ export class TerrainClient {
   /** Jobs the worker has been sent but not answered, for replay after a crash. */
   private readonly outstanding = new Map<number, TerrainRequest>();
   /** Pending sea-floor request (worker mode), resolved by the matching reply. */
-  private seaFloorWaiters: Array<(heights: Float32Array) => void> = [];
+  private seaFloorWaiters: Array<{ fine: boolean; resolve: (heights: Float32Array) => void }> = [];
 
   constructor() {
     try {
@@ -39,9 +39,8 @@ export class TerrainClient {
             this.fallBack();
             return;
           }
-          const waiters = this.seaFloorWaiters;
-          this.seaFloorWaiters = [];
-          for (const resolve of waiters) resolve(data.heights);
+          const index = this.seaFloorWaiters.findIndex((w) => w.fine === data.fine);
+          if (index >= 0) this.seaFloorWaiters.splice(index, 1)[0].resolve(data.heights);
           return;
         }
         this.outstanding.delete(data.seq);
@@ -62,18 +61,19 @@ export class TerrainClient {
     // A crash loses any pending sea-floor reply; build it here instead.
     const waiters = this.seaFloorWaiters;
     this.seaFloorWaiters = [];
-    if (waiters.length > 0) {
-      const heights = buildSeaFloor(new Float32Array(SEAFLOOR_DIM * SEAFLOOR_DIM));
-      for (const resolve of waiters) resolve(heights);
-    }
+    for (const waiter of waiters) waiter.resolve(this.buildFloor(waiter.fine));
   }
 
-  /** Sea-floor height map for the ocean shader (built in the worker, or inline in fallback mode). */
-  requestSeaFloor(): Promise<Float32Array> {
-    if (!this.worker) return Promise.resolve(buildSeaFloor(new Float32Array(SEAFLOOR_DIM * SEAFLOOR_DIM)));
+  private buildFloor(fine: boolean): Float32Array {
+    return fine ? buildCoastFloor(new Float32Array(COAST_DIM * COAST_DIM)) : buildSeaFloor(new Float32Array(SEAFLOOR_DIM * SEAFLOOR_DIM));
+  }
+
+  /** Sea-floor height map (4 m, or the 2 m coast map when `fine`), built in the worker or inline in fallback mode. */
+  requestSeaFloor(fine = false): Promise<Float32Array> {
+    if (!this.worker) return Promise.resolve(this.buildFloor(fine));
     return new Promise((resolve) => {
-      this.seaFloorWaiters.push(resolve);
-      this.worker?.postMessage({ kind: 'seafloor' });
+      this.seaFloorWaiters.push({ fine, resolve });
+      this.worker?.postMessage({ kind: 'seafloor', fine });
     });
   }
 
