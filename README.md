@@ -65,7 +65,7 @@ Settings below were applied by the owner and read back on 2026-11-17 (owner-repo
 Governance milestones (AEGIS ∞ v2.0):
 
 - **M0:** repository and governance skeleton — complete
-- **M1:** protected base-policy evaluation, code/secret/dependency scanning
+- **M1:** in progress — base-policy re-validation (advisory), risk tiers, dependency review, exception checks, cache ban; lint next ([status and limits](docs/governance/m1.md))
 - **M2:** AI isolation, architecture contracts, device regression paths
 - **M3:** artifact integrity, environment/OIDC deployment gates, rollback
 - **M4:** maintenance and metrics

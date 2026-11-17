@@ -2,3 +2,5 @@ node_modules/
 dist/
 artifacts/
 *.local
+__pycache__/
+*.pyc

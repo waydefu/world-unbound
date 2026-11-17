@@ -21,6 +21,11 @@ on:
 permissions:
   contents: read
 
+# GitHub only enables pipefail when the shell is named explicitly.
+defaults:
+  run:
+    shell: bash
+
 concurrency:
   group: label-sync
   cancel-in-progress: false
