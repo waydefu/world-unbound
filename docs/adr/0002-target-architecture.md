@@ -86,9 +86,34 @@ Chapter 20's method, without requiring Unreal reference scenes up front: referen
 
 Measurable goal replacing "best everywhere": on a phone browser, ≤ 150 MB download, 60 FPS sustained for 20 minutes without thermal step-down, and the six fixed cameras judged better in blind review than comparable web 3D work.
 
-### 8. Revised milestones
+### 8. Alternatives considered
 
-- **G0.5:** bake pipeline with eroded terrain; EnvironmentSnapshot and query contracts; simulation and streaming worker skeletons; telemetry fixes (per-pass GPU time, measured pipeline count, soak mode, load bytes and cache hits).
+Evaluated:
+
+| Area | Options | Outcome |
+| --- | --- | --- |
+| Runtime language | TypeScript, Rust/Wasm, C++/Wasm, Python | TypeScript; Rust/Wasm only for a profiled hot path; C++ only via existing libraries; Python not in the product |
+| Build tools | Rust, Node/TypeScript, C++, Python | Rust for heavy bakes |
+| Shaders | TSL, hand-written WGSL, GLSL | TSL (emits WGSL and GLSL); WGSL for custom passes |
+| Renderer | three.js WebGPURenderer, raw WebGPU | three.js behind RenderBackend |
+
+Not yet evaluated — could change a decision:
+
+| Option | Why it matters | Plan |
+| --- | --- | --- |
+| Babylon.js | Mature WebGPU engine; render bundles / snapshot rendering cut per-frame CPU submission, relevant at 400+ draws on a phone | **Engine spike in G0.5** (below) |
+| Bevy (Rust ECS on wgpu) | All-Rust engine | Leaning against (Wasm size, single-threaded without SharedArrayBuffer, mobile-browser maturity) — a judgement, not measured |
+| WebGPU render bundles | Pre-recorded draw commands regardless of engine | Check three.js support in G1 |
+| Slang / WESL | Shader languages that can target WGSL and GLSL | Revisit if hand-written shaders grow |
+| OPFS + Cache API / Service Worker | Better fit than IndexedDB for large baked binaries, offline use and version switching | Part of the G0.5 streaming design |
+
+Smaller choices are settled inside their milestone: horizon-map terrain shadows, terrain virtual texturing, CDLOD, erosion model, Wave Function Collapse for blocks, Wasm SIMD, Compute Pressure API, Screen Wake Lock, Pointer Lock, Gamepad, AudioWorklet, meshopt vs Draco, Basis UASTC vs ETC1S. Browser features released after the author's knowledge cut-off are checked against official documentation before adoption.
+
+**Engine spike (G0.5, before significant renderer code):** the same terrain scene (about 800 chunks, 400+ draws) in three.js and in Babylon.js, measured on the owner's phone for CPU submission time and per-pass GPU time. The result decides whether the renderer changes.
+
+### 9. Revised milestones
+
+- **G0.5:** engine spike; bake pipeline with eroded terrain; EnvironmentSnapshot and query contracts; simulation and streaming worker skeletons (streaming over OPFS / Cache API); telemetry fixes (per-pass GPU time, measured pipeline count, soak mode, load bytes and cache hits).
 - **G1:** sky and atmosphere, shadows, HDR / exposure / TRAA, ocean v1, baked terrain materials.
 - **G2:** baked buildings and vegetation, baked SH probes.
 - **G3:** gameplay loop, procedural audio, saves.
