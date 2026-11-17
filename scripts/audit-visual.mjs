@@ -145,6 +145,39 @@ async function resilience(browser, failures) {
   await context.close();
 }
 
+/**
+ * Engine spike smoke test (ADR-0002 §8): both engines must start, render and
+ * report on the Lite (WebGL2) path, with no script or data fetched from
+ * another origin. Timings here are software-GPU noise and are not checked.
+ */
+async function spikeSmoke(browser, failures) {
+  for (const engine of ['three', 'babylon']) {
+    const context = await browser.newContext({ viewport: { width: 960, height: 442 } });
+    const page = await context.newPage();
+    const problems = [];
+    page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
+    page.on('console', (m) => { if (m.type() === 'error') problems.push(`console.error: ${m.text()}`); });
+    try {
+      await page.goto(`${BASE}spike/engines.html?engine=${engine}&backend=webgl2&warmup=2&seconds=3`, { waitUntil: 'load' });
+      await page.waitForFunction(() => window.__spikeResult, null, { timeout: READY_TIMEOUT_MS });
+      const r = await page.evaluate(() => window.__spikeResult);
+      if (r.error) problems.push(`run failed: ${r.error}`);
+      else {
+        // Software-GPU frame rates vary widely, so only require that measurement happened.
+        if (r.frames < 1 || r.drawCallsMean < 100) problems.push(`no real frames measured (${r.frames} frames, ${r.drawCallsMean} draws)`);
+        if (r.scene.chunks < 500) problems.push(`only ${r.scene.chunks} chunks`);
+        if (r.crossOriginRequests.length > 0) problems.push(`cross-origin requests: ${r.crossOriginRequests.join(', ')}`);
+      }
+      console.log(`${problems.length ? 'FAIL' : 'ok  '} spike/${engine}: ${r.error ? r.error : `${r.frames} frames, ${r.scene.chunks} chunks, ${r.drawCallsMean.toFixed(0)} draws`}`);
+    } catch (err) {
+      problems.push(`exception: ${err.message}`);
+      console.log(`FAIL spike/${engine}: ${err.message}`);
+    }
+    for (const problem of problems) failures.push(`spike/${engine}: ${problem}`);
+    await context.close();
+  }
+}
+
 async function main() {
   mkdirSync(outDir, { recursive: true });
   if (!args.has('skip-build')) {
@@ -164,6 +197,7 @@ async function main() {
     });
     for (const backend of backends) await sweep(browser, backend, failures);
     await resilience(browser, failures);
+    await spikeSmoke(browser, failures);
   } finally {
     await browser?.close();
     server.kill();
