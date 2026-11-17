@@ -12,6 +12,7 @@ import { buildSpikeScene, orbitPose, type Pose } from './sceneData';
  */
 const ENGINES: Record<string, () => Promise<RunnerFactory>> = {
   three: () => import('./threeRunner').then((m) => m.createThreeRunner),
+  'three-bundle': () => import('./threeRunner').then((m) => m.createThreeRunner),
   babylon: () => import('./babylonRunner').then((m) => m.createBabylonRunner),
   'babylon-snapshot': () => import('./babylonRunner').then((m) => m.createBabylonRunner),
 };
@@ -40,8 +41,9 @@ function showMenu(note?: string): void {
   const title = document.createElement('h1');
   title.textContent = 'Engine spike';
   const help = document.createElement('p');
-  help.textContent = 'Run each engine once, in this order, then three again to check for thermal drift. '
-    + 'Each run takes about 30 s. Keep the phone unplugged, at the same brightness, with other apps closed.';
+  help.textContent = 'Round 2: run three, three-bundle, babylon-snapshot, then three again (press the same button) '
+    + 'to check for thermal drift. Each run takes about 30 s; rest about a minute between runs. '
+    + 'Keep the phone unplugged, at the same brightness, with other apps closed.';
   const links = document.createElement('div');
   links.className = 'links';
   for (const engine of Object.keys(ENGINES)) links.append(link(engine, `engine=${engine}`));
@@ -107,7 +109,7 @@ async function run(engineId: string): Promise<void> {
   const factory = await ENGINES[engineId]();
   // A broken GPU device can leave engine start-up pending forever; fail visibly instead.
   const runner = await Promise.race([
-    factory(canvas, scene, { backend, width, height, snapshot: engineId === 'babylon-snapshot' }),
+    factory(canvas, scene, { backend, width, height, snapshot: engineId === 'babylon-snapshot' || engineId === 'three-bundle' }),
     new Promise<never>((_, reject) => setTimeout(() => reject(new Error('engine start-up exceeded 45 s')), 45000)),
   ]);
   const engineInitMs = performance.now() - initStart;

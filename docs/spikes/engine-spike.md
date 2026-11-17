@@ -1,6 +1,6 @@
 # Engine spike: three.js vs Babylon.js (ADR-0002 §8)
 
-Status: **tooling ready, device results pending.**
+Status: **round 1 done on the owner's phone; round 2 (three-bundle) pending.**
 
 ## Question
 
@@ -20,6 +20,7 @@ Page: `/world-unbound/spike/engines.html` (not linked from the game).
 | `three` | three.js r187, per-frame frustum culling |
 | `babylon` | Babylon.js 9.33.2, per-frame frustum culling, frozen material and world matrices |
 | `babylon-snapshot` | Babylon.js with snapshot rendering (fast mode): draws recorded once as render bundles and replayed. No re-culling, so all chunks are drawn every frame — less CPU, more GPU work. WebGPU only |
+| `three-bundle` (round 2) | three.js with every chunk in a `BundleGroup` (WebGPU render bundles), frustum culling off so all chunks are recorded — the same conditions as `babylon-snapshot`. WebGPU only |
 
 ## How to run (owner's phone)
 
@@ -49,4 +50,28 @@ Otherwise keep three.js; if render bundles clearly help, look at render-bundle u
 
 ## Results
 
-Pending the owner's device report.
+### Round 1 — 2026-11-17, owner's phone (Adreno 8xx, Chrome 157, WebGPU), 1073 × 2051 buffer (2.2 MP)
+
+| Run | CPU p50 | CPU p95 | GPU p95 | Draws | Frame p95 | FPS |
+| --- | --- | --- | --- | --- | --- | --- |
+| three | 4.5 ms | 6.4 ms | ≈ 13 ms\* | 219 | 16.7 ms | 60.0 |
+| babylon | 5.9 ms | 7.9 ms | 13.1 ms | 218 | 16.7 ms | 60.0 |
+| babylon-snapshot | 0.4 ms | 1.1 ms | 13.4 ms | 998 | 16.7 ms | 60.0 |
+| three (repeat) | 5.5 ms | 7.2 ms | ≈ 13 ms\* | 219 | 16.8 ms | 60.0 |
+
+\* **Measurement bug, fixed for round 2.** three.js keeps one timestamp pair per render context and overwrites it every frame, so a resolve returns the latest frame's GPU time. The harness divided it by 30 and reported 0.35–0.44 ms; multiplied back, the values are about 10.5–13 ms, the same range as Babylon. Treat the three.js GPU column as an estimate.
+
+Readings:
+
+- CPU submission is the bottleneck to plan for: about 25 µs per draw call without bundles. Cascaded shadows, buildings and vegetation will multiply draws.
+- Render bundles cut CPU submission by about 85 % while drawing 4.5× more chunks, with GPU time almost unchanged.
+- Babylon without snapshots is slower on the CPU than three.js.
+- The repeated three.js run is about 12 % slower on the CPU (thermal or clock drift), far smaller than the bundle effect.
+- GPU time under a 60 Hz cap is inflated by mobile DVFS (the GPU clocks down to fill the frame), so it is not a headroom measure. A load test is needed for that.
+- One cross-origin request (`fonts.gstatic.com`) came from Chrome's translate prompt, not from the page; round 2 marks the page `translate="no"`.
+
+Decision status: Babylon's snapshot mode clears the CPU criterion by a wide margin, but the rule cannot be applied yet. The three.js GPU figures were wrong, and the follow-up this document already named — render bundles inside three.js — was not measured. Round 2 adds `three-bundle`.
+
+### Round 2
+
+Pending. Order: three, three-bundle, babylon-snapshot, three.

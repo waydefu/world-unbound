@@ -151,7 +151,7 @@ async function resilience(browser, failures) {
  * another origin. Timings here are software-GPU noise and are not checked.
  */
 async function spikeSmoke(browser, failures) {
-  for (const engine of ['three', 'babylon']) {
+  for (const engine of ['three', 'three-bundle', 'babylon']) {
     const context = await browser.newContext({ viewport: { width: 960, height: 442 } });
     const page = await context.newPage();
     const problems = [];
