@@ -60,7 +60,7 @@ const PATH_RULES = [
   [/new\s+(Shared)?Worker\(\s*['"`]/, 'worker URL must be new URL(..., import.meta.url)'],
   [/new\s+URL\(\s*['"`]\//, 'root-absolute URL; resolve relative to import.meta.url'],
 ];
-const PURE_DIRS = ['world', 'perf'];
+const PURE_DIRS = ['world', 'perf', 'env'];
 const DOM_GLOBALS = /\b(document|window|navigator|localStorage|requestAnimationFrame)\b/;
 
 for (const file of sourceFiles.filter((f) => f.endsWith('.ts'))) {

@@ -26,6 +26,7 @@ export function formatHud(state: AppState, stats: FrameStats, dyn: DynamicResolu
     mem += ` · ${PARTITION_NAMES[i]} ${(memory.used[i] / MIB).toFixed(1)}/${(memory.budget[i] / MIB).toFixed(0)}`;
   }
   lines.push(mem);
-  lines.push(`hour ${state.hour.toFixed(1)} · ${state.weather} · sun ${state.sunAltitudeDeg.toFixed(0)}° · lost ${state.deviceLostCount} · bg ${state.backgroundSuspends}`);
+  lines.push(`day ${state.day.toFixed(1)} ${state.season} · hour ${state.hour.toFixed(1)} · ${state.weather} · sun ${state.sunAltitudeDeg.toFixed(0)}° · exp ${state.exposure.toPrecision(3)}`);
+  lines.push(`lost ${state.deviceLostCount} · bg ${state.backgroundSuspends}`);
   return lines.join('\n');
 }
