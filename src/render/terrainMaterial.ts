@@ -43,7 +43,7 @@ export function createTerrainMaterial(): TerrainMaterial {
   const hx = relief(pW.add(vec3(E, 0, 0)));
   const hz = relief(pW.add(vec3(0, 0, E)));
 
-  const grassCol = mix(GRASS_DRY, GRASS_LUSH, smoothstep(-0.3, 0.3, macro));
+  const grassCol = mix(GRASS_DRY, GRASS_LUSH, smoothstep(-0.6, 0.6, macro).mul(0.6).add(0.2));
   let base = grassCol.mul(grass).add(SAND.mul(w.x)).add(ROCK.mul(w.y)).add(EARTH.mul(w.z));
   base = mix(base, SEABED, float(1).sub(smoothstep(-2.2, -0.2, y)));
   base = base.mul(float(1).add(grain.mul(0.14).mul(mix(0.4, 1, detail))));

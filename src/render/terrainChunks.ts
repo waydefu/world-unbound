@@ -27,6 +27,8 @@ export class TerrainChunks {
   readonly root = new Group();
   private readonly bundle = new BundleGroup();
   private bundled = false;
+  /** Chunk meshes currently installed (counted in apply/evict, not by scanning). */
+  private residentChunkCount = 0;
   readonly material: MeshStandardNodeMaterial;
   private readonly terrainMaterial: TerrainMaterial = createTerrainMaterial();
   private readonly meshes: (Mesh | null)[] = new Array<Mesh | null>(CHUNK_COUNT).fill(null);
@@ -58,6 +60,11 @@ export class TerrainChunks {
 
   setWetness(wetness: number): void {
     this.terrainMaterial.setWetness(wetness);
+  }
+
+  /** Draws replayed from the render bundle (not counted by renderer.info); 0 when not bundling. */
+  get bundledCount(): number {
+    return this.bundled ? this.residentChunkCount : 0;
   }
 
   /** Called once the backend is known (and again after a device-loss rebuild). */
@@ -111,6 +118,7 @@ export class TerrainChunks {
       mesh.updateMatrix();
       this.meshes[slot] = mesh;
       this.bundle.add(mesh);
+      this.residentChunkCount++;
     }
     const geometry = this.acquireGeometry(lod);
     copyInto(geometry.getAttribute('position') as BufferAttribute, result.positions);
@@ -145,6 +153,7 @@ export class TerrainChunks {
     this.bundle.needsUpdate = true;
     this.meshes[slot] = null;
     this.meshLod[slot] = -1;
+    this.residentChunkCount--;
     this.meshPool.push(mesh);
   }
 }

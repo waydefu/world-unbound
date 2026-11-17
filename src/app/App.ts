@@ -74,7 +74,7 @@ export class App {
       deviceLostCount: 0, cameraIndex: 0, cameraName: '', cssWidth: 0, cssHeight: 0,
       devicePixelRatio: 1, basePixelRatio: 1, bufferWidth: 0, bufferHeight: 0,
       refreshHz: 60, refreshMeasured: false, warmupMs: 0, firstFrameMs: 0, worldReadyMs: 0,
-      materialVariants: 2, variantBudget: VARIANT_BUDGET[tier.name], drawCalls: 0, triangles: 0,
+      materialVariants: 2, variantBudget: VARIANT_BUDGET[tier.name], drawCalls: 0, bundledDraws: 0, triangles: 0,
       chunksLoaded: 0, chunksInFlight: 0, staleResults: 0, lodBias: 0, terrainMode: 'worker',
       hour: params.hour, day: params.day, season: '', weather: params.weather, sunAltitudeDeg: 0,
       moonIllumination: 0, exposure: 1, atmosphereLutMs: this.clock.lutMs, backgroundSuspends: 0,
@@ -266,6 +266,7 @@ export class App {
     }
     const info = this.handle.renderer.info.render;
     state.drawCalls = info.drawCalls;
+    state.bundledDraws = this.chunks.bundledCount;
     state.triangles = info.triangles;
     state.chunksLoaded = streamer.requests.loadedCount;
     state.chunksInFlight = streamer.requests.inFlightCount;

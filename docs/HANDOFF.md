@@ -12,9 +12,9 @@ Snapshot: 2026-11-17, work paused at the owner's request after G1.2. Read this, 
 | --- | --- | --- |
 | G1.0 | GPU load ramp on the spike page | Merged (#13); phone result below |
 | G1.1 | Physical sky and atmosphere, calendar, ephemeris, auto-exposure | Merged (#14) |
-| G1.2 | Cascaded sun shadows; main-app terrain in a render bundle | PR #15 open, CI green, awaiting owner review |
-| — | Stop-work: module layers enforced, index, governance status, this handoff | On the agent branch with/after #15 |
-| G1.3 | Terrain PBR materials (weathering, slope/height blending) | Not started |
+| G1.2 | Cascaded sun shadows; main-app terrain in a render bundle | Merged (#15) |
+| — | Stop-work: module layers enforced, index, governance status, this handoff | Merged (#15) |
+| G1.3 | Terrain PBR materials (weathering, slope/height blending) | In progress (local) |
 | G1.4 | Ocean (multi-band waves, shoreline, reflections) | Not started |
 
 What the screen shows today: terrain, coastline, physical sky with sun/moon/stars, fog, terrain shadows, a flat placeholder sea. No buildings, vegetation, gameplay or audio.
@@ -34,8 +34,7 @@ Owner's phone: Adreno 8xx, Chrome 157, WebGPU, 60 Hz, 2.2 MP drawing buffer.
 
 1. Review and merge PR #15 (and the stop-work changes).
 2. On the phone, open `?cam=5&hour=19.8` and `?cam=5&hour=19.8&shadows=0`, export telemetry JSON from each (HUD → JSON). This verifies bundles + shadows on WebGPU (untested in CI) and gives the shadow cost.
-3. Merge PR #16 (governance gaps 4 and 5 from [governance/status.md](governance/status.md): `scripts/**` at R3, `src/env/**` owner domain; without the `tests/**` line).
-4. Optional: second GitHub account for T20.
+3. Optional: second GitHub account for T20.
 
 **Next agent session**
 
