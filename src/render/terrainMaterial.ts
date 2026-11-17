@@ -25,7 +25,7 @@ const ROCK = vec3(0.2, 0.19, 0.175);
 const EARTH = vec3(0.19, 0.15, 0.105);
 const E = 0.05;
 
-export function createTerrainMaterial(): TerrainMaterial {
+export function createTerrainMaterial(lite = false): TerrainMaterial {
   const eyeOffset = uniform(new Vector3());
   const wetness = uniform(0);
 
@@ -37,16 +37,15 @@ export function createTerrainMaterial(): TerrainMaterial {
   const detail = smoothstep(120, 30, dist);
 
   const macro = mx_noise_float(pW.xz.mul(0.027));
-  const grain = mx_noise_float(pW.xz.mul(0.19));
   const relief = (p: typeof pW) => mx_noise_float(p.mul(0.8));
-  const h0 = relief(pW);
-  const hx = relief(pW.add(vec3(E, 0, 0)));
-  const hz = relief(pW.add(vec3(0, 0, E)));
 
   const grassCol = mix(GRASS_DRY, GRASS_LUSH, smoothstep(-0.6, 0.6, macro).mul(0.6).add(0.2));
   let base = grassCol.mul(grass).add(SAND.mul(w.x)).add(ROCK.mul(w.y)).add(EARTH.mul(w.z));
   base = mix(base, SEABED, float(1).sub(smoothstep(-2.2, -0.2, y)));
-  base = base.mul(float(1).add(grain.mul(0.14).mul(mix(0.4, 1, detail))));
+  if (!lite) {
+    const grain = mx_noise_float(pW.xz.mul(0.19));
+    base = base.mul(float(1).add(grain.mul(0.14).mul(mix(0.4, 1, detail))));
+  }
 
   const rough = grass.mul(0.88).add(w.x.mul(0.92)).add(w.y.mul(0.72)).add(w.z.mul(0.9));
   const shore = float(1).sub(smoothstep(0.2, 1.4, y));
@@ -54,18 +53,21 @@ export function createTerrainMaterial(): TerrainMaterial {
   const albedo = base.mul(mix(1, 0.55, wet));
   const roughness = mix(rough, 0.3, wet);
 
-  const gx = hx.sub(h0).div(E);
-  const gz = hz.sub(h0).div(E);
-  const strength = grass.mul(0.3).add(w.x.mul(0.15)).add(w.y.mul(0.6)).add(w.z.mul(0.25))
-    .mul(detail).mul(mix(1, 0.4, wet));
-  const nW = normalize(normalWorldGeometry.sub(vec3(gx, 0, gz).mul(strength).mul(0.25)));
 
   const material = new MeshStandardNodeMaterial({ metalness: 0, side: FrontSide });
   material.vertexColors = false;
   material.name = 'terrain';
   material.colorNode = albedo;
   material.roughnessNode = roughness;
-  material.normalNode = transformNormalToView(nW);
+  if (!lite) {
+    const h0 = relief(pW);
+    const gx = relief(pW.add(vec3(E, 0, 0))).sub(h0).div(E);
+    const gz = relief(pW.add(vec3(0, 0, E))).sub(h0).div(E);
+    const strength = grass.mul(0.3).add(w.x.mul(0.15)).add(w.y.mul(0.6)).add(w.z.mul(0.25))
+      .mul(detail).mul(mix(1, 0.4, wet));
+    const nW = normalize(normalWorldGeometry.sub(vec3(gx, 0, gz).mul(strength).mul(0.25)));
+    material.normalNode = transformNormalToView(nW);
+  }
   material.aoNode = w.w;
 
   return {

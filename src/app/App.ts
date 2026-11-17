@@ -60,15 +60,16 @@ export class App {
 
   private constructor(private readonly options: AppOptions) {
     const { params, tier } = options;
+    const lite = tier.name === 'low';
     this.memory = new MemoryRegistry(tier.memoryBudgetMiB);
     this.dyn = new DynamicResolution({ ...DEFAULT_DYNAMIC_RESOLUTION, maxScale: tier.maxScale, initialScale: tier.maxScale });
     if (params.scale !== null) this.dyn.lock(params.scale);
-    this.environment = new Environment(this.scene);
+    this.environment = new Environment(this.scene, lite);
     if (params.shadows) this.memory.add(MemoryPartition.Gpu, attachSunShadows(this.environment.sun, tier.shadows));
     this.memory.add(MemoryPartition.Gpu, this.environment.ocean.gpuBytes);
     this.clock = new EnvironmentClock(this.environment);
-    this.chunks = new TerrainChunks(this.memory);
-    this.farTerrain = new FarTerrain(this.environment.ocean.floorTexture);
+    this.chunks = new TerrainChunks(this.memory, lite);
+    this.farTerrain = new FarTerrain(this.environment.ocean.floorTexture, lite);
     this.memory.add(MemoryPartition.Gpu, this.farTerrain.gpuBytes);
     this.chunks.root.add(this.farTerrain.mesh);
     this.scene.add(this.chunks.root);

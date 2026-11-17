@@ -53,8 +53,8 @@ export class Environment {
   private readonly fogBase = new Color();
   private readonly overcastZenith = new Float64Array(3);
 
-  constructor(scene: Scene) {
-    this.ocean = new Ocean(this.sky);
+  constructor(scene: Scene, lite = false) {
+    this.ocean = new Ocean(this.sky, lite);
     scene.add(this.sun, this.sun.target, this.moon, this.moon.target, this.ambient, this.ocean.mesh, this.sky.mesh);
     scene.fog = this.fog;
     scene.background = null;

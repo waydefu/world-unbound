@@ -61,7 +61,7 @@ export function createSeaFloorTexture(data: Uint16Array, size: number): DataText
  * pre-exposed radiance; the sky is sampled through SkyDome.radiance so the
  * reflection is exactly the dome the player sees.
  */
-export function createOceanMaterial(sky: SkyDome, floor: DataTexture, u: OceanUniforms): MeshBasicNodeMaterial {
+export function createOceanMaterial(sky: SkyDome, floor: DataTexture, u: OceanUniforms, lite = false): MeshBasicNodeMaterial {
   const { eye, eyeSnap, time, waveA, waveB, weather } = u;
   const vNormal = varyingProperty('vec3', 'oceanNormal');
   const vWaveY = varyingProperty('float', 'oceanWaveY');
@@ -115,12 +115,15 @@ export function createOceanMaterial(sky: SkyDome, floor: DataTexture, u: OceanUn
       mx_noise_float(vec3(q.mul(freq).add(vec2(drift.x, drift.y).mul(t)), t.mul(freq < 0.5 ? 0.1 : 0.13)));
     const at = (q: Node<'vec2'>) => band(q, 0.23, new Vector2(0.05, 0.03));
     const bt = (q: Node<'vec2'>) => band(q, 0.9, new Vector2(-0.04, -0.07));
-    const n1 = at(p).toVar();
-    const n2 = bt(p).toVar();
-    const gx = at(p.add(vec2(E, 0))).sub(n1).add(bt(p.add(vec2(E, 0))).sub(n2)).div(E);
-    const gz = at(p.add(vec2(0, E))).sub(n1).add(bt(p.add(vec2(0, E))).sub(n2)).div(E);
-    const strength = min(slope.div(0.035).mul(0.35), 1).mul(smoothstep(400, 60, dist));
-    const N = normalize(normalize(vNormal).sub(vec3(gx, 0, gz).mul(strength).mul(0.25))).toVar();
+    // Lite tier: Gerstner normal only, no noise bands.
+    const n1 = (lite ? float(0) : at(p)).toVar();
+    const N = lite ? normalize(vNormal).toVar() : Fn(() => {
+      const n2 = bt(p).toVar();
+      const gx = at(p.add(vec2(E, 0))).sub(n1).add(bt(p.add(vec2(E, 0))).sub(n2)).div(E);
+      const gz = at(p.add(vec2(0, E))).sub(n1).add(bt(p.add(vec2(0, E))).sub(n2)).div(E);
+      const strength = min(slope.div(0.035).mul(0.35), 1).mul(smoothstep(400, 60, dist));
+      return normalize(normalize(vNormal).sub(vec3(gx, 0, gz).mul(strength).mul(0.25)));
+    })().toVar();
 
     const V = normalize(positionWorld.negate()).toVar();
     const r0 = reflect(V.negate(), N);
@@ -139,9 +142,10 @@ export function createOceanMaterial(sky: SkyDome, floor: DataTexture, u: OceanUn
     const body = mix(DEEP, SHALLOW, depth.negate().div(6).exp()).mul(bodyLight);
 
     // The foam breakup noise has a ~4 m period: past ~400 m it would alias into speckle, so fade it to its mean.
-    const shore = smoothstep(1.2, 0, depth).mul(mix(0.75, n1.mul(0.5).add(0.5), smoothstep(400, 60, dist)));
-    const crest = smoothstep(0.8, 1, vWaveY.div(weather.y)).mul(0.4).mul(weather.z);
-    const foam = min(shore.add(crest), 1);
+    // Lite: breakup from the Gerstner phase (wave height) instead of noise, and no crest foam.
+    const breakup = lite ? vWaveY.div(weather.y).mul(0.5).add(0.5) : n1.mul(0.5).add(0.5);
+    const shore = smoothstep(1.2, 0, depth).mul(mix(0.75, breakup, smoothstep(400, 60, dist)));
+    const foam = lite ? min(shore, 1) : min(shore.add(smoothstep(0.8, 1, vWaveY.div(weather.y)).mul(0.4).mul(weather.z)), 1);
     const sunIrradianceTerm = sky.sunRadiance.mul(SUN_SOLID_ANGLE / Math.PI).mul(max(sunDir.y, 0)).mul(sky.exposureNode);
     const foamColour = zenith.add(sunIrradianceTerm).mul(FOAM_ALBEDO);
 

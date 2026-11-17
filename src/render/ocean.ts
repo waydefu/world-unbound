@@ -5,8 +5,9 @@ import { SEAFLOOR_DIM } from '../world/seaFloor';
 import { createOceanMaterial, createOceanUniforms, createSeaFloorTexture } from './oceanMaterial';
 import type { SkyDome } from './sky';
 
-/** Grid: 160 x 160 quads, 1.5 m at the centre growing geometrically to ~80 m at +-3500 m. */
+/** Grid: 160 x 160 quads (80 x 80 on the lite tier), 1.5 m at the centre growing geometrically to +-3500 m. */
 const HALF_CELLS = 80;
+const HALF_CELLS_LITE = 40;
 const FINE_SPACING = 1.5;
 const EXTENT = 3500;
 const DEEP_METRES = -40;
@@ -17,23 +18,23 @@ function lineOffset(t: number, ratio: number): number {
 }
 
 /** Solves s(HALF_CELLS) = EXTENT for the growth ratio by bisection. */
-function solveRatio(): number {
+function solveRatio(half: number): number {
   let lo = 1.0001;
   let hi = 1.5;
   for (let i = 0; i < 60; i++) {
     const mid = 0.5 * (lo + hi);
-    if (lineOffset(HALF_CELLS, mid) < EXTENT) lo = mid;
+    if (lineOffset(half, mid) < EXTENT) lo = mid;
     else hi = mid;
   }
   return 0.5 * (lo + hi);
 }
 
-function buildGrid(): BufferGeometry {
-  const ratio = solveRatio();
-  const side = 2 * HALF_CELLS + 1;
+function buildGrid(half: number): BufferGeometry {
+  const ratio = solveRatio(half);
+  const side = 2 * half + 1;
   const lines = new Float32Array(side);
-  for (let t = -HALF_CELLS; t <= HALF_CELLS; t++) {
-    lines[t + HALF_CELLS] = Math.sign(t) * lineOffset(Math.abs(t), ratio);
+  for (let t = -half; t <= half; t++) {
+    lines[t + half] = Math.sign(t) * lineOffset(Math.abs(t), ratio);
   }
   const positions = new Float32Array(side * side * 3);
   for (let j = 0; j < side; j++) {
@@ -77,9 +78,9 @@ export class Ocean {
   private readonly floorData = new Uint16Array(SEAFLOOR_DIM * SEAFLOOR_DIM).fill(DataUtils.toHalfFloat(DEEP_METRES));
   readonly floorTexture = createSeaFloorTexture(this.floorData, SEAFLOOR_DIM);
 
-  constructor(sky: SkyDome) {
-    const geometry = buildGrid();
-    this.mesh = new Mesh(geometry, createOceanMaterial(sky, this.floorTexture, this.uniforms));
+  constructor(sky: SkyDome, lite = false) {
+    const geometry = buildGrid(lite ? HALF_CELLS_LITE : HALF_CELLS);
+    this.mesh = new Mesh(geometry, createOceanMaterial(sky, this.floorTexture, this.uniforms, lite));
     this.mesh.name = 'ocean';
     this.mesh.renderOrder = 1;
     this.mesh.frustumCulled = false;

@@ -7,8 +7,9 @@ import {
 } from 'three/tsl';
 import { WORLD_MAX, WORLD_MIN } from '../world/constants';
 
-/** 256 x 256 quads over the whole world: 8 m spacing. */
+/** 256 x 256 quads over the whole world: 8 m spacing (128 x 128, 16 m, on the lite tier). */
 const CELLS = 256;
+const CELLS_LITE = 128;
 const NOT_READY_Y = -50;
 /** Normal sampling step in metres (the sea-floor texel is 4 m). */
 const STEP = 8;
@@ -17,22 +18,22 @@ const SAND = vec3(0.52, 0.45, 0.31);
 const GRASS_DRY = vec3(0.21, 0.24, 0.085);
 const GRASS_LUSH = vec3(0.075, 0.16, 0.045);
 
-function buildGrid(): BufferGeometry {
-  const side = CELLS + 1;
+function buildGrid(cells: number): BufferGeometry {
+  const side = cells + 1;
   const span = WORLD_MAX - WORLD_MIN;
   const positions = new Float32Array(side * side * 3);
   for (let j = 0; j < side; j++) {
     for (let i = 0; i < side; i++) {
       const o = (j * side + i) * 3;
-      positions[o] = WORLD_MIN + (i / CELLS) * span;
-      positions[o + 2] = WORLD_MIN + (j / CELLS) * span;
+      positions[o] = WORLD_MIN + (i / cells) * span;
+      positions[o + 2] = WORLD_MIN + (j / cells) * span;
     }
   }
   // 66 049 vertices do not fit 16-bit indices.
-  const indices = new Uint32Array(CELLS * CELLS * 6);
+  const indices = new Uint32Array(cells * cells * 6);
   let k = 0;
-  for (let j = 0; j < CELLS; j++) {
-    for (let i = 0; i < CELLS; i++) {
+  for (let j = 0; j < cells; j++) {
+    for (let i = 0; i < cells; i++) {
       const a = j * side + i;
       const b = a + side;
       indices[k++] = a;
@@ -63,8 +64,8 @@ export class FarTerrain {
   private readonly eyeOffset = uniform(new Vector3());
   private readonly ready = uniform(0);
 
-  constructor(floor: DataTexture) {
-    const geometry = buildGrid();
+  constructor(floor: DataTexture, lite = false) {
+    const geometry = buildGrid(lite ? CELLS_LITE : CELLS);
     this.mesh = new Mesh(geometry, this.createMaterial(floor));
     this.mesh.name = 'far-terrain';
     this.mesh.frustumCulled = false;
