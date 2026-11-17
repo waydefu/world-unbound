@@ -44,6 +44,10 @@ export interface AppState {
   exposure: number;
   atmosphereLutMs: number;
   backgroundSuspends: number;
+  /** GPU frame time percentiles from timestamp queries; null on WebGL2 or without the feature. */
+  gpuP50Ms: number | null;
+  gpuP95Ms: number | null;
+  gpuSamples: number | null;
 }
 
 const scratch: Percentiles = { p50: 0, p95: 0, p99: 0, mean: 0 };
@@ -95,6 +99,9 @@ export function buildReport(
       p50Ms: round(p.p50),
       p95Ms: round(p.p95),
       p99Ms: round(p.p99),
+      gpuP50Ms: state.gpuP50Ms === null ? null : round(state.gpuP50Ms),
+      gpuP95Ms: state.gpuP95Ms === null ? null : round(state.gpuP95Ms),
+      gpuSamples: state.gpuSamples,
       longOver50Ms: stats.longFrames50,
       longOver100Ms: stats.longFrames100,
       refreshHz: round(state.refreshHz, 1),

@@ -10,6 +10,7 @@ import { createRenderer, warmUp, whenDeviceLost, type RendererHandle } from '../
 import { TerrainChunks } from '../render/terrainChunks';
 import { Hud, downloadJson } from '../ui/hud';
 import { CAMERAS, resolveCamera, type ResolvedCamera } from './cameras';
+import { GpuTimer } from './gpuTimer';
 import { formatHud } from './hudText';
 import type { DebugParams } from './params';
 import { pixelRatioForBudget, type QualityTier } from './quality';
@@ -48,6 +49,7 @@ export class App {
   private readonly eye: ResolvedCamera = { x: 0, y: 0, z: 0, targetX: 0, targetY: 0, targetZ: 0, fovDeg: 55 };
   private readonly bufferSize = new Vector2();
   private handle!: RendererHandle;
+  private gpuTimer!: GpuTimer;
   private lastTime = 0;
   private lastLowFrequency = 0;
   private startTime = 0;
@@ -79,6 +81,7 @@ export class App {
       chunksLoaded: 0, chunksInFlight: 0, staleResults: 0, lodBias: 0, terrainMode: 'worker',
       hour: params.hour, day: params.day, season: '', weather: params.weather, sunAltitudeDeg: 0,
       moonIllumination: 0, exposure: 1, atmosphereLutMs: this.clock.lutMs, backgroundSuspends: 0,
+      gpuP50Ms: null, gpuP95Ms: null, gpuSamples: null,
     };
   }
 
@@ -100,6 +103,7 @@ export class App {
       choice: params.backend,
       webgpuUsable: capabilities.webgpu.adapter,
       antialias: tier.antialias,
+      timestampQuery: capabilities.webgpu.features.includes('timestamp-query'),
     });
     this.attachRenderer();
     try {
@@ -134,6 +138,7 @@ export class App {
   private attachRenderer(): void {
     const handle = this.handle;
     this.state.backend = handle.backend;
+    this.gpuTimer = new GpuTimer(handle.renderer, handle.backend === 'webgpu');
     handle.renderer.shadowMap.enabled = this.options.params.shadows;
     this.chunks.setBundled(handle.backend === 'webgpu');
     this.state.fallbackReason = handle.fallbackReason;
@@ -174,6 +179,7 @@ export class App {
       choice: webgpuUsable ? this.options.params.backend : 'webgl2',
       webgpuUsable,
       antialias: this.options.tier.antialias,
+      timestampQuery: this.options.capabilities.webgpu.features.includes('timestamp-query'),
     });
     if (old.backend === 'webgpu' && this.handle.backend === 'webgl2' && !this.handle.fallbackReason) {
       this.handle.fallbackReason = 'WebGPU device lost and no adapter was available';
@@ -252,6 +258,7 @@ export class App {
     this.placeWorld(now / 1000);
     this.environment.setExposure(this.clock.update(interval));
     this.handle.renderer.render(this.scene, this.camera);
+    this.gpuTimer.afterRender();
     if (now - this.lastLowFrequency >= LOW_FREQUENCY_MS) this.lowFrequency(now);
   };
 
@@ -276,6 +283,9 @@ export class App {
     state.lodBias = streamer.lodBias;
     state.terrainMode = streamer.client.mode;
     state.exposure = this.clock.exposure;
+    state.gpuP50Ms = this.gpuTimer.p50();
+    state.gpuP95Ms = this.gpuTimer.p95();
+    state.gpuSamples = this.gpuTimer.samples;
     if (!this.ready && streamer.settled) {
       this.ready = true;
       if (state.worldReadyMs === 0) state.worldReadyMs = performance.now() - this.startTime;
