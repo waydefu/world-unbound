@@ -133,7 +133,10 @@ export function createOceanMaterial(sky: SkyDome, floor: DataTexture, u: OceanUn
     const glint = sunLight.mul(pow(max(R.dot(sunDir), 0), GLINT_EXPONENT)).mul(4).mul(F);
 
     const depth = max(seaDepth(p), 0);
-    const body = mix(DEEP, SHALLOW, depth.negate().div(6).exp()).mul(zenith).mul(0.6);
+    // Water body lit by sky irradiance (zenith radiance x pi x 0.5) plus the sun's illuminance on a horizontal surface.
+    const sunIlluminance = sky.sunRadiance.mul(SUN_SOLID_ANGLE).mul(max(sky.sunDirection.y, 0)).mul(sky.exposureNode);
+    const bodyLight = zenith.mul(Math.PI * 0.5).add(sunIlluminance);
+    const body = mix(DEEP, SHALLOW, depth.negate().div(6).exp()).mul(bodyLight);
 
     // The foam breakup noise has a ~4 m period: past ~400 m it would alias into speckle, so fade it to its mean.
     const shore = smoothstep(1.2, 0, depth).mul(mix(0.75, n1.mul(0.5).add(0.5), smoothstep(400, 60, dist)));

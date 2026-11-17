@@ -7,6 +7,7 @@ import { WEATHER_WETNESS } from '../env/weather';
 import { Environment } from '../render/environment';
 import { attachSunShadows } from '../render/shadows';
 import { createRenderer, warmUp, whenDeviceLost, type RendererHandle } from '../render/renderer';
+import { FarTerrain } from '../render/farTerrain';
 import { TerrainChunks } from '../render/terrainChunks';
 import { Hud, downloadJson } from '../ui/hud';
 import { CAMERAS, resolveCamera, type ResolvedCamera } from './cameras';
@@ -44,6 +45,7 @@ export class App {
   private readonly environment: Environment;
   private readonly clock: EnvironmentClock;
   private readonly chunks: TerrainChunks;
+  private readonly farTerrain: FarTerrain;
   private readonly streamer: TerrainStreamer;
   private readonly hud: Hud;
   private readonly eye: ResolvedCamera = { x: 0, y: 0, z: 0, targetX: 0, targetY: 0, targetZ: 0, fovDeg: 55 };
@@ -66,6 +68,9 @@ export class App {
     this.memory.add(MemoryPartition.Gpu, this.environment.ocean.gpuBytes);
     this.clock = new EnvironmentClock(this.environment);
     this.chunks = new TerrainChunks(this.memory);
+    this.farTerrain = new FarTerrain(this.environment.ocean.floorTexture);
+    this.memory.add(MemoryPartition.Gpu, this.farTerrain.gpuBytes);
+    this.chunks.root.add(this.farTerrain.mesh);
     this.scene.add(this.chunks.root);
     this.streamer = new TerrainStreamer(this.chunks, this.memory, tier.lod);
     this.hud = new Hud(options.hudRoot, {
@@ -120,7 +125,10 @@ export class App {
       this.state.warmupMs = await warmUp(this.handle, this.scene, this.camera, WARMUP_TIMEOUT_MS);
     }
     this.running = true;
-    void this.streamer.client.requestSeaFloor().then((heights) => this.environment.ocean.setSeaFloor(heights));
+    void this.streamer.client.requestSeaFloor().then((heights) => {
+      this.environment.ocean.setSeaFloor(heights);
+      this.farTerrain.setReady();
+    });
 
     window.addEventListener('resize', () => this.resize());
     document.addEventListener('visibilitychange', () => {
@@ -245,6 +253,7 @@ export class App {
   private placeWorld(seconds: number): void {
     this.chunks.root.position.set(-this.eye.x, -this.eye.y, -this.eye.z);
     this.chunks.setEyeOffset(this.eye.x, this.eye.y, this.eye.z);
+    this.farTerrain.setEyeOffset(this.eye.x, this.eye.y, this.eye.z);
     this.environment.ocean.update(this.eye.x, this.eye.y, this.eye.z, seconds);
   }
 

@@ -75,7 +75,7 @@ export class Ocean {
   readonly gpuBytes: number;
   private readonly uniforms = createOceanUniforms();
   private readonly floorData = new Uint16Array(SEAFLOOR_DIM * SEAFLOOR_DIM).fill(DataUtils.toHalfFloat(DEEP_METRES));
-  private readonly floorTexture = createSeaFloorTexture(this.floorData, SEAFLOOR_DIM);
+  readonly floorTexture = createSeaFloorTexture(this.floorData, SEAFLOOR_DIM);
 
   constructor(sky: SkyDome) {
     const geometry = buildGrid();
