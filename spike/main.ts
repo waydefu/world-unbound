@@ -2,6 +2,7 @@ import { pixelRatioForBudget, QUALITY } from '../src/app/quality';
 import { FrameStats, type Percentiles } from '../src/perf/frameStats';
 import { clearResults, downloadJson, loadResults, resultsTable, saveResult, type SpikeResult, type Stat } from './results';
 import type { RunnerFactory } from './runner';
+import { runLoadRamp, showRampResult } from './loadRamp';
 import { buildSpikeScene, orbitPose, type Pose } from './sceneData';
 
 /**
@@ -49,7 +50,9 @@ function showMenu(note?: string): void {
   for (const engine of Object.keys(ENGINES)) links.append(link(engine, `engine=${engine}`));
   const lite = document.createElement('p');
   lite.append('WebGL2 (Lite tier) reference: ', link('three', 'engine=three&backend=webgl2'), ' ', link('babylon', 'engine=babylon&backend=webgl2'));
-  panel.append(title, help, links, lite);
+  const ramp = document.createElement('p');
+  ramp.append('GPU headroom (about 1 minute): ', link('GPU load ramp', 'ramp=1'));
+  panel.append(title, help, links, lite, ramp);
   if (note) {
     const p = document.createElement('p');
     p.className = 'note';
@@ -186,7 +189,22 @@ async function run(engineId: string): Promise<void> {
 }
 
 const engine = params.get('engine');
-if (engine && engine in ENGINES) {
+if (params.get('ramp') === '1') {
+  canvas.hidden = false;
+  const status = document.createElement('p');
+  panel.replaceChildren(status);
+  runLoadRamp(canvas, status)
+    .then((result) => {
+      canvas.hidden = true;
+      (window as Window & { __rampResult?: unknown }).__rampResult = result;
+      panel.replaceChildren();
+      showRampResult(panel, result);
+    })
+    .catch((err: unknown) => {
+      status.textContent = `GPU ramp failed: ${err instanceof Error ? err.message : String(err)}`;
+      (window as Window & { __rampResult?: unknown }).__rampResult = { error: String(err) };
+    });
+} else if (engine && engine in ENGINES) {
   canvas.hidden = false;
   run(engine).catch((err: unknown) => {
     const message = err instanceof Error ? err.message : String(err);
