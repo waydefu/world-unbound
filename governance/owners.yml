@@ -7,7 +7,7 @@ domain_owners:
     owners: ["@waydefu"]
     sensitivity: critical
   architecture:
-    paths: ["docs/contracts/**", "docs/adr/**", "src/world/**", "src/perf/**", "src/app/**", "src/platform/**", "scripts/**", "tests/**"]
+    paths: ["docs/contracts/**", "docs/adr/**", "src/world/**", "src/env/**", "src/perf/**", "src/app/**", "src/platform/**", "scripts/**", "tests/**"]
     owners: ["@waydefu"]
     sensitivity: high
   rendering:
