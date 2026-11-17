@@ -1,5 +1,3 @@
-import { CAMERAS } from '../app/cameras';
-
 /**
  * Telemetry HUD and debug controls. DOM only, refreshed at low frequency by
  * the app; uses flat translucent backgrounds (no backdrop-filter) to keep
@@ -15,16 +13,17 @@ export class Hud {
   private readonly status: HTMLDivElement;
   private visible: boolean;
 
-  constructor(parent: HTMLElement, actions: HudActions, visible: boolean) {
+  /** `cameraNames` labels the camera buttons; the HUD does not depend on the app's camera table. */
+  constructor(parent: HTMLElement, actions: HudActions, visible: boolean, cameraNames: readonly string[]) {
     this.visible = visible;
     const bar = document.createElement('div');
     bar.className = 'hud-bar';
     const toggle = button('HUD', () => this.setVisible(!this.visible));
     toggle.title = 'Toggle telemetry (H)';
     bar.append(toggle);
-    CAMERAS.forEach((camera, index) => {
+    cameraNames.forEach((name, index) => {
       const b = button(String(index), () => actions.setCamera(index));
-      b.title = camera.name;
+      b.title = name;
       bar.append(b);
     });
     bar.append(button('JSON', () => actions.exportReport()));

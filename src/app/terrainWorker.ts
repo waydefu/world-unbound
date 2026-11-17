@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-import { runTerrainJob, type TerrainRequest } from './terrainJob';
+import { runTerrainJob, type TerrainRequest } from '../world/terrainJob';
 
 /** Terrain worker: tile generation and mesh building off the main thread. */
 const scope = self as unknown as DedicatedWorkerGlobalScope;

@@ -1,7 +1,7 @@
 import {
   Color, DirectionalLight, FogExp2, HemisphereLight, Mesh, MeshStandardNodeMaterial, PlaneGeometry, type Scene,
 } from 'three/webgpu';
-import type { Weather } from '../app/params';
+import type { Weather } from '../env/weather';
 import type { CelestialState } from '../env/ephemeris';
 import type { SkySummary } from '../env/skyView';
 import { SkyDome } from './sky';
@@ -69,6 +69,7 @@ export class Environment {
     this.sea = new Mesh(plane, this.seaMaterial);
     this.sea.name = 'sea';
     this.sea.renderOrder = 1;
+    this.sea.receiveShadow = true;
     scene.add(this.sun, this.sun.target, this.moon, this.moon.target, this.ambient, this.sea, this.sky.mesh);
     scene.fog = this.fog;
     scene.background = null;

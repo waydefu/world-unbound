@@ -1,7 +1,7 @@
 import {
-  BufferAttribute, BufferGeometry, FrontSide, Group, Mesh, MeshStandardNodeMaterial, Sphere, Vector3,
+  BufferAttribute, BufferGeometry, BundleGroup, FrontSide, Group, Mesh, MeshStandardNodeMaterial, Sphere, Vector3,
 } from 'three/webgpu';
-import type { TerrainResult } from '../app/terrainJob';
+import type { TerrainResult } from '../world/terrainJob';
 import { MemoryPartition, type MemoryRegistry } from '../perf/memoryRegistry';
 import { CHUNK_COUNT, CHUNK_SIZE, MAX_LOD } from '../world/constants';
 import { lodIndexCount, lodVertexCount, slotCx, slotCz } from '../world/chunkGrid';
@@ -15,9 +15,17 @@ const POOL_LIMIT = 24;
  * and index buffers shared per LOD. Vertex data stays chunk-local; chunk
  * meshes sit under `root`, which the app moves by -camera each frame so the
  * GPU only ever sees camera-relative f32 positions.
+ *
+ * Chunks live in a BundleGroup (ADR-0002 §10): on WebGPU the draws are
+ * recorded once into a render bundle and replayed, re-recorded only when a
+ * chunk is installed or evicted. A bundle is recorded from one view, so chunks
+ * are not frustum culled while bundling; on WebGL2 the group is a plain group
+ * and culling stays on.
  */
 export class TerrainChunks {
   readonly root = new Group();
+  private readonly bundle = new BundleGroup();
+  private bundled = false;
   readonly material: MeshStandardNodeMaterial;
   private readonly meshes: (Mesh | null)[] = new Array<Mesh | null>(CHUNK_COUNT).fill(null);
   private readonly meshLod = new Int8Array(CHUNK_COUNT).fill(-1);
@@ -43,6 +51,16 @@ export class TerrainChunks {
       memory.add(MemoryPartition.CpuRetained, index.array.byteLength);
     }
     this.root.name = 'terrain-root';
+    this.bundle.name = 'terrain-bundle';
+    this.root.add(this.bundle);
+  }
+
+  /** Called once the backend is known (and again after a device-loss rebuild). */
+  setBundled(bundled: boolean): void {
+    this.bundled = bundled;
+    for (const mesh of this.meshes) if (mesh) mesh.frustumCulled = !bundled;
+    for (const mesh of this.meshPool) mesh.frustumCulled = !bundled;
+    this.bundle.needsUpdate = true;
   }
 
   private acquireGeometry(lod: number): BufferGeometry {
@@ -83,12 +101,11 @@ export class TerrainChunks {
       this.releaseGeometry(this.meshLod[slot], mesh.geometry);
       this.residentTriangles -= lodIndexCount(this.meshLod[slot]) / 3;
     } else {
-      mesh = this.meshPool.pop() ?? new Mesh(undefined, this.material);
-      mesh.matrixAutoUpdate = false;
+      mesh = this.meshPool.pop() ?? this.createMesh();
       mesh.position.set(slotCx(slot) * CHUNK_SIZE, 0, slotCz(slot) * CHUNK_SIZE);
       mesh.updateMatrix();
       this.meshes[slot] = mesh;
-      this.root.add(mesh);
+      this.bundle.add(mesh);
     }
     const geometry = this.acquireGeometry(lod);
     copyInto(geometry.getAttribute('position') as BufferAttribute, result.positions);
@@ -102,6 +119,16 @@ export class TerrainChunks {
     mesh.geometry = geometry;
     this.meshLod[slot] = lod;
     this.residentTriangles += lodIndexCount(lod) / 3;
+    this.bundle.needsUpdate = true;
+  }
+
+  private createMesh(): Mesh {
+    const mesh = new Mesh(undefined, this.material);
+    mesh.matrixAutoUpdate = false;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.frustumCulled = !this.bundled;
+    return mesh;
   }
 
   evict(slot: number): void {
@@ -109,7 +136,8 @@ export class TerrainChunks {
     if (!mesh) return;
     this.releaseGeometry(this.meshLod[slot], mesh.geometry);
     this.residentTriangles -= lodIndexCount(this.meshLod[slot]) / 3;
-    this.root.remove(mesh);
+    this.bundle.remove(mesh);
+    this.bundle.needsUpdate = true;
     this.meshes[slot] = null;
     this.meshLod[slot] = -1;
     this.meshPool.push(mesh);

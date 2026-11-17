@@ -1,4 +1,4 @@
-import { runTerrainJob, type TerrainRequest, type TerrainResult } from './terrainJob';
+import { runTerrainJob, type TerrainRequest, type TerrainResult } from '../world/terrainJob';
 
 /**
  * Sends terrain jobs to the worker and queues results for the frame loop.

@@ -1,7 +1,7 @@
 import { QUAY_Z, SEA_LEVEL } from '../world/constants';
 import { heightAt } from '../world/heightField';
 import { coastlineZ } from '../world/terrainShape';
-import type { Weather } from './params';
+import type { Weather } from '../env/weather';
 
 /**
  * The six fixed acceptance cameras. Positions are given relative to the
