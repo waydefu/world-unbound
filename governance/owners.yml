@@ -7,11 +7,11 @@ domain_owners:
     owners: ["@waydefu"]
     sensitivity: critical
   architecture:
-    paths: ["docs/contracts/**", "packages/core/**", "packages/ecs/**", "packages/physics/**"]
+    paths: ["docs/contracts/**", "docs/adr/**", "src/world/**", "src/perf/**", "src/app/**", "src/platform/**", "scripts/**", "tests/**"]
     owners: ["@waydefu"]
     sensitivity: high
   rendering:
-    paths: ["packages/renderer/**", "shaders/**", "assets/**"]
+    paths: ["src/render/**", "src/ui/**", "shaders/**", "assets/**", "public/**"]
     owners: ["@waydefu"]
     sensitivity: high
 approval_note: "Single human owner: independent two-person approval is NOT satisfied at M0."

@@ -31,4 +31,4 @@ Never remove tests, bypass checks, weaken assertions, silently update snapshots,
 
 ## Architecture goals
 
-TypeScript orchestrates application logic; Rust/Wasm and WGSL/WebGPU should only be introduced when benefits are supported by profiling and supported-device tests. Respect ECS/physics execution-order, serialization, shader-binding, asset, and platform contracts.
+TypeScript orchestrates application logic and the data-oriented world core. Rendering uses three.js WebGPURenderer with TSL; WebGPU is the primary backend and WebGL2 is a required, visibly flagged fallback (see docs/adr/0001-engine-architecture.md). Hand-written WGSL and Rust/Wasm should only be introduced when benefits are supported by profiling and supported-device tests. Respect ECS/physics execution-order, serialization, shader-binding, asset, and platform contracts, and the module boundaries enforced by scripts/audit.mjs.
