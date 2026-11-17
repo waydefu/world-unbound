@@ -1,12 +1,10 @@
 import {
-  BufferAttribute, BufferGeometry, Color, DirectionalLight, Fog, HemisphereLight, Mesh, MeshStandardNodeMaterial,
-  NoToneMapping, PerspectiveCamera, Scene, WebGPURenderer,
+  BufferAttribute, BufferGeometry, BundleGroup, Color, DirectionalLight, Fog, Group, HemisphereLight, Mesh,
+  MeshStandardNodeMaterial, NoToneMapping, PerspectiveCamera, Scene, WebGPURenderer,
 } from 'three/webgpu';
 import { CHUNK_SIZE } from '../src/world/constants';
 import { LIGHTING, type Pose } from './sceneData';
 import type { Runner, RunnerFactory } from './runner';
-
-const RESOLVE_EVERY = 30;
 
 export const createThreeRunner: RunnerFactory = async (canvas, data, options) => {
   const renderer = new WebGPURenderer({
@@ -32,6 +30,10 @@ export const createThreeRunner: RunnerFactory = async (canvas, data, options) =>
 
   const material = new MeshStandardNodeMaterial({ vertexColors: true, roughness: 0.96, metalness: 0 });
   const indices = data.indices.map((array) => new BufferAttribute(array, 1));
+  // Render bundles exist only on the WebGPU backend; elsewhere the group is a plain Group.
+  const bundles = options.snapshot && isWebgpu;
+  const terrain = bundles ? new BundleGroup() : new Group();
+  scene.add(terrain);
   for (const chunk of data.chunks) {
     const geometry = new BufferGeometry();
     geometry.setAttribute('position', new BufferAttribute(chunk.mesh.positions, 3));
@@ -43,22 +45,26 @@ export const createThreeRunner: RunnerFactory = async (canvas, data, options) =>
     mesh.position.set(chunk.cx * CHUNK_SIZE, 0, chunk.cz * CHUNK_SIZE);
     mesh.matrixAutoUpdate = false;
     mesh.updateMatrix();
-    scene.add(mesh);
+    // A bundle is recorded once from the camera at that moment; chunks culled
+    // then would never appear, so in bundle mode every chunk is recorded.
+    if (options.snapshot) mesh.frustumCulled = false;
+    terrain.add(mesh);
   }
 
   const camera = new PerspectiveCamera(LIGHTING.fovDeg, options.width / options.height, LIGHTING.near, LIGHTING.far);
   await renderer.compileAsync(scene, camera);
 
+  // three.js keeps one timestamp pair per render context and overwrites it every
+  // frame, so a resolve returns the most recent frame's GPU time, not a sum.
   const timestamps = isWebgpu && renderer.hasFeature('timestamp-query');
-  let framesSinceResolve = 0;
   let pending = false;
   let lastGpu: number | null = null;
 
   const runner: Runner = {
-    engine: 'three',
+    engine: options.snapshot ? 'three-bundle' : 'three',
     backend: isWebgpu ? 'webgpu' : 'webgl2',
     gpuScope: 'all render passes (trackTimestamp)',
-    snapshotActive: false,
+    snapshotActive: bundles,
     setPose(pose: Pose) {
       camera.position.set(pose.eye[0], pose.eye[1], pose.eye[2]);
       camera.lookAt(pose.target[0], pose.target[1], pose.target[2]);
@@ -70,14 +76,10 @@ export const createThreeRunner: RunnerFactory = async (canvas, data, options) =>
       return renderer.info.render.drawCalls;
     },
     afterFrame() {
-      if (!timestamps) return;
-      framesSinceResolve++;
-      if (pending || framesSinceResolve < RESOLVE_EVERY) return;
+      if (!timestamps || pending) return;
       pending = true;
-      const frames = framesSinceResolve;
-      framesSinceResolve = 0;
-      void renderer.resolveTimestampsAsync('render').then((total) => {
-        if (typeof total === 'number' && total > 0) lastGpu = total / frames;
+      void renderer.resolveTimestampsAsync('render').then((latest) => {
+        if (typeof latest === 'number' && latest > 0) lastGpu = latest;
         pending = false;
       });
     },
