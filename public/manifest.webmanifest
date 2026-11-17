@@ -1,0 +1,11 @@
+{
+  "name": "WORLD UNBOUND — Sankt Aldric Harbour",
+  "short_name": "World Unbound",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#05070a",
+  "theme_color": "#05070a",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
