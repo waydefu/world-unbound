@@ -1,5 +1,6 @@
 import { TILE_DIM } from './constants';
 import { generateTile } from './heightField';
+import { AO_DIM, generateAoTile } from './terrainAo';
 import { buildChunkMesh, createMeshBuffers } from './terrainMesh';
 
 /** Messages exchanged with the terrain worker (also used by the main-thread fallback). */
@@ -24,6 +25,7 @@ export interface TerrainResult {
 
 const TILE_CACHE_LIMIT = 256;
 const tileCache = new Map<number, Int16Array>();
+const aoTile = new Int16Array(AO_DIM * AO_DIM);
 
 function tileFor(slot: number, cx: number, cz: number): Int16Array {
   const cached = tileCache.get(slot);
@@ -50,7 +52,8 @@ function tileFor(slot: number, cx: number, cz: number): Int16Array {
 export function runTerrainJob(request: TerrainRequest): TerrainResult {
   const tile = tileFor(request.slot, request.cx, request.cz);
   const buffers = createMeshBuffers(request.lod);
-  buildChunkMesh(tile, request.cx, request.cz, request.lod, buffers);
+  generateAoTile(request.cx, request.cz, aoTile);
+  buildChunkMesh(tile, request.cx, request.cz, request.lod, buffers, aoTile);
   return {
     slot: request.slot,
     seq: request.seq,
