@@ -5,7 +5,7 @@ Thanks for contributing. This repository is bootstrapping its architecture, so p
 ## Development workflow
 
 1. Read [AGENTS.md](AGENTS.md), [SECURITY.md](SECURITY.md) and the relevant [contracts](docs/contracts/).
-2. Open a Bug, Feature or Performance Issue. Security vulnerabilities must use private reporting instead.
+2. Open a Bug, Feature, Performance or Task Issue. Security vulnerabilities must use private reporting instead.
 3. Work in a branch; do not force-push main.
 4. Keep each PR focused and complete all five questions in the PR template.
 5. Attach reproducible commands and observed results. Clearly mark tests that were not run.

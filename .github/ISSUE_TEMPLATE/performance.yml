@@ -1,6 +1,7 @@
 name: "Performance issue"
 description: "Document a measured regression or optimization target."
 title: "[Performance] "
+labels: ["needs/triage", "impact/performance"]
 body:
   - type: textarea
     id: scenario

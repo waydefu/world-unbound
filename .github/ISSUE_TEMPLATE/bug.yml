@@ -1,6 +1,8 @@
 name: "Bug report"
 description: "Report a reproducible functional defect (not a security vulnerability)."
 title: "[Bug] "
+type: "Bug"
+labels: ["needs/triage"]
 body:
   - type: markdown
     attributes:
@@ -33,6 +35,11 @@ body:
       placeholder: "Commit SHA or release"
     validations:
       required: true
+  - type: input
+    id: last_good
+    attributes:
+      label: "Last known good revision (regressions only)"
+      placeholder: "Commit SHA or release where this last worked"
   - type: textarea
     id: environment
     attributes:

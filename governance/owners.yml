@@ -3,7 +3,7 @@ repository: waydefu/world-unbound
 default_owner: "@waydefu"
 domain_owners:
   governance:
-    paths: ["governance/**", ".github/workflows/**", ".github/actions/**", ".github/CODEOWNERS", "AGENTS.md"]
+    paths: ["governance/**", ".github/workflows/**", ".github/actions/**", ".github/scripts/**", ".github/CODEOWNERS", "AGENTS.md"]
     owners: ["@waydefu"]
     sensitivity: critical
   architecture:
