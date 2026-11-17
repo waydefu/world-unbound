@@ -1,5 +1,5 @@
 import {
-  BufferAttribute, BufferGeometry, BundleGroup, Group, Mesh, type MeshStandardNodeMaterial, Sphere, Vector3,
+  BufferAttribute, BufferGeometry, BundleGroup, type DataTexture, Group, Mesh, type MeshStandardNodeMaterial, Sphere, Vector3,
 } from 'three/webgpu';
 import type { TerrainResult } from '../world/terrainJob';
 import { MemoryPartition, type MemoryRegistry } from '../perf/memoryRegistry';
@@ -38,8 +38,8 @@ export class TerrainChunks {
   private readonly indices: BufferAttribute[] = [];
   residentTriangles = 0;
 
-  constructor(private readonly memory: MemoryRegistry, lite = false) {
-    this.terrainMaterial = createTerrainMaterial(lite);
+  constructor(private readonly memory: MemoryRegistry, noise: DataTexture, lite = false) {
+    this.terrainMaterial = createTerrainMaterial(noise, lite);
     this.material = this.terrainMaterial.material;
     for (let lod = 0; lod <= MAX_LOD; lod++) {
       this.geometryPool.push([]);

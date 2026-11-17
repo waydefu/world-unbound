@@ -72,8 +72,8 @@ export class App {
     if (params.shadows) this.memory.add(MemoryPartition.Gpu, attachSunShadows(this.environment.sun, tier.shadows));
     this.memory.add(MemoryPartition.Gpu, this.environment.ocean.gpuBytes);
     this.clock = new EnvironmentClock(this.environment);
-    this.chunks = new TerrainChunks(this.memory, lite);
-    this.farTerrain = new FarTerrain(this.environment.ocean.floorTexture, lite);
+    this.chunks = new TerrainChunks(this.memory, noise.texture, lite);
+    this.farTerrain = new FarTerrain(this.environment.ocean.floorTexture, noise.texture, lite);
     this.memory.add(MemoryPartition.Gpu, this.farTerrain.gpuBytes);
     this.chunks.root.add(this.farTerrain.mesh);
     this.scene.add(this.chunks.root);
