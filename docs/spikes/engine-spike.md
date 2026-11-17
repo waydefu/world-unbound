@@ -1,6 +1,6 @@
 # Engine spike: three.js vs Babylon.js (ADR-0002 §8)
 
-Status: **round 1 done on the owner's phone; round 2 (three-bundle) pending.**
+Status: **closed 2026-11-17 — stay on three.js; render bundles are mandatory for static geometry** (ADR-0002 §10).
 
 ## Question
 
@@ -72,6 +72,43 @@ Readings:
 
 Decision status: Babylon's snapshot mode clears the CPU criterion by a wide margin, but the rule cannot be applied yet. The three.js GPU figures were wrong, and the follow-up this document already named — render bundles inside three.js — was not measured. Round 2 adds `three-bundle`.
 
-### Round 2
+### Round 2 and confirmation — 2026-11-17, same phone and buffer, GPU timing fixed
 
-Pending. Order: three, three-bundle, babylon-snapshot, three.
+All runs 60 FPS, zero long frames, frame-interval p95 16.7–16.8 ms. GPU p95 is 12.8–13.4 ms in every mode.
+
+| Time (UTC) | Mode | CPU p50 | CPU p95 | GPU p95 |
+| --- | --- | --- | --- | --- |
+| 07:25 | three | 5.2 ms | 7.0 ms | 12.9 ms |
+| 07:25 | three-bundle | 1.5 ms | 2.3 ms | 13.2 ms |
+| 07:26 | babylon | 6.3 ms | 7.9 ms | 12.8 ms |
+| 07:26 | babylon-snapshot | 0.4 ms | 1.0 ms | 13.4 ms |
+| 07:34 | three | 5.4 ms | 7.3 ms | 13.0 ms |
+| 07:35 | three-bundle | 1.3 ms | 2.2 ms | 13.0 ms |
+| 07:35 | babylon | 5.7 ms | 7.4 ms | 13.0 ms |
+| 07:36 | babylon-snapshot | 0.4 ms | 1.1 ms | 13.2 ms |
+| 07:36 | three-bundle | 0.9 ms | 1.6 ms | 13.0 ms |
+| 07:37 | babylon-snapshot | 0.4 ms | 1.3 ms | 13.0 ms |
+| 07:38 | babylon | 4.1 ms | 7.6 ms | 12.9 ms |
+
+### Decision
+
+The rule compares the better mode of each engine (bundles on both sides, the stricter reading; the rule was written before `three-bundle` existed). Before the confirmation runs, the owner was told a switch needs Babylon to win **both** alternating pairs by at least 30 % on CPU p95.
+
+| Pair | three-bundle | babylon-snapshot | Difference | ≥ 30 % |
+| --- | --- | --- | --- | --- |
+| Round 2 | 2.3 ms | 1.0 ms | −57 % | yes |
+| Confirmation 1 | 2.2 ms | 1.1 ms | −50 % | yes |
+| Confirmation 2 | 1.6 ms | 1.3 ms | −19 % | **no** |
+
+Thermal drift: three without bundles moved 7.0 → 7.3 ms (+4 %). GPU and frame interval show no difference.
+
+**Outcome: the criterion is not met consistently, so the renderer stays on three.js.** Stated plainly: Babylon's snapshot mode was lower in every pair (mean CPU p95 1.1 vs 2.0 ms; p50 0.4 vs 0.9–1.5 ms). The absolute gap is under 1 ms (about 6 % of a 16.7 ms frame), and `three-bundle` itself varied between 1.6 and 2.3 ms. That gap does not justify rewriting the render layer or giving up TSL.
+
+### What the spike settled regardless of engine
+
+1. Without render bundles, CPU submission costs about 25 µs per draw and becomes the bottleneck once shadows, buildings and vegetation multiply draws. **Static geometry goes into `BundleGroup`.**
+2. With bundles, CPU submission drops from about 7 ms to 1.6–2.3 ms while drawing 4.5× more chunks.
+3. Per-frame frustum culling saved no measurable GPU time in this scene.
+4. GPU time is 11–13 ms per frame at 2.2 MP with 4× MSAA, but a 60 Hz cap lets mobile DVFS stretch it. Before G1 adds effects, a load test must measure real headroom.
+
+Open questions not covered here: iPhone Safari; chunk streaming invalidates bundles (re-recording cost); dynamic objects stay outside bundles.
