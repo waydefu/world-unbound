@@ -2,7 +2,7 @@ import { BufferAttribute, BufferGeometry, DataUtils, Mesh } from 'three/webgpu';
 import { waveSet, waveSlope } from '../env/ocean';
 import type { Weather } from '../env/weather';
 import { SEAFLOOR_DIM } from '../world/seaFloor';
-import { createOceanMaterial, createOceanUniforms, createSeaFloorTexture } from './oceanMaterial';
+import { FLOOR_OFFSET, createOceanMaterial, createOceanUniforms, createSeaFloorTexture } from './oceanMaterial';
 import type { SkyDome } from './sky';
 
 /** Grid: 160 x 160 quads (80 x 80 on the lite tier), 1.5 m at the centre growing geometrically to +-3500 m. */
@@ -75,7 +75,7 @@ export class Ocean {
   /** GPU bytes held by the grid and the sea-floor texture (for the memory partition). */
   readonly gpuBytes: number;
   private readonly uniforms = createOceanUniforms();
-  private readonly floorData = new Uint16Array(SEAFLOOR_DIM * SEAFLOOR_DIM).fill(DataUtils.toHalfFloat(DEEP_METRES));
+  private readonly floorData = new Uint16Array(SEAFLOOR_DIM * SEAFLOOR_DIM).fill(DataUtils.toHalfFloat(DEEP_METRES - FLOOR_OFFSET));
   readonly floorTexture = createSeaFloorTexture(this.floorData, SEAFLOOR_DIM);
 
   constructor(sky: SkyDome, lite = false) {
@@ -98,7 +98,7 @@ export class Ocean {
    */
   setSeaFloor(heights: Float32Array): void {
     const n = Math.min(heights.length, this.floorData.length);
-    for (let i = 0; i < n; i++) this.floorData[i] = DataUtils.toHalfFloat(heights[i]);
+    for (let i = 0; i < n; i++) this.floorData[i] = DataUtils.toHalfFloat(heights[i] - FLOOR_OFFSET);
     this.floorTexture.needsUpdate = true;
   }
 

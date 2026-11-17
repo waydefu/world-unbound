@@ -115,7 +115,8 @@ export function squaredDistance(isSource, dim) {
 }
 
 /**
- * Replaces water cells by synthetic seabed: -min(55, 1 + 0.55 d), d = metres to the nearest land cell.
+ * Replaces water cells by synthetic seabed: -depth(d) with depth(d) = d < 20 ? 0.0275 d^2 : 0.55 d - 11 (continuous at 20 m), capped at 55 m,
+ * d = max(0, metres to the nearest land cell centre - 1).
  * Land is left as measured. Returns the water share in [0, 1].
  */
 export function synthesiseSeabed(height, dim, spacing) {
@@ -129,8 +130,8 @@ export function synthesiseSeabed(height, dim, spacing) {
   const dist2 = squaredDistance(land, dim);
   for (let i = 0; i < height.length; i++) {
     if (!water[i]) continue;
-    const d = Math.sqrt(dist2[i]) * spacing;
-    height[i] = -Math.min(55, 1 + 0.55 * d);
+    const d = Math.max(0, Math.sqrt(dist2[i]) * spacing - 1);
+    height[i] = -Math.min(55, d < 20 ? 0.0275 * d * d : 0.55 * d - 11);
   }
   return waterCount / height.length;
 }

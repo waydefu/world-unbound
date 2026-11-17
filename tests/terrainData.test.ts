@@ -104,11 +104,11 @@ describe('committed Hellesylt tiles', () => {
     expect(steepest * manifest.quantum_m).toBeLessThan(40);
   });
 
-  it('synthesises seabed -min(55, 1 + 0.55 d) from the distance to land', () => {
+  it('synthesises a smooth seabed (0.0275 d^2, then 0.55 d - 11, capped at 55 m) from the distance to land', () => {
     const grid = terrainGrid as Int16Array;
     const n = TERRAIN_SAMPLES;
     const h = (i: number, j: number): number => grid[j * n + i] * manifest.quantum_m + manifest.offset_m;
-    const reach = 70; // cells; 1 + 0.55 * 140 m is already past the 55 m cap
+    const reach = 70; // cells; 0.55 * 140 m - 11 is already past the 55 m cap
     let seed = 99;
     let checked = 0;
     let shallow = 0;
@@ -117,14 +117,15 @@ describe('committed Hellesylt tiles', () => {
       const i = 100 + (seed % (n - 200));
       seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
       const j = 100 + (seed % (n - 200));
-      if (h(i, j) > -2) continue;
+      if (h(i, j) > -3) continue;
       let best = Infinity;
       for (let dj = -reach; dj <= reach; dj++) {
         for (let di = -reach; di <= reach; di++) {
-          if (h(i + di, j + dj) > -1) best = Math.min(best, Math.hypot(di, dj) * 2);
+          if (h(i + di, j + dj) > -0.01) best = Math.min(best, Math.hypot(di, dj) * 2);
         }
       }
-      const expected = -Math.min(55, 1 + 0.55 * best);
+      const d = Math.max(0, best - 1);
+      const expected = -Math.min(55, d < 20 ? 0.0275 * d * d : 0.55 * d - 11);
       expect(Math.abs(h(i, j) - expected)).toBeLessThan(0.05);
       checked++;
       if (expected > -50) shallow++;

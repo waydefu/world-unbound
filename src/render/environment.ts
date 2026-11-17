@@ -92,7 +92,13 @@ export class Environment {
       Math.PI * overcastMix(1) + night * MOON_TINT.g,
       Math.PI * overcastMix(2) + night * MOON_TINT.b,
     );
-    this.ambient.groundColor.copy(this.ambient.color).multiplyScalar(0.25);
+    // Ground bounce: 0.35 x sky plus 10% of the sun's irradiance scattered by average (0.25) ground albedo.
+    const bounce = 0.1 * 0.25 * this.sunBase;
+    this.ambient.groundColor.setRGB(
+      0.35 * this.ambient.color.r + bounce * t[0],
+      0.35 * this.ambient.color.g + bounce * t[1],
+      0.35 * this.ambient.color.b + bounce * t[2],
+    );
 
     // Cloud deck: CIE standard overcast sky with the same irradiance, E = 7 pi Lz / 9,
     // so the overcast sky and the ambient light it casts always agree.

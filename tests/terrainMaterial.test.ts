@@ -29,13 +29,19 @@ describe('classifyTerrain', () => {
     }
   });
 
-  it('classifies beach as sand, steep slopes as rock and the town centre as earth', () => {
+  it('classifies beach as sand, steep slopes as rock, the village flats as grass and no earth disc', () => {
     classifyTerrain(900, 900, 0.5, 1, out);
     expect(out[0]).toBeGreaterThan(0.5);
     classifyTerrain(900, 900, 20, 0.6, out);
     expect(out[1]).toBeGreaterThan(0.95);
     classifyTerrain(TOWN_X, TOWN_Z, 1.6, 1, out);
-    expect(out[2]).toBeGreaterThanOrEqual(0.8);
+    // Intentional change (phase E): the earth channel is reserved for G2 paving and is 0 everywhere; the delta is grass.
+    expect(out[2]).toBe(0);
+    expect(out[0]).toBe(0);
+    classifyTerrain(900, 900, 2.5, 1, out);
+    expect(out[0]).toBe(0);
+    classifyTerrain(900, 900, 0.8, 0.9, out); // beach too steep (>20 deg) for sand
+    expect(out[0]).toBeLessThan(0.3);
   });
 });
 
