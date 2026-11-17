@@ -17,6 +17,7 @@ rules:
   - {glob: "**/.npmrc", baseline_risk: R2, owner: "@waydefu", reason: "Registry and install behavior configuration"}
   - {glob: "**/pnpm-workspace.yaml", baseline_risk: R2, owner: "@waydefu", reason: "Workspace scope and dependency resolution"}
   - {glob: "**/pnpm-lock.yaml", baseline_risk: R2, owner: "@waydefu", reason: "Review lockfile source and integrity"}
+  - {glob: "**/package-lock.json", baseline_risk: R2, owner: "@waydefu", reason: "Review lockfile source and integrity"}
   - {glob: "**/Cargo.lock", baseline_risk: R2, owner: "@waydefu", reason: "Review lockfile source and integrity"}
   - {glob: ".devcontainer/**", baseline_risk: R2, owner: "@waydefu", reason: "Developer execution environment"}
   - {glob: ".vscode/**", baseline_risk: R2, owner: "@waydefu", reason: "Editor tasks or launch commands"}
