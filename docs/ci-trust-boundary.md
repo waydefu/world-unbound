@@ -14,3 +14,5 @@ The Pages workflow runs only for main (and manual dispatch, which cannot deploy 
 The final-gate checks exact prerequisite job IDs and requires each conclusion to be success. The M0 validator runs from the PR head, so it **cannot** by itself prevent malicious workflow edits. M1 must enforce protected base-policy verification and enable protect-main Ruleset after the first verified run.
 
 Do not use untrusted local actions inside privileged workflow_run/pull_request_target processes, nor inherit all secrets into high-trust reusable workflows. Do not restore untrusted caches into releases.
+
+The label sync workflow runs only from main (merged dictionary changes or manual dispatch). Its single job holds `issues: write`, reads the dictionary from the checked-out default branch, and never deletes labels unless the dispatching maintainer selects *prune*. API errors fail the job instead of being skipped.

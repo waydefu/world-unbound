@@ -1,0 +1,49 @@
+name: Governance / Label sync
+
+# Makes the GitHub labels match governance/labels.yml. Runs only from the
+# protected default branch: after a reviewed change to the dictionary or to
+# this sync, or by manual dispatch. Deleting labels outside the dictionary
+# needs an explicit manual choice.
+on:
+  push:
+    branches: [main]
+    paths:
+      - governance/labels.yml
+      - .github/workflows/labels.yml
+      - .github/scripts/sync_labels.py
+  workflow_dispatch:
+    inputs:
+      prune:
+        description: "Also delete labels that are not in governance/labels.yml"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: label-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: label-sync
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout the protected default branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Convert the dictionary to JSON (safe YAML load)
+        run: |
+          ruby -ryaml -rjson -e 'puts JSON.generate(YAML.safe_load(File.read("governance/labels.yml"), permitted_classes: [], permitted_symbols: [], aliases: false))' > "$RUNNER_TEMP/labels.json"
+      - name: Sync labels
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PRUNE: ${{ inputs.prune == true && '--prune' || '' }}
+        run: python3 .github/scripts/sync_labels.py --apply $PRUNE < "$RUNNER_TEMP/labels.json"

@@ -28,6 +28,7 @@ REQUIRED = [
     "package.json", "package-lock.json", ".nvmrc", "index.html", "vite.config.ts", "tsconfig.json",
     "scripts/audit.mjs", "scripts/audit-visual.mjs", "src/main.ts",
     ".github/workflows/pages.yml", "docs/adr/0001-engine-architecture.md",
+    ".github/workflows/labels.yml", ".github/scripts/sync_labels.py",
 ]
 errors = []
 for name in REQUIRED:

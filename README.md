@@ -42,7 +42,7 @@ M0 is **not complete** until a human owner has done and checked the following:
 - [ ] protect-main Ruleset is *Active*: require PR, block force-push and deletion, require status check `final-gate` with source *GitHub Actions*, require branches to be up to date, restrict bypass.
 - [ ] Negative test: a direct push to main is rejected (record the output as evidence).
 - [ ] Decide required approvals. With a single maintainer, a PR author cannot approve their own PR; requiring approvals or Code Owner review would block every owner-authored PR unless bypassed. Two-person control stays **unmet** either way.
-- [ ] Create the labels declared in [governance/labels.yml](governance/labels.yml) (none exist on GitHub yet; Issue Forms reference `needs/triage` and `impact/performance`).
+- [x] Labels are synced from [governance/labels.yml](governance/labels.yml) by `.github/workflows/labels.yml` on every merged change to the dictionary. GitHub's default labels (`bug`, `wontfix`, ...) are kept; run the workflow manually with *prune* to remove them. Verify in the Actions tab after merge.
 - [ ] Configure Issue Fields (Priority, Severity, Risk, Component, ...) and a Project whose automation maps PR merge to *Integrated*, not *Done*.
 - [ ] Enable Private Vulnerability Reporting, Dependabot alerts, secret scanning and push protection.
 - [ ] Enable GitHub Pages with source *GitHub Actions* (Settings → Pages) before the next merge to main, or the deploy job fails. Optionally restrict the `github-pages` environment to `main` and add yourself as a required reviewer.
