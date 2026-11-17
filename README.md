@@ -8,7 +8,7 @@ An open-source project starting from a verifiable GitHub governance baseline.
 
 - **Governance M0:** complete on 2026-11-17 (negative test passed). Independent two-person review remains an unmet control.
 - **Governance M1:** complete on the agent side ([status](docs/governance/status.md)).
-- **Game G0 (engine skeleton):** Vite + TypeScript + three.js WebGPURenderer (WebGL2 fallback), deterministic terrain and coastline, chunk streaming in a Worker, hysteresis dynamic resolution, telemetry HUD with JSON export, six fixed test cameras, static and headless audits.
+- **Game G0 (engine skeleton):** Vite + TypeScript + three.js WebGPURenderer (WebGL2 fallback), chunk streaming in a Worker, hysteresis dynamic resolution, telemetry HUD with JSON export, six fixed test cameras, static and headless audits.
 - **Game G1 (in progress):** physical sky and atmosphere, calendar and ephemeris, auto-exposure, cascaded sun shadows, terrain in render bundles. No buildings, vegetation, real ocean or gameplay yet.
 
 Partly verified on the owner's phone (engine spike, GPU ramp); shadows not yet. Performance, thermal and WebGPU results must come from hardware tests.
@@ -22,6 +22,10 @@ npm run check    # typecheck, tests, build, audits
 ```
 
 Once Pages is enabled, the site is served at https://waydefu.github.io/world-unbound/. Debug parameters: `?cam=0..5 &backend=webgpu|webgl2 &q=low|med|high &scale=0.5..1.5 &hour=0..24 &day=0..32 &wx=clear|cloudy|rain|storm &shadows=0`. Press `H` or tap **HUD** for telemetry; **JSON** exports a report.
+
+## Credits
+
+- **Terrain:** © Kartverket, [Nasjonal høydemodell (NHM) DTM 1 m](https://www.kartverket.no/en/api-and-data/terms-of-use), licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Modified: resampled to 2 m, quantised to 2 cm, seabed synthesised. The baked tiles and their digests are listed in [assets/manifests/terrain-hellesylt.json](assets/manifests/terrain-hellesylt.json); the pipeline is [scripts/terrain/bake-hellesylt.mjs](scripts/terrain/bake-hellesylt.mjs). The boot screen and the HUD show "Terrain © Kartverket (CC BY 4.0), modified".
 
 ## Governance
 
@@ -80,8 +84,9 @@ Game milestones (specification v1.0, renamed G0–G3 to avoid clashing with the 
 - **G0.5:** engine spike done — three.js stays, render bundles mandatory for static geometry ([results](docs/spikes/engine-spike.md)); erosion prototype not yet good enough, deferred until after G1 ([findings](docs/spikes/terrain-erosion.md)); build-time bake pipeline (eroded terrain), shared environment and query contracts, worker skeletons, telemetry fixes — see [ADR-0002](docs/adr/0002-target-architecture.md)
 - **G1:** atmosphere, PBR weathering materials, multi-band ocean
   - G1.0 GPU load ramp (spike page) to measure headroom before effects
-  - G1.1 physical sky and atmosphere: 32-day calendar at 53.9° N, sun/moon ephemeris, Hillaire 2020 transmittance / multiple-scattering / sky-view tables (CPU, identical on WebGPU and WebGL2), CIE overcast cloud deck, aerial-perspective fog, auto-exposure with pre-exposure; `?day=0..32` (default 6)
+  - G1.1 physical sky and atmosphere: 32-day calendar at 62.083° N (Hellesylt since G1.5), sun/moon ephemeris, Hillaire 2020 transmittance / multiple-scattering / sky-view tables (CPU, identical on WebGPU and WebGL2), CIE overcast cloud deck, aerial-perspective fog, auto-exposure with pre-exposure; `?day=0..32` (default 6)
   - G1.2 cascaded sun shadows (2-3 cascades per tier, `?shadows=0` for A/B) and main-app terrain in a render bundle on WebGPU
+  - G1.5 real terrain: the 4 km square around Hellesylt, Norway, baked from Kartverket's 1 m DTM into 16 committed height tiles (`assets/terrain/hellesylt/`, manifest in `assets/manifests/`), streamed at 2 m; seabed synthesised; sun at 62.083° N ([spec](docs/specs/g1.5-real-terrain.md))
 - **G2:** Hanseatic town architecture and period vegetation
 - **G3:** gameplay loop, procedural audio, saves
 

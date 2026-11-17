@@ -68,3 +68,14 @@ canvas.viewport { display: block; width: 100%; height: 100%; }
   background: #05070a;
 }
 #boot[hidden] { display: none; }
+#boot p { margin: 0; }
+#boot .credit, .hud-credit { font-size: 10px; opacity: 0.7; }
+#boot .credit { position: absolute; left: 0; right: 0; bottom: max(10px, env(safe-area-inset-bottom)); }
+/* Fixed to the viewport corner: #hud-root has no height, so the line sits outside its box. */
+.hud-credit {
+  position: fixed;
+  left: max(8px, env(safe-area-inset-left));
+  bottom: max(6px, env(safe-area-inset-bottom));
+  pointer-events: none;
+  text-shadow: 0 0 3px #000, 0 0 6px #000;
+}

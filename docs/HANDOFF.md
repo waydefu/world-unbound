@@ -16,6 +16,7 @@ Snapshot: 2026-11-17, work paused at the owner's request after G1.2. Read this, 
 | — | Stop-work: module layers enforced, index, governance status, this handoff | Merged (#15) |
 | G1.3 | Terrain PBR materials (weathering, slope/height blending) | In progress (local) |
 | G1.4 | Ocean (multi-band waves, shoreline, reflections) | Not started |
+| G1.5 | Real terrain: Hellesylt, Norway (Kartverket DTM, baked tiles, 62.083° N sun, new cameras, credits) | Implemented locally (phases A–C, [spec](specs/g1.5-real-terrain.md)); phase D visual review pending |
 
 What the screen shows today: terrain, coastline, physical sky with sun/moon/stars, fog, terrain shadows, a flat placeholder sea. No buildings, vegetation, gameplay or audio.
 
@@ -63,5 +64,5 @@ npm run check               # lint, typecheck, tests, build, static audit, visua
 - WebGL2 draw calls roughly triple with shadows (Lite tier); may need shadows off there.
 - Atmosphere tables are built on the main thread at boot; move to a worker or bake if the phone time is high.
 - Fog is exponential height-less fog, not a full aerial-perspective volume.
-- Terrain is the procedural G0 shape; relief is low, so shadows are subtle until the bake lands.
+- Terrain is the real Hellesylt DTM (G1.5). The world is a 4 km square; the sea floor skin is half-float (1 m steps above 1024 m) and the material rules still key on height (everything below 2.4 m is sand, so the flat village reads as beach); the single seabed cell next to land gives a dark 2 m drop at every shore.
 - `vite build` warns that `spike/threeRunner.ts` is both statically and dynamically imported (spike only, harmless).

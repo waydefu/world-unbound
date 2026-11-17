@@ -1,11 +1,11 @@
 import { DAYS_PER_YEAR, OBLIQUITY, solarDeclination, yearFraction } from './calendar';
 
 /**
- * Sun and moon directions for latitude 53.9° N in the world frame
+ * Sun and moon directions for latitude 62.083° N (Hellesylt) in the world frame
  * (+x east, +y up, +z south). Hours are local apparent solar time, so the
  * sun crosses the meridian (due south, +z) at 12:00.
  */
-export const LATITUDE = (53.9 * Math.PI) / 180;
+export const LATITUDE = (62.083 * Math.PI) / 180;
 /** Days per lunar cycle in the 32-day year: one cycle per season. */
 export const LUNAR_PERIOD_DAYS = 8;
 

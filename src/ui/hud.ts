@@ -3,6 +3,9 @@
  * the app; uses flat translucent backgrounds (no backdrop-filter) to keep
  * mobile compositing cheap.
  */
+/** Terrain attribution required by the CC BY 4.0 licence of the Kartverket data; always on screen. */
+export const TERRAIN_CREDIT = 'Terrain © Kartverket (CC BY 4.0), modified';
+
 export interface HudActions {
   setCamera(index: number): void;
   exportReport(): void;
@@ -32,7 +35,10 @@ export class Hud {
     this.panel.className = 'hud-panel';
     this.status = document.createElement('div');
     this.status.className = 'hud-status';
-    parent.append(bar, this.panel, this.status);
+    const credit = document.createElement('div');
+    credit.className = 'hud-credit';
+    credit.textContent = TERRAIN_CREDIT;
+    parent.append(bar, this.panel, this.status, credit);
     this.setVisible(visible);
 
     window.addEventListener('keydown', (event) => {
