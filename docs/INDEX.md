@@ -9,6 +9,7 @@ Where everything is. Start with [HANDOFF.md](HANDOFF.md) to pick up the work.
 | [HANDOFF.md](HANDOFF.md) | Current state, open work, how to resume, owner actions |
 | [AGENTS.md](../AGENTS.md) | Contract for AI coding agents (protected) |
 | [README.md](../README.md) | Status, how to run, roadmap |
+| [README.zh-TW.md](../README.zh-TW.md) | 繁體中文版 README（狀態、執行方式、路線圖） |
 | [architecture/README.md](architecture/README.md) | Module layers (enforced), frame and data flow, units |
 
 ## Decisions and plans
