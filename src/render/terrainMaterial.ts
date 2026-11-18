@@ -50,7 +50,9 @@ const ROCK = vec3(0.2, 0.19, 0.175);
  * The third material weight. The chunk path leaves it at 0 ("earth", reserved); in the CDLOD bake it flags
  * man-made stone (breakwaters, piers, quay walls): weathered grey concrete and granite, lighter than the rock.
  */
-const STONE = vec3(0.3, 0.295, 0.28);
+const STONE = vec3(0.24, 0.245, 0.25);
+/** Share of the stone albedo lost on its darkest edge (steep flanks, the foot at the waterline). */
+const STONE_EDGE_DARKENING = 0.5;
 /** Darkening of the ground between blades where the meadow is dense (fraction of the albedo). */
 const CANOPY_SHADE = 0.32;
 /** Metres per noise tile: macro patches, grain and micro-relief. */
@@ -94,7 +96,11 @@ export function createTerrainMaterial(noise: DataTexture, lite = false, surface:
   // Shade between the blades inside the grass range: full at the eye, gone at the range edge (no visible ring).
   const canopy = veg.r.mul(float(1).sub(smoothstep(grassRange.mul(0.4), grassRange.max(1), dist))).mul(grassRange.greaterThan(0).select(1, 0));
   const grassCol = groundCover(macro, wet01, veg, season).mul(float(1).sub(canopy.mul(CANOPY_SHADE)));
-  let base = grassCol.mul(grass).add(SAND.mul(w.x)).add(ROCK.mul(w.y)).add(STONE.mul(w.z));
+  // Stone quays and breakwaters read as stone, not as a flat tan band: darker on the steep flank and at the foot,
+  // where the wall meets the water.
+  const stoneEdge = max(float(1).sub(nGeo.y).mul(4), float(1).sub(smoothstep(0.2, 1.3, y))).min(1);
+  const stoneCol = STONE.mul(float(1).sub(stoneEdge.mul(STONE_EDGE_DARKENING)));
+  let base = grassCol.mul(grass).add(SAND.mul(w.x)).add(ROCK.mul(w.y)).add(stoneCol.mul(w.z));
   base = mix(base, SEABED, float(1).sub(smoothstep(-2.2, -0.2, y)));
   if (!lite) {
     const grain = triplanarChannel(noise, pW, nGeo, GRAIN_METRES, 'a').mul(2).sub(1);

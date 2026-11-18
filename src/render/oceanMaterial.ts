@@ -18,7 +18,10 @@ const DETAIL_A_METRES = 23;
 const DETAIL_B_METRES = 6.5;
 const FOAM_METRES = 3;
 const DEEP = vec3(0.004, 0.016, 0.022);
-const SHALLOW = vec3(0.02, 0.09, 0.085);
+/** Shallow water over the bottom: a murky green-teal, not a bright turquoise (the band was read as a cyan stroke). */
+const SHALLOW = vec3(0.022, 0.07, 0.058);
+/** Water of a closed harbour basin: dark and green-grey, no turquoise at the edge. */
+const BASIN = vec3(0.01, 0.03, 0.03);
 const SHALLOW_SAND = vec3(0.1, 0.12, 0.09);
 const SSS = vec3(0.02, 0.18, 0.15);
 const FOAM_ALBEDO = 0.8;
@@ -175,12 +178,14 @@ export function createOceanMaterial(
     // Water body lit by sky irradiance (zenith radiance x pi x 0.5) plus the sun's illuminance on a horizontal surface.
     const sunIlluminance = sunE.mul(max(sunDir.y, 0));
     const bodyLight = zenith.mul(Math.PI * 0.5).add(sunIlluminance);
-    // Deep -> turquoise shallows over ~8 m, sand-tinted right at the shore (no hard turquoise edge).
+    // Deep -> green shallows. The tint is depth-graded (e-folding 2.2 m, 1 m on steep coasts: quays, breakwaters), broken up
+    // by the low-frequency noise so it is not one even stroke along every shore, and absent in closed basins, which
+    // take a dark green-grey instead.
     const shallow = mix(SHALLOW, SHALLOW_SAND, smoothstep(1.5, 0, depth));
-    // The turquoise band reaches ~8 m (e-folding 3 m); on steep coasts (quays, breakwaters) and in enclosed basins it
-    // narrows to ~4 m.
-    const narrow = max(smoothstep(0.25, 0.7, shoreSlope), calm);
-    const body = mix(DEEP, shallow, depth.negate().div(mix(3, 1.5, narrow)).exp()).mul(bodyLight).toVar();
+    const narrow = smoothstep(0.25, 0.7, shoreSlope);
+    const patchy = mix(0.55, 1, smoothstep(-0.35, 0.35, slopeA.y));
+    const tint = depth.negate().div(mix(2.2, 1, narrow)).exp().mul(patchy).mul(mix(1, 0.12, calm));
+    const body = mix(mix(DEEP, BASIN, calm), shallow, tint).mul(bodyLight).toVar();
     // Backlit crests: sun shining through the wave when looking towards it.
     const crest = clamp(vWaveY.div(weather.y), 0, 1);
     const sunH = normalize(vec3(sunDir.x, 0, sunDir.z).add(vec3(1e-5, 0, 0)));
