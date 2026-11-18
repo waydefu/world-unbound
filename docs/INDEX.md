@@ -18,6 +18,7 @@ Where everything is. Start with [HANDOFF.md](HANDOFF.md) to pick up the work.
 | --- | --- |
 | [adr/0001-engine-architecture.md](adr/0001-engine-architecture.md) | TypeScript + three.js WebGPURenderer/TSL, WebGL2 fallback |
 | [adr/0002-target-architecture.md](adr/0002-target-architecture.md) | Platform tiers, build-time bake, art direction, acceptance, revised milestones, render bundles (§10) |
+| [adr/0003-gpu-terrain-cdlod.md](adr/0003-gpu-terrain-cdlod.md) | Terrain from a GPU height texture with CDLOD node selection (G2.0) |
 | [adr/0000-template.md](adr/0000-template.md) | ADR template |
 | [rfc/README.md](rfc/README.md) | RFC process |
 | [spikes/engine-spike.md](spikes/engine-spike.md) | three.js vs Babylon on the owner's phone; why bundles are mandatory |
