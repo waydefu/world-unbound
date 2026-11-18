@@ -91,6 +91,11 @@ export interface AppState {
   shadowCasterNodes: number;
   /** Milliseconds the worker needed to build the terrain textures (0 on the chunk path). */
   terrainTexturesMs: number;
+  /** Climate (G2.1), sampled at the 2 Hz tick. The wind blows FROM `windDirDeg` (compass bearing, meteorological convention). */
+  windDirDeg: number;
+  windSpeedMs: number;
+  temperatureC: number;
+  season01: number;
 }
 
 const scratch: Percentiles = { p50: 0, p95: 0, p99: 0, mean: 0 };
@@ -212,6 +217,10 @@ export function buildReport(
       moonIllumination: round(state.moonIllumination, 2),
       exposure: round(state.exposure, 3),
       atmosphereLutMs: round(state.atmosphereLutMs, 1),
+      windDirDeg: round(state.windDirDeg, 0),
+      windSpeedMs: round(state.windSpeedMs, 2),
+      temperatureC: round(state.temperatureC, 1),
+      season01: round(state.season01, 3),
     },
     capabilities,
   };

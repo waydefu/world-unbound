@@ -34,6 +34,10 @@ export interface OceanUniforms {
   waveB: Array<UniformNode<'vec4'>>;
   /** Weather: (wave slope, sum of amplitudes, crest-foam factor, 0). */
   weather: UniformNode<'vec4'>;
+  /** Wind (G2.1): distance in metres the surface layers have drifted since start (xz), integrated on the CPU. */
+  drift: UniformNode<'vec2'>;
+  /** Wind choppiness factor of the detail normals, ~0.9 (calm) .. 1.4 (gale). */
+  chop: UniformNode<'float'>;
   /** Zenith (hemisphere) radiance for body and foam lighting, pre-exposed (set from the CPU sky summary). */
   zenith: UniformNode<'vec3'>;
 }
@@ -48,6 +52,7 @@ export function createOceanUniforms(): OceanUniforms {
   return {
     eye: uniform(new Vector3()), eyeSnap: uniform(new Vector2()), time: uniform(0),
     waveA, waveB, weather: uniform(new Vector4(0.035, 0.1, 0, 0)), zenith: uniform(new Vector3(0.1, 0.15, 0.3)),
+    drift: uniform(new Vector2()), chop: uniform(1),
   };
 }
 
@@ -70,7 +75,7 @@ export function createSeaFloorTexture(data: Uint16Array, size: number): DataText
 export function createOceanMaterial(
   sky: SkyDome, floor: DataTexture, coast: DataTexture, noise: DataTexture, u: OceanUniforms, lite = false,
 ): MeshBasicNodeMaterial {
-  const { eye, eyeSnap, time, waveA, waveB, weather, zenith } = u;
+  const { eye, eyeSnap, time, waveA, waveB, weather, zenith, drift, chop } = u;
   const vNormal = varyingProperty('vec3', 'oceanNormal');
   const vWaveY = varyingProperty('float', 'oceanWaveY');
 
@@ -111,16 +116,16 @@ export function createOceanMaterial(
   const fragment = Fn(() => {
     const p = positionWorld.xz.add(vec2(eye.x, eye.z)).toVar();
     const dist = length(positionWorld);
-    const t = time;
     const slope = weather.x;
     // Noise samples first, before any discard, so the mip selection derivatives stay in uniform control flow.
-    // Slopes (rg) decode to -1..1 with rms ~0.3; both layers drift (the first with the wind, +z).
-    const slopeA = texture(noise, p.add(vec2(0, 0.35).mul(t)).div(DETAIL_A_METRES)).rg.mul(2).sub(1).toVar();
+    // Slopes (rg) decode to -1..1 with rms ~0.3; every layer drifts with the wind (`drift` integrates the global
+    // wind velocity on the CPU, so a change of wind direction bends the drift instead of jumping it).
+    const slopeA = texture(noise, p.add(drift).div(DETAIL_A_METRES)).rg.mul(2).sub(1).toVar();
     const slopeB = lite
       ? vec2(0, 0)
-      : texture(noise, p.add(vec2(0.45, 0.4).mul(t)).div(DETAIL_B_METRES)).rg.mul(2).sub(1).toVar();
+      : texture(noise, p.add(drift.mul(1.7)).div(DETAIL_B_METRES)).rg.mul(2).sub(1).toVar();
     // Foam breakup (alpha channel) at 1/3 m; lite uses the Gerstner phase instead.
-    const grain = (lite ? float(0) : texture(noise, p.add(vec2(0.1, 0.25).mul(t)).div(FOAM_METRES)).a).toVar();
+    const grain = (lite ? float(0) : texture(noise, p.add(drift.mul(0.75)).div(FOAM_METRES)).a).toVar();
 
     // Fragment: bicubic near the shore (not in lite), so the waterline follows the terrain smoothly.
     const sea = sampleSeaDepth(coast, p, !lite).toVar();
@@ -137,7 +142,7 @@ export function createOceanMaterial(
     Discard(sea.lessThan(-0.5));
 
     // Detail normal: sum of the decoded slopes, scaled by weather and faded out with distance.
-    const amp = slope.mul(1.5).add(0.05).mul(smoothstep(400, 60, dist));
+    const amp = slope.mul(1.5).add(0.05).mul(chop).mul(smoothstep(400, 60, dist));
     const detail = slopeA.add(slopeB.mul(0.6)).mul(amp);
     const Ng = normalize(vNormal);
     const N = normalize(Ng.sub(vec3(detail.x, 0, detail.y))).toVar();

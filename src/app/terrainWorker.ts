@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 import { COAST_DIM, SEAFLOOR_DIM, buildCoastFloor, buildSeaFloor } from '../world/seaFloor';
 import { runTerrainJob, type TerrainRequest } from '../world/terrainJob';
-import { buildTerrainTextures, type MaterialStep } from '../world/terrainTextures';
+import { buildTerrainTextures, type MaterialStep, type TerrainTextureData } from '../world/terrainTextures';
 import { loadAndInstallTerrain } from './terrainAssets';
 
 /** Terrain worker: tile generation and mesh building off the main thread. */
@@ -19,6 +19,13 @@ const ready: Promise<boolean> = loadAndInstallTerrain().then(
   },
 );
 
+/** The buffers a textures reply moves instead of copying. */
+function transferList(t: TerrainTextureData): Transferable[] {
+  const list = [t.height.buffer, t.material.buffer, t.normal.buffer, t.pyramid.buffer];
+  if (t.masks) list.push(t.masks.windChannel.buffer);
+  return list;
+}
+
 type WorkerRequest = TerrainRequest | { kind: 'seafloor'; fine?: boolean } | { kind: 'textures'; step: MaterialStep };
 
 scope.onmessage = async (event: MessageEvent<WorkerRequest>): Promise<void> => {
@@ -29,7 +36,7 @@ scope.onmessage = async (event: MessageEvent<WorkerRequest>): Promise<void> => {
     const started = performance.now();
     const textures = buildTerrainTextures(data.step);
     textures.ms = performance.now() - started;
-    scope.postMessage({ kind: 'textures', textures }, [textures.height.buffer, textures.material.buffer, textures.normal.buffer, textures.pyramid.buffer]);
+    scope.postMessage({ kind: 'textures', textures }, transferList(textures));
     return;
   }
   if ('kind' in data) {

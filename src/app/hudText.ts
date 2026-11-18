@@ -56,7 +56,7 @@ export function formatHud(state: AppState, stats: FrameStats, dyn: DynamicResolu
   }
   lines.push(mem);
   lines.push(...observabilityLines(state));
-  lines.push(`day ${state.day.toFixed(1)} ${state.season} · hour ${state.hour.toFixed(1)} · ${state.weather} · sun ${state.sunAltitudeDeg.toFixed(0)}° · exp ${state.exposure.toPrecision(3)}`);
+  lines.push(`day ${state.day.toFixed(1)} ${state.season} · hour ${state.hour.toFixed(1)} · ${state.weather} · sun ${state.sunAltitudeDeg.toFixed(0)}° · exp ${state.exposure.toPrecision(3)} · wind ${state.windSpeedMs.toFixed(1)} m/s ${state.windDirDeg.toFixed(0)}°`);
   lines.push(`lost ${state.deviceLostCount} · bg ${state.backgroundSuspends}`);
   return lines.join('\n');
 }

@@ -22,6 +22,7 @@ import { CdlodBackend } from './cdlodBackend';
 import { ChunkBackend } from './chunkBackend';
 import { loadAndInstallTerrain } from './terrainAssets';
 import type { TerrainBackend } from './terrainBackend';
+import { VegetationBackend, initialClimateState } from './vegetationBackend';
 
 const LOW_FREQUENCY_MS = 500;
 const WARMUP_TIMEOUT_MS = 20000;
@@ -49,6 +50,7 @@ export class App {
   private readonly environment: Environment;
   private readonly clock: EnvironmentClock;
   private readonly terrain: TerrainBackend;
+  private readonly vegetation: VegetationBackend;
   private readonly hud: Hud;
   private readonly eye: ResolvedCamera = { x: 0, y: 0, z: 0, targetX: 0, targetY: 0, targetZ: 0, fovDeg: 55 };
   private readonly bufferSize = new Vector2();
@@ -75,6 +77,7 @@ export class App {
     if (params.shadows) this.memory.add(MemoryPartition.Gpu, attachSunShadows(this.environment.sun, tier.shadows));
     this.memory.add(MemoryPartition.Gpu, this.environment.ocean.gpuBytes);
     this.clock = new EnvironmentClock(this.environment);
+    this.vegetation = new VegetationBackend(this.environment.ocean);
     this.terrain = params.terrain === 'chunks'
       ? new ChunkBackend(this.memory, noise.texture, this.environment.ocean.floorTexture, tier, this.observer.uploads)
       : new CdlodBackend(this.memory, noise.texture, tier, this.observer.uploads, params.shadows ? tier.shadows.cascades : 0);
@@ -96,6 +99,7 @@ export class App {
       moonIllumination: 0, exposure: 1, atmosphereLutMs: this.clock.lutMs, backgroundSuspends: 0,
       gpuPassSumP50Ms: null, gpuPassSumP95Ms: null, gpuSamples: null, gpuPassesPerFrame: null,
       ...initialObserved(),
+      ...initialClimateState(),
     };
   }
 
@@ -245,6 +249,7 @@ export class App {
     this.terrain.setWetness(WEATHER_WETNESS[weather]);
     this.state.day = params.day;
     this.clock.configure(params.day, this.state.hour, weather, Math.max(2, this.eye.y));
+    this.vegetation.configure(params.day, this.state.hour, weather);
     this.state.season = this.clock.season;
     this.state.sunAltitudeDeg = this.environment.sunAltitudeDeg;
     this.state.moonIllumination = this.clock.celestial.moonIllumination;
@@ -290,6 +295,7 @@ export class App {
     this.stats.push(interval, this.dyn.scale);
     if (this.dyn.update(interval)) this.applyRenderScale();
     this.terrain.update(now, this.eye, this.camera);
+    this.vegetation.update(now);
     this.placeWorld(now / 1000);
     this.environment.setExposure(this.clock.update(interval));
     this.handle.renderer.render(this.scene, this.camera);
@@ -317,6 +323,7 @@ export class App {
     state.gpuPassSumP95Ms = this.gpuTimer.p95();
     state.gpuPassesPerFrame = this.gpuTimer.passesPerFrame();
     state.gpuSamples = this.gpuTimer.samples;
+    this.vegetation.sample(state);
     this.observer.sample(this.state, now, terrain, this.camera, this.environment.sun, this.handle.renderer);
     if (!this.ready && terrain.settled) {
       this.ready = true;

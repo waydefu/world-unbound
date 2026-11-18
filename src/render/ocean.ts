@@ -11,6 +11,11 @@ const HALF_CELLS_LITE = 40;
 const FINE_SPACING = 1.5;
 const EXTENT = 3500;
 const DEEP_METRES = -40;
+/** Detail-layer drift per m/s of wind: 0.35 m/s at 3 m/s, the speed of the previous fixed +z drift. */
+const DRIFT_PER_MS = 0.35 / 3;
+const CHOP_BASE = 0.8;
+const CHOP_PER_MS = 0.05;
+const CHOP_MAX = 1.4;
 
 /** Offset of the t-th grid line: s(t) = 1.5 (r^t - 1) / (r - 1). */
 function lineOffset(t: number, ratio: number): number {
@@ -82,6 +87,10 @@ export class Ocean {
   private readonly coastTexture: DataTexture | null;
   readonly hasCoast: boolean;
 
+  private windX = 0;
+  private windZ = 0.35;
+  private lastTime = 0;
+
   /** Zenith radiance before exposure (scene units); setExposure folds the exposure in. */
   private readonly zenithBase = new Vector3(0.1, 0.15, 0.3);
 
@@ -149,8 +158,25 @@ export class Ocean {
     this.uniforms.zenith.value.copy(this.zenithBase).multiplyScalar(exposure);
   }
 
+  /**
+   * Wind for the surface detail (G2.1): the drift of the detail layers follows the wind velocity (DRIFT_PER_MS of
+   * the wind speed, which is 0.35 m/s at the clear-weather 3 m/s the old +z drift was tuned for), and the detail
+   * normals get choppier with speed (CHOP_BASE at calm, +CHOP_PER_MS per m/s, capped). The Gerstner set is unchanged.
+   * @hot writes plain fields only
+   */
+  setWind(dirX: number, dirZ: number, speedMs: number): void {
+    this.windX = dirX * speedMs * DRIFT_PER_MS;
+    this.windZ = dirZ * speedMs * DRIFT_PER_MS;
+    const chop = CHOP_BASE + CHOP_PER_MS * speedMs;
+    this.uniforms.chop.value = chop < CHOP_MAX ? chop : CHOP_MAX;
+  }
+
   /** @hot uniform and transform writes only */
   update(eyeX: number, eyeY: number, eyeZ: number, timeSeconds: number): void {
+    // Integrate the drift: a long wait between frames (tab in the background) must not fling the layers.
+    const dt = timeSeconds - this.lastTime;
+    this.lastTime = timeSeconds;
+    if (dt > 0 && dt < 0.25) this.uniforms.drift.value.set(this.uniforms.drift.value.x + this.windX * dt, this.uniforms.drift.value.y + this.windZ * dt);
     const modX = eyeX - Math.floor(eyeX / FINE_SPACING) * FINE_SPACING;
     const modZ = eyeZ - Math.floor(eyeZ / FINE_SPACING) * FINE_SPACING;
     this.mesh.position.set(-modX, -eyeY, -modZ);
