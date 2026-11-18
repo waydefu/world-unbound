@@ -1,5 +1,7 @@
 # WORLD UNBOUND
 
+English | [繁體中文](README.zh-TW.md)
+
 An open-source project starting from a verifiable GitHub governance baseline.
 
 **Picking up the work?** Read [docs/HANDOFF.md](docs/HANDOFF.md), then [docs/INDEX.md](docs/INDEX.md).
