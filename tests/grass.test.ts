@@ -132,6 +132,20 @@ describe('grass geometry and tiers', () => {
     expect(QUALITY.high.grass).toMatchObject({ nearM: 60, midM: 150, bladesPerM2: 28 });
   });
 
+  it('phase F density: the boosted blade count per cell still fits 16-bit indices at every tier, cards keep their ring order', () => {
+    const cell = CELL_M * CELL_M;
+    for (const tier of [QUALITY.low, QUALITY.med, QUALITY.high]) {
+      const g = tier.grass;
+      const blades = Math.min(3584, Math.round(cell * g.bladesPerM2 * g.bladeBoost));
+      expect(blades * 7).toBeLessThanOrEqual(65535);
+      expect(Math.min(7000, Math.round(cell * g.cardsPerM2)) * 9).toBeLessThanOrEqual(65535);
+      expect(g.midM).toBeGreaterThan(g.nearM);
+    }
+    // Blades per m2 at the eye: more than the base figure on med and high (the first density read as sparse).
+    expect(QUALITY.med.grass.bladesPerM2 * QUALITY.med.grass.bladeBoost).toBeGreaterThan(16);
+    expect(QUALITY.high.grass.bladesPerM2 * QUALITY.high.grass.bladeBoost).toBeGreaterThan(28);
+  });
+
   it('?grass=0 turns the grass off, on by default', () => {
     expect(parseParams('?grass=0').grass).toBe(false);
     expect(parseParams('?cam=2').grass).toBe(true);

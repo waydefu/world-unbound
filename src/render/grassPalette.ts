@@ -1,5 +1,5 @@
 import type { Node } from 'three/webgpu';
-import { mix, smoothstep, vec3 } from 'three/tsl';
+import { float, mix, smoothstep, vec3 } from 'three/tsl';
 
 /**
  * Ground-cover colours shared by the terrain shader and the grass blades, so a blade has exactly the colour of
@@ -40,4 +40,17 @@ export function groundCover(
   const heathShare = veg.g.div(veg.r.add(veg.g).max(1e-3));
   const ground = mix(grass, HEATH, heathShare);
   return mix(ground, ground.mul(FOREST_MUL), veg.b);
+}
+
+/** Darkening of the ground between blades where the meadow is dense (fraction of the albedo). */
+export const CANOPY_SHADE = 0.22;
+
+/**
+ * Albedo multiplier of the ground (and of the blade roots, which must equal it) inside the grass range: the shade
+ * between the blades, full at the eye and gone at the range edge, so no ring shows. `meadow` is the vegetation R
+ * channel, `dist` the distance from the eye, `range` the mid ring (0 = no grass layer: no shade).
+ */
+export function canopyShade(meadow: Node<'float'>, dist: Node<'float'>, range: Node<'float'>): Node<'float'> {
+  const canopy = meadow.mul(float(1).sub(smoothstep(range.mul(0.4), range.max(1), dist))).mul(range.greaterThan(0).select(1, 0));
+  return float(1).sub(canopy.mul(CANOPY_SHADE));
 }

@@ -6,7 +6,7 @@ import { CELL_M, GrassCells } from '../world/grassCells';
 import type { TerrainTextureData } from '../world/terrainTextures';
 import { type GrassGeometry, createBladeGeometry, createCardGeometry } from './grassGeometry';
 import { createGrassMaterial, type GrassKind } from './grassMaterial';
-import type { GrassInputs, GrassUniforms } from './grassField';
+import { GUST_WAVELENGTH_M, type GrassInputs, type GrassUniforms } from './grassField';
 import type { TerrainTextures } from './terrainTextures';
 
 /** Per-tier grass reach and density (spec G2.1 phase C.1, C.2, C.8). */
@@ -17,15 +17,21 @@ export interface GrassSettings {
   readonly midM: number;
   /** Blades per m2 where the meadow density is 1. */
   readonly bladesPerM2: number;
+  /** Multiplier on `bladesPerM2` for the sward the eye stands in (G2.1 phase F: the first density read as sparse). */
+  readonly bladeBoost: number;
   /** Cards per m2 where the meadow density is 1. */
   readonly cardsPerM2: number;
 }
 
 const CELL_AREA = CELL_M * CELL_M;
+/** 16-bit indices: 7 vertices per dense blade. */
+const MAX_BLADES_PER_CELL = 3584;
 /** Gust phase advances this many cycles per m/s of wind speed per second (gust fronts move with the wind). */
-const GUST_CYCLES_PER_MS = 1.1 / 40;
-/** Cards start this share of the blade ring in, where the blades begin to fade. */
-const CARD_INNER_SHARE = 0.8;
+const GUST_CYCLES_PER_MS = 1.1 / GUST_WAVELENGTH_M;
+/** Longest frame step (s) that advances the travelling gusts; a longer stall (tab switch) does not make them jump. */
+const MAX_GUST_STEP_S = 1;
+/** Cards start this share of the blade ring in and are fully in at its edge; the blades fade out over the last 30%. */
+const CARD_INNER_SHARE = 0.6;
 
 /** Statistics of the last selection, for telemetry. */
 export interface GrassStats {
@@ -77,7 +83,7 @@ export class GrassLayer {
       },
       { nearM: settings.nearM, midM: settings.midM, cardInnerM: blades ? settings.nearM * CARD_INNER_SHARE : 0 },
     );
-    this.bladesPerDenseCell = Math.min(1792, Math.round(CELL_AREA * settings.bladesPerM2));
+    this.bladesPerDenseCell = Math.min(MAX_BLADES_PER_CELL, Math.round(CELL_AREA * settings.bladesPerM2 * settings.bladeBoost));
     this.bladesPerThinCell = Math.round(this.bladesPerDenseCell / 4);
     this.cardsPerCell = Math.min(7000, Math.round(CELL_AREA * settings.cardsPerM2));
     this.uniforms = {
@@ -162,7 +168,7 @@ export class GrassLayer {
     }
     uniforms.eye.value.set(ex, ey, ez);
     uniforms.time.value = nowSeconds;
-    if (dtSeconds > 0 && dtSeconds < 0.25) this.lastS += dtSeconds * GUST_CYCLES_PER_MS * Math.max(uniforms.wind.value.z, 1.5);
+    if (dtSeconds > 0 && dtSeconds < MAX_GUST_STEP_S) this.lastS += dtSeconds * GUST_CYCLES_PER_MS * Math.max(uniforms.wind.value.z, 1.5);
     uniforms.gustPhase.value = this.lastS;
     stats.ms += (performance.now() - started - stats.ms) * 0.05;
   }

@@ -1,6 +1,6 @@
 import type { DataTexture, Node, UniformNode, Vector3, Vector4 } from 'three/webgpu';
 import {
-  clamp, dot, float, floor, hash, ivec2, length, max, mix, positionGeometry, attribute, sin, smoothstep,
+  clamp, dot, float, floor, hash, ivec2, length, max, mix, positionGeometry, attribute, pow, sin, smoothstep,
   texture, uint, vec2, vec3,
 } from 'three/tsl';
 import { TOWN_RADIUS, TOWN_X, TOWN_Z, WORLD_MIN } from '../world/constants';
@@ -44,8 +44,14 @@ export interface GrassUniforms {
   rings: UniformNode<'vec4', Vector4>;
 }
 
-/** Wavelength of the travelling gusts (m). */
-export const GUST_WAVELENGTH_M = 40;
+/** Wavelength of the travelling gusts (m) and of the finer ripple riding on them. */
+export const GUST_WAVELENGTH_M = 30;
+const RIPPLE_WAVELENGTH_M = 11;
+/** Wind speed (m/s, local, after shelter) at which grass is fully laid over; a storm in the village reaches it. */
+const FULL_LEAN_MS = 10;
+/** Metres per clump of blades (sub-grid inside the cells) and per patch of the height / density noise. */
+const CLUMP_M = 0.9;
+const PATCH_M = 11;
 /** Metres per noise tile of the macro patches the terrain shader uses (the colour must match). */
 export const MACRO_METRES = 37;
 const LAST_TEXEL = HEIGHT_DIM - 1;
@@ -84,11 +90,15 @@ export interface GrassField {
   /** Local wind direction (unit xz) and the lean (fraction of the height the tip is displaced). */
   windDir: Node<'vec2'>;
   lean: (stiffness: F) => F;
+  /** Multiplier of the survival probability of this blade: clumps and patches of thick and thin growth. */
+  densityMul: F;
+  /** Colour multiplier of this blade: brightness and a yellow-to-blue-green hue shift, clump and blade. */
+  variation: Node<'vec3'>;
 }
 
 /**
  * Builds the shared graph. `salt` separates the random streams of blades and cards that share a cell;
- * `clumping` is the fraction of tussock blades snapped to a per-cell clump centre.
+ * `clumping` is how strongly blades are pulled to the centre of their 0.9 m clump (0 none, 1 about half way on average).
  * Must be called inside an Fn (it creates variables).
  */
 export function grassField(inp: GrassInputs, u: GrassUniforms, salt: number, clumping: number): GrassField {
@@ -97,7 +107,6 @@ export function grassField(inp: GrassInputs, u: GrassUniforms, salt: number, clu
   const cellU = cell.x.sub(WORLD_MIN).div(CELL_M).toUint().mul(uint(512)).add(cell.y.sub(WORLD_MIN).div(CELL_M).toUint());
   const bladeU = cellU.mul(uint(2048)).add(index.toUint()).mul(uint(16)).add(uint(salt));
   const rnd = (k: number): F => hash(bladeU.add(uint(k)));
-  const cellRnd = (k: number): F => hash(cellU.mul(uint(16)).add(uint(salt + 100000 + k)));
 
   // Root before clumping: uniform in the cell.
   const x0 = cell.x.add(rnd(0).mul(CELL_M)).toVar();
@@ -114,13 +123,22 @@ export function grassField(inp: GrassInputs, u: GrassUniforms, salt: number, clu
   const pick = rnd(3);
   const isTussock = pick.lessThan(tussockW).select(1, 0).toVar();
 
-  // Tussock clumps: a share of the blades is pulled to one of four per-cell clump centres.
-  const clump = floor(rnd(2).mul(3.999));
-  const cx = cell.x.add(mix(cellRnd(0), cellRnd(4), clump.greaterThan(0.5).select(1, 0)).mul(CELL_M));
-  const cz = cell.y.add(mix(cellRnd(1), cellRnd(5), clump.greaterThan(1.5).select(1, 0)).mul(CELL_M));
-  const snapped = isTussock.mul(rnd(5).lessThan(clumping).select(1, 0));
-  const x = mix(x0, cx.add(x0.sub(cx).mul(0.12)), snapped).toVar();
-  const z = mix(z0, cz.add(z0.sub(cz).mul(0.12)), snapped).toVar();
+  // Clumps: blades are pulled towards the centre of the 0.9 m clump they fall in (tussocks harder), so the
+  // sward is tufts with gaps between them, not an even scatter. Clumps carry their own height, density and hue.
+  const cu = x0.sub(WORLD_MIN).div(CLUMP_M);
+  const cv = z0.sub(WORLD_MIN).div(CLUMP_M);
+  const clumpU = floor(cu).toUint().mul(uint(8192)).add(floor(cv).toUint()).mul(uint(16)).add(uint(salt));
+  const clumpRnd = (k: number): F => hash(clumpU.mul(uint(16)).add(uint(k + 700000)));
+  const ccx = floor(cu).add(clumpRnd(0).mul(0.7).add(0.15)).mul(CLUMP_M).add(WORLD_MIN);
+  const ccz = floor(cv).add(clumpRnd(4).mul(0.7).add(0.15)).mul(CLUMP_M).add(WORLD_MIN);
+  const pull = rnd(5).mul(0.5).add(0.5).mul(clumping).add(isTussock.mul(0.3)).min(0.9);
+  const x = mix(x0, ccx, pull).toVar();
+  const z = mix(z0, ccz, pull).toVar();
+  // Patch noise (alpha channel, ~11 m): tall and short, thick and thin areas.
+  const patch = texture(inp.noise, vec2(x, z).div(PATCH_M)).level(LOD0).a;
+  const densityMul = mix(0.45, 1.3, clumpRnd(3)).mul(mix(0.6, 1.15, patch));
+  const hue = clumpRnd(2).sub(0.5).mul(0.7).add(rnd(14).sub(0.5).mul(0.6));
+  const variation = vec3(hue.mul(0.3).add(1), hue.mul(0.04).add(1), float(1).sub(hue.mul(0.3))).mul(rnd(15).mul(0.2).add(0.9));
 
   // Terrain height at the root: bilinear of four lattice points on the same triangle split as the terrain mesh.
   const heights = texture(inp.height);
@@ -138,17 +156,20 @@ export function grassField(inp: GrassInputs, u: GrassUniforms, salt: number, clu
   const lower = h00.add(h10.sub(h00).mul(fx)).add(h01.sub(h00).mul(fz));
   const upper = h11.add(h01.sub(h11).mul(float(1).sub(fx))).add(h10.sub(h11).mul(float(1).sub(fz)));
   const y = fx.add(fz).lessThanEqual(1).select(lower, upper);
-  const root = vec3(x, y, z).toVar();
+  // Roots sit a little below the surface (more on slopes, where the bilinear height and the mesh differ most).
+  const root = vec3(x, y.sub(float(1).sub(nrm.y).mul(0.25).add(0.03)), z).toVar();
 
   const hayW = smoothstep(0.93, 0.97, nrm.y).mul(float(1).sub(smoothstep(60, 110, y)))
     .mul(float(1).sub(town)).mul(float(1).sub(tussockW));
   const isHay = pick.lessThan(tussockW.add(hayW)).select(1, 0).mul(float(1).sub(isTussock)).toVar();
   const r4 = rnd(4);
   const pasture = float(1).sub(isTussock).sub(isHay);
+  // Height: archetype range x clump (0.75..1.25) x patch (0.8..1.2); width varies by blade (0.7..1.3).
+  const hMul = clumpRnd(1).mul(0.5).add(0.75).mul(patch.mul(0.4).add(0.8));
   const archetype: Archetype = {
-    height: pasture.mul(r4.mul(0.08).add(0.06)).add(isHay.mul(r4.mul(0.3).add(0.3))).add(isTussock.mul(r4.mul(0.4).add(0.4))),
-    width: pasture.mul(0.06).add(isHay.mul(0.036)).add(isTussock.mul(0.04)),
-    stiffness: pasture.mul(0.35).add(isHay).add(isTussock.mul(0.8)),
+    height: pasture.mul(r4.mul(0.08).add(0.06)).add(isHay.mul(r4.mul(0.3).add(0.3))).add(isTussock.mul(r4.mul(0.4).add(0.4))).mul(hMul),
+    width: pasture.mul(0.04).add(isHay.mul(0.036)).add(isTussock.mul(0.04)).mul(rnd(12).mul(0.6).add(0.7)),
+    stiffness: pasture.mul(0.6).add(isHay).add(isTussock.mul(0.8)),
     hay: isHay,
     tussock: isTussock,
     pasture,
@@ -163,14 +184,19 @@ export function grassField(inp: GrassInputs, u: GrassUniforms, salt: number, clu
   const speed = length(w.xy);
   const windDir = w.xy.div(max(speed, 0.05));
   const gustDir = vec2(u.wind.x, u.wind.y);
-  const phase = w.z.add(dot(vec2(x, z), gustDir).div(GUST_WAVELENGTH_M)).sub(u.gustPhase);
-  const wave = sin(phase.mul(TWO_PI)).mul(0.5).add(0.5);
+  const along = dot(vec2(x, z), gustDir);
+  // Gust fronts: a slow wave along the wind (sharpened so lulls and gusts alternate) carrying a faster ripple.
+  const front = pow(sin(w.z.add(along.div(GUST_WAVELENGTH_M)).sub(u.gustPhase).mul(TWO_PI)).mul(0.5).add(0.5), float(2));
+  const ripple = sin(w.z.mul(2).add(along.div(RIPPLE_WAVELENGTH_M)).sub(u.gustPhase.mul(2.4)).mul(TWO_PI)).mul(0.5).add(0.5);
   const lean = (stiffness: F): F => {
-    const base = clamp(speed.div(12), 0, 1).mul(0.5);
-    const gust = u.wind.w.mul(wave.mul(wave)).mul(clamp(speed.div(8), 0.25, 1)).mul(0.5);
-    const flutter = sin(u.time.mul(rnd(6).mul(3).add(3)).add(rnd(7).mul(TWO_PI))).mul(0.04).mul(clamp(speed.div(10), 0, 1).add(0.4));
-    return base.add(gust).add(flutter).mul(stiffness);
+    const sp = clamp(speed.div(FULL_LEAN_MS), 0, 1.4);
+    // Steady lean (calm 0.1, storm 0.7), travelling gusts (a few cm of tip motion in calm, a lot in a storm) and
+    // per-blade flutter whose amplitude and pitch rise with the wind.
+    const steady = pow(sp, float(1.3)).mul(0.7);
+    const gusts = mix(0.16, 0.32, clamp(sp, 0, 1)).mul(u.wind.w.mul(0.45).add(0.55)).mul(front.mul(0.75).add(ripple.mul(0.25)));
+    const flutter = sin(u.time.mul(rnd(6).mul(6).add(6)).mul(sp.mul(2.2).add(0.6)).add(rnd(7).mul(TWO_PI))).mul(sp.mul(0.1).add(0.01));
+    return steady.add(gusts).add(flutter).mul(stiffness);
   };
 
-  return { rnd, root, terrainNormal: nrm, veg, wet, macro, dist, archetype, windDir, lean };
+  return { rnd, root, terrainNormal: nrm, veg, wet, macro, dist, archetype, windDir, lean, densityMul, variation };
 }
