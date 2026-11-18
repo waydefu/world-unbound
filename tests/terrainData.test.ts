@@ -92,14 +92,19 @@ describe('committed Hellesylt tiles', () => {
     const grid = terrainGrid as Int16Array;
     const n = TERRAIN_SAMPLES;
     let steepest = 0;
+    let lo = 0;
+    let hi = 0;
+    // Collect extremes in the loop and assert once: a million expect() calls took > 5 s on CI runners.
     for (let j = 0; j < n; j += 3) {
       for (let i = 0; i < n - 1; i += 3) {
         const k = j * n + i;
-        expect(grid[k]).toBeGreaterThan(-32768);
-        expect(grid[k]).toBeLessThan(32767);
+        lo = Math.min(lo, grid[k]);
+        hi = Math.max(hi, grid[k]);
         steepest = Math.max(steepest, Math.abs(grid[k + 1] - grid[k]));
       }
     }
+    expect(lo).toBeGreaterThan(-32768);
+    expect(hi).toBeLessThan(32767);
     // 2 m cell: even a 30 m cliff step would be 1500 quanta; real data stays below that.
     expect(steepest * manifest.quantum_m).toBeLessThan(40);
   });
