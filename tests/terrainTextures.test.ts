@@ -1,9 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { CELL_SIZE, CHUNK_CELLS, CHUNK_SAMPLES, TOWN_X, TOWN_Z, WORLD_MIN } from '../src/world/constants';
 import { slotOf } from '../src/world/chunkGrid';
 import { heightAt } from '../src/world/heightField';
 import {
-  HEIGHT_DIM, buildHeightTexture, buildMaterialTexture, buildTerrainTextures, materialDim, terrainTextureBytes,
+  CLASSIFY_SMOOTH_RADIUS, HEIGHT_DIM, buildHeightTexture, buildMaterialTexture, buildNormalTexture, buildTerrainTextures, materialDim,
+  terrainTextureBytes,
 } from '../src/world/terrainTextures';
 import { classifyTerrain } from '../src/world/terrainMaterialWeights';
 import { runTerrainJob } from '../src/world/terrainJob';
@@ -13,6 +14,7 @@ import { createTerrainTextures } from '../src/render/terrainTextures';
 const started = performance.now();
 const height = buildHeightTexture();
 const material = buildMaterialTexture(1);
+const normal = buildNormalTexture(1);
 const buildMs = performance.now() - started;
 
 /** Texel index of world coordinate `w` (a lattice point). */
@@ -97,20 +99,84 @@ describe('terrain material texture', () => {
   });
 });
 
+describe('terrain normal texture', () => {
+  const decode = (o: number): [number, number, number] => [normal[o] / 255 * 2 - 1, normal[o + 1] / 255 * 2 - 1, normal[o + 2] / 255 * 2 - 1];
+
+  it('holds unit upward normals that match finite differences of heightAt', () => {
+    expect(normal.length).toBe(HEIGHT_DIM * HEIGHT_DIM * 4);
+    let steep = 0;
+    for (let n = 0; n < 300; n++) {
+      const i = 1 + ((n * 131) % 2046);
+      const j = 1 + ((n * 71 + 9) % 2046);
+      const x = WORLD_MIN + CELL_SIZE * i;
+      const z = WORLD_MIN + CELL_SIZE * j;
+      const gx = (heightAt(x + CELL_SIZE, z) - heightAt(x - CELL_SIZE, z)) / (2 * CELL_SIZE);
+      const gz = (heightAt(x, z + CELL_SIZE) - heightAt(x, z - CELL_SIZE)) / (2 * CELL_SIZE);
+      const len = Math.hypot(gx, 1, gz);
+      const [nx, ny, nz] = decode((j * HEIGHT_DIM + i) * 4);
+      expect(Math.hypot(nx, ny, nz)).toBeCloseTo(1, 1);
+      expect(nx).toBeCloseTo(-gx / len, 1);
+      expect(ny).toBeCloseTo(1 / len, 1);
+      expect(nz).toBeCloseTo(-gz / len, 1);
+      expect(normal[(j * HEIGHT_DIM + i) * 4 + 3]).toBe(255);
+      if (ny < 0.8) steep++;
+    }
+    expect(steep).toBeGreaterThan(0);
+  });
+
+  it('the low-tier 4 m texture has materialDim(2) texels per side with upward unit normals', () => {
+    const coarse = buildNormalTexture(2);
+    expect(coarse.length).toBe(materialDim(2) ** 2 * 4);
+    for (let k = 0; k < coarse.length; k += 4 * 977) {
+      const n: [number, number, number] = [coarse[k] / 255 * 2 - 1, coarse[k + 1] / 255 * 2 - 1, coarse[k + 2] / 255 * 2 - 1];
+      expect(n[1]).toBeGreaterThan(0);
+      expect(Math.hypot(...n)).toBeCloseTo(1, 1);
+    }
+  });
+});
+
+describe('smoothed material classification', () => {
+  let smoothed: Uint8Array = new Uint8Array(0);
+  beforeAll(() => {
+    smoothed = buildMaterialTexture(1, undefined, CLASSIFY_SMOOTH_RADIUS);
+  }, 60000);
+
+  it('classifies a footprint-averaged slope: less rock overall, same sand and AO, rock stays on real cliffs', () => {
+    let rockRaw = 0;
+    let rockSmooth = 0;
+    let aoDiffers = 0;
+    for (let k = 0; k < material.length; k += 4) {
+      rockRaw += material[k + 1];
+      rockSmooth += smoothed[k + 1];
+      if (smoothed[k + 3] !== material[k + 3]) aoDiffers++;
+    }
+    expect(aoDiffers).toBe(0);
+    expect(rockSmooth).toBeLessThan(rockRaw);
+    expect(rockSmooth).toBeGreaterThan(rockRaw * 0.2);
+  });
+
+  it('radius 0 is the chunk path (raw 2 m normal) and the baked texture uses a positive radius', () => {
+    expect(Array.from(buildMaterialTexture(1, undefined, 0).subarray(0, 4096))).toEqual(Array.from(material.subarray(0, 4096)));
+    expect(CLASSIFY_SMOOTH_RADIUS).toBeGreaterThan(0);
+  });
+});
+
 describe('terrain texture build', () => {
   it('buildTerrainTextures returns both arrays and reports byte sizes with the mip chain', () => {
     const data = buildTerrainTextures(2);
     expect(data.height.length).toBe(HEIGHT_DIM * HEIGHT_DIM);
     expect(data.material.length).toBe(1025 * 1025 * 4);
+    expect(data.normal.length).toBe(1025 * 1025 * 4);
     expect(data.materialStep).toBe(2);
     expect(data.pyramid.length).toBe(5461 * 2);
     expect(terrainTextureBytes(1).height).toBe(HEIGHT_DIM * HEIGHT_DIM * 4);
     expect(terrainTextureBytes(2).material).toBeLessThan(terrainTextureBytes(1).material / 3);
+    expect(terrainTextureBytes(1).normal).toBe(terrainTextureBytes(1).material);
   });
 });
 
 describe('terrain texture upload objects', () => {
-  const textures = createTerrainTextures({ height, material, materialStep: 1, pyramid: new Float32Array(0), ms: 0 });
+  const textures = createTerrainTextures({ height, material, normal, materialStep: 1, pyramid: new Float32Array(0), ms: 0 });
 
   it('height is nearest-filtered R32F without mipmaps (read by texel fetch only)', () => {
     const t = textures.height;
@@ -130,5 +196,15 @@ describe('terrain texture upload objects', () => {
     expect(textures.heightBytes).toBe(HEIGHT_DIM * HEIGHT_DIM * 4);
     expect(textures.materialBytes).toBeGreaterThan(HEIGHT_DIM * HEIGHT_DIM * 4);
     expect(textures.uploadBytes).toBe(HEIGHT_DIM * HEIGHT_DIM * 8);
+  });
+
+  it('normal is RGBA8, linearly filtered with mipmaps and anisotropy, and accounted with its mip chain', () => {
+    const t = textures.normal;
+    expect(t.type).toBe(UnsignedByteType);
+    expect(t.minFilter).toBe(LinearMipmapLinearFilter);
+    expect(t.generateMipmaps).toBe(true);
+    expect(t.anisotropy).toBeGreaterThan(1);
+    expect(textures.normalBytes).toBe(textures.materialBytes);
+    expect(textures.normalUploadBytes).toBe(HEIGHT_DIM * HEIGHT_DIM * 4);
   });
 });

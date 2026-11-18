@@ -20,17 +20,16 @@ export interface TerrainMaterial {
 }
 
 /**
- * Where the CDLOD terrain gets its inputs (ADR-0003): material weights and AO from a texture sampled at the
- * world xz, and the geometric normal from a vertex-shader varying, instead of the chunk path's vertex colours
- * and normals.
+ * Where the CDLOD terrain gets its inputs (ADR-0003): material weights and AO, and the geometric normal, from
+ * textures sampled at the world xz in the fragment stage, instead of the chunk path's vertex colours and normals.
  */
 export interface TerrainSurface {
   /** RGBA8 sand, rock, earth, AO: one texel per `step` lattice cells (2 m each) from WORLD_MIN. */
   readonly material: DataTexture;
   readonly materialDim: number;
   readonly materialStep: number;
-  /** World-space normal varying (not necessarily unit length after interpolation). */
-  readonly normal: Node<'vec3'>;
+  /** RGBA8 world-space normal (n * 0.5 + 0.5) on the same lattice as `material`, linear and mipmapped. */
+  readonly normal: DataTexture;
 }
 
 const SEABED = vec3(0.105, 0.118, 0.098);
@@ -50,15 +49,17 @@ export function createTerrainMaterial(noise: DataTexture, lite = false, surface:
 
   const pW = positionWorld.add(eyeOffset);
   // Texel centres sit on lattice points: uv = (index + 0.5) / dim, index = (x - WORLD_MIN) / (2 m x step).
-  const w: Node<'vec4'> = surface
-    ? texture(surface.material, vec2(pW.x, pW.z).sub(WORLD_MIN).div(2 * surface.materialStep).add(0.5).div(surface.materialDim))
-    : attribute('color', 'vec4');
+  const surfaceUv = surface
+    ? vec2(pW.x, pW.z).sub(WORLD_MIN).div(2 * surface.materialStep).add(0.5).div(surface.materialDim)
+    : null;
+  const w: Node<'vec4'> = surface && surfaceUv ? texture(surface.material, surfaceUv) : attribute('color', 'vec4');
   const grass = clamp(float(1).sub(w.x).sub(w.y).sub(w.z), 0, 1);
   const y = pW.y;
   const dist = positionView.length();
   const detail = smoothstep(120, 30, dist);
 
-  const nGeo = surface ? normalize(surface.normal) : normalWorldGeometry;
+  // Mipped unit normals average to a shorter vector: renormalise after filtering.
+  const nGeo = surface && surfaceUv ? normalize(texture(surface.normal, surfaceUv).xyz.mul(2).sub(1)) : normalWorldGeometry;
   // Patch noise (B channel, 0..1) mapped to -1..1; world-fixed, triplanar on steep ground.
   const macro = triplanarChannel(noise, pW, nGeo, MACRO_METRES, 'b').mul(2).sub(1);
 

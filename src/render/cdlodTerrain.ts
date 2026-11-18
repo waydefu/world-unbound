@@ -105,9 +105,9 @@ export class CdlodTerrain {
     const shaders = createCdlodShaders(textures.height, this.eye, uniform(lod0Distance));
     this.terrainMaterial = createTerrainMaterial(noise, lite, {
       material: textures.material,
+      normal: textures.normal,
       materialDim: textures.materialDim,
       materialStep: textures.materialStep,
-      normal: shaders.normal,
     });
     this.material = this.terrainMaterial.material;
     this.material.positionNode = shaders.position;
@@ -128,7 +128,7 @@ export class CdlodTerrain {
       const casterMaterial = new MeshBasicNodeMaterial({ side: FrontSide });
       casterMaterial.name = 'cdlod-terrain-shadow';
       casterMaterial.colorWrite = false;
-      casterMaterial.positionNode = shaders.shadowPosition;
+      casterMaterial.positionNode = shaders.position;
       for (let c = 0; c < cascades; c++) {
         const buffers = instancedPatch(patch, this.selector.cascadeNodes[c], this.selector.cascadeEdges[c]);
         const caster = new Mesh(buffers.geometry, casterMaterial);

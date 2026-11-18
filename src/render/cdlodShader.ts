@@ -1,6 +1,6 @@
 import type { DataTexture, Node, UniformNode, Vector3 } from 'three/webgpu';
 import {
-  Fn, attribute, clamp, exp2, float, floor, fract, ivec2, length, mix, normalize, positionGeometry, texture, varyingProperty, vec3,
+  Fn, attribute, clamp, exp2, float, floor, fract, ivec2, length, mix, positionGeometry, texture, vec3,
 } from 'three/tsl';
 import { PATCH } from '../world/cdlodPyramid';
 import { WORLD_MIN } from '../world/constants';
@@ -13,6 +13,8 @@ import { HEIGHT_DIM } from '../world/terrainTextures';
  *  - `nodeEdge`: packed neighbour relations, north + 3 east + 9 south + 27 west, each 0 same level,
  *    1 neighbour one level coarser, 2 one level finer (world/cdlod.ts).
  * Heights come from the R32F height texture by texel fetch (never filtered), one texel per 2 m lattice point.
+ * No normal is produced here: the fragment stage reads the baked 2 m normal texture (terrainMaterial.ts), so
+ * coarse nodes keep the full relief and the vertex stage does a third of the fetches.
  *
  * Morphing (Strugar): odd grid vertices slide towards the even vertex below them as the camera distance goes
  * from the level's morph start to its range, so a level hands over to its parent without a pop. Where a
@@ -22,21 +24,16 @@ import { HEIGHT_DIM } from '../world/terrainTextures';
 const LAST_TEXEL = HEIGHT_DIM - 1;
 
 export interface CdlodShaders {
-  /** Main-pass local position (absolute world x, y, z); also writes the normal varying. */
+  /** Local position (absolute world x, y, z) of the morphed surface, for the main and the shadow passes alike. */
   readonly position: Node<'vec3'>;
-  /** Shadow-pass position: same surface, no normal. */
-  readonly shadowPosition: Node<'vec3'>;
-  /** World-space unit-ish normal of the morphed surface (interpolated; normalise in the fragment stage). */
-  readonly normal: Node<'vec3'>;
 }
 
 export function createCdlodShaders(heightTexture: DataTexture, eye: UniformNode<'vec3', Vector3>, lod0: UniformNode<'float', number>): CdlodShaders {
   const heights = texture(heightTexture);
-  const vNormal = varyingProperty('vec3', 'cdlodNormal');
   const load = (x: Node<'float'>, z: Node<'float'>): Node<'float'> =>
     heights.load(ivec2(clamp(x, 0, LAST_TEXEL).toInt(), clamp(z, 0, LAST_TEXEL).toInt())).r;
 
-  const build = (withNormal: boolean): Node<'vec3'> => Fn(() => {
+  const position = Fn(() => {
     const info = attribute('nodeInfo', 'vec4');
     const code = attribute('nodeEdge', 'float');
     const uv = positionGeometry.xz;
@@ -79,21 +76,8 @@ export function createCdlodShaders(heightTexture: DataTexture, eye: UniformNode<
     const hQ = load(ix.sub(odd.x.mul(quad)), iz.sub(odd.y.mul(quad)));
     const y = mix(hP, hQ, k);
 
-    if (withNormal) {
-      // Central differences on the lattice at the vertex's own spacing, blended towards the parent's spacing
-      // with k so the shading is continuous across the morph and at node borders.
-      const mx = floor(ix.sub(shift.x.mul(quad)).add(0.5));
-      const mz = floor(iz.sub(shift.y.mul(quad)).add(0.5));
-      const stencil = (w: Node<'float'>): Node<'vec3'> => {
-        const dx = load(mx.add(w), mz).sub(load(mx.sub(w), mz));
-        const dz = load(mx, mz.add(w)).sub(load(mx, mz.sub(w)));
-        const inv = float(1).div(w.mul(4)); // 1 / (2 w texels x 2 m)
-        return normalize(vec3(dx.mul(inv).negate(), 1, dz.mul(inv).negate()));
-      };
-      vNormal.assign(normalize(mix(stencil(quad), stencil(quad.mul(2)), k)));
-    }
     return vec3(px, y, pz);
   })();
 
-  return { position: build(true), shadowPosition: build(false), normal: vNormal };
+  return { position };
 }

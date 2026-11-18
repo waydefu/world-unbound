@@ -66,10 +66,10 @@ export class CdlodBackend implements TerrainBackend {
     const textures = createTerrainTextures(data);
     this.texturesMs = data.ms;
     const { memory } = this;
-    memory.add(MemoryPartition.Gpu, textures.heightBytes + textures.materialBytes);
+    memory.add(MemoryPartition.Gpu, textures.heightBytes + textures.materialBytes + textures.normalBytes);
     // three.js keeps the CPU arrays so a device loss can re-upload.
-    memory.add(MemoryPartition.CpuRetained, data.height.byteLength + data.material.byteLength + data.pyramid.byteLength);
-    this.uploads.add(performance.now(), textures.uploadBytes);
+    memory.add(MemoryPartition.CpuRetained, data.height.byteLength + data.material.byteLength + data.normal.byteLength + data.pyramid.byteLength);
+    this.uploads.add(performance.now(), textures.uploadBytes + textures.normalUploadBytes);
     const terrain = new CdlodTerrain({
       textures,
       pyramid: data.pyramid,

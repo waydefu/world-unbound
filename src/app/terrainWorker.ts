@@ -29,7 +29,7 @@ scope.onmessage = async (event: MessageEvent<WorkerRequest>): Promise<void> => {
     const started = performance.now();
     const textures = buildTerrainTextures(data.step);
     textures.ms = performance.now() - started;
-    scope.postMessage({ kind: 'textures', textures }, [textures.height.buffer, textures.material.buffer, textures.pyramid.buffer]);
+    scope.postMessage({ kind: 'textures', textures }, [textures.height.buffer, textures.material.buffer, textures.normal.buffer, textures.pyramid.buffer]);
     return;
   }
   if ('kind' in data) {
