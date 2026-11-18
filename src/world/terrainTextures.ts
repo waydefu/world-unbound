@@ -145,14 +145,17 @@ export function buildNormalTexture(step: MaterialStep, out?: Uint8Array, lattice
 export function buildTerrainTextures(step: MaterialStep): TerrainTextureData {
   const height = buildHeightTexture();
   const lattice = buildPaddedLattice();
+  const material = buildMaterialTexture(step, undefined, CLASSIFY_SMOOTH_RADIUS, lattice);
+  // The vegetation rule replaces the slope-only rock of the material bake (it rewrites sand, rock, stone in place).
+  const masks = buildTerrainMasks(step, material, lattice);
   return {
     height,
-    material: buildMaterialTexture(step, undefined, CLASSIFY_SMOOTH_RADIUS, lattice),
+    material,
     normal: buildNormalTexture(step, undefined, lattice),
     materialStep: step,
     pyramid: buildHeightPyramid(height, HEIGHT_DIM),
     ms: 0,
-    masks: buildTerrainMasks(),
+    masks,
   };
 }
 

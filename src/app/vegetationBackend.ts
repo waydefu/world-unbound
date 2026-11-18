@@ -1,9 +1,13 @@
-import { type ClimateState, computeClimate, createClimateState, temperatureAtAltitude, windFromDeg } from '../env/climate';
+import {
+  type ClimateState, computeClimate, createClimateState, temperatureAtAltitude, vegetationSeason, windFromDeg,
+} from '../env/climate';
+import { DAYS_PER_YEAR, normaliseDay } from '../env/calendar';
 import { windDirX, windDirZ } from '../env/wind';
 import type { Weather } from '../env/weather';
 import type { Ocean } from '../render/ocean';
 import { WORLD_SEED } from '../world/constants';
 import type { AppState } from './report';
+import type { TerrainBackend } from './terrainBackend';
 
 /** Climate fields of AppState before the first tick. */
 export function initialClimateState(): Pick<AppState, 'windDirDeg' | 'windSpeedMs' | 'temperatureC' | 'season01'> {
@@ -21,7 +25,9 @@ export class VegetationBackend {
   private weather: Weather = 'clear';
   private startMs = -1;
 
-  constructor(private readonly ocean: Ocean) {}
+  private readonly seasonWeights = new Float32Array(3);
+
+  constructor(private readonly ocean: Ocean, private readonly terrain: TerrainBackend) {}
 
   /** Camera cut or parameter change: the calendar and the weather the climate follows. */
   configure(day: number, hour: number, weather: Weather): void {
@@ -29,6 +35,8 @@ export class VegetationBackend {
     this.hour = hour;
     this.weather = weather;
     this.startMs = -1;
+    const w = vegetationSeason(normaliseDay(day + hour / 24) / DAYS_PER_YEAR, this.seasonWeights);
+    this.terrain.setSeason(w[0], w[1], w[2]);
   }
 
   /**

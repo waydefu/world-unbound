@@ -91,6 +91,8 @@ export interface AppState {
   shadowCasterNodes: number;
   /** Milliseconds the worker needed to build the terrain textures (0 on the chunk path). */
   terrainTexturesMs: number;
+  /** Part of `terrainTexturesMs` spent on the wind channel, vegetation and wetness masks. */
+  terrainMasksMs: number;
   /** Climate (G2.1), sampled at the 2 Hz tick. The wind blows FROM `windDirDeg` (compass bearing, meteorological convention). */
   windDirDeg: number;
   windSpeedMs: number;
@@ -180,6 +182,7 @@ export function buildReport(
       terrainMode: state.terrainRender,
       terrainBuild: state.terrainMode,
       terrainTexturesMs: round(state.terrainTexturesMs, 1),
+      terrainMasksMs: round(state.terrainMasksMs, 1),
       nodes: state.terrainRender === 'cdlod'
         ? { selected: state.nodesSelected, culled: state.nodesCulled, perLevel: state.nodesPerLevel.slice() }
         : null,

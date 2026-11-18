@@ -94,14 +94,14 @@ export function initialObserved(): Pick<
   AppState, 'residentChunks' | 'visibleChunks' | 'culledChunks' | 'shadowCasterChunks' | 'trisMain' | 'trisShadow'
   | 'shadowCascades' | 'trisOcean' | 'trisFar' | 'uploadMiBps' | 'workerQueued' | 'buildP50Ms' | 'buildP95Ms'
   | 'buildSamples' | 'pipelinesAfterWarmup' | 'jsHeapMiB' | 'loafSupported' | 'loafCount' | 'loafWorstMs' | 'loafWorstBlockingMs' | 'loafTopScript'
-  | 'terrainRender' | 'nodesSelected' | 'nodesCulled' | 'nodesPerLevel' | 'shadowCasterNodes' | 'terrainTexturesMs'
+  | 'terrainRender' | 'nodesSelected' | 'nodesCulled' | 'nodesPerLevel' | 'shadowCasterNodes' | 'terrainTexturesMs' | 'terrainMasksMs'
 > {
   return {
     residentChunks: 0, visibleChunks: 0, culledChunks: 0, shadowCasterChunks: 0, trisMain: 0, trisShadow: [0, 0, 0, 0],
     shadowCascades: 0, trisOcean: 0, trisFar: 0, uploadMiBps: 0, workerQueued: 0, buildP50Ms: null, buildP95Ms: null,
     buildSamples: 0, pipelinesAfterWarmup: null, jsHeapMiB: null, loafSupported: false, loafCount: 0, loafWorstMs: 0, loafWorstBlockingMs: 0,
     loafTopScript: null, terrainRender: 'cdlod', nodesSelected: 0, nodesCulled: 0, nodesPerLevel: new Array<number>(LEVELS).fill(0),
-    shadowCasterNodes: 0, terrainTexturesMs: 0,
+    shadowCasterNodes: 0, terrainTexturesMs: 0, terrainMasksMs: 0,
   };
 }
 

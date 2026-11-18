@@ -82,6 +82,8 @@ export class ChunkBackend implements TerrainBackend {
     this.chunks.setWetness(wetness);
   }
 
+  setSeason(): void {}
+
   setBundled(bundled: boolean): void {
     this.chunks.setBundled(bundled);
   }
