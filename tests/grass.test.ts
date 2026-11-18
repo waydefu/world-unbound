@@ -136,7 +136,7 @@ describe('grass geometry and tiers', () => {
     const cell = CELL_M * CELL_M;
     for (const tier of [QUALITY.low, QUALITY.med, QUALITY.high]) {
       const g = tier.grass;
-      const blades = Math.min(3584, Math.round(cell * g.bladesPerM2 * g.bladeBoost));
+      const blades = Math.min(5000, Math.round(cell * g.bladesPerM2 * g.bladeBoost));
       expect(blades * 7).toBeLessThanOrEqual(65535);
       expect(Math.min(7000, Math.round(cell * g.cardsPerM2)) * 9).toBeLessThanOrEqual(65535);
       expect(g.midM).toBeGreaterThan(g.nearM);

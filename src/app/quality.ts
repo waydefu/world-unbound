@@ -43,7 +43,7 @@ export const QUALITY: Record<QualityName, QualityTier> = {
     memoryBudgetMiB: BUDGET_BALANCED,
     antialias: true,
     shadows: { cascades: 3, mapSize: 1024, maxFar: 1000 },
-    grass: { nearM: 40, midM: 100, bladesPerM2: 16, bladeBoost: 2, cardsPerM2: 2.5 },
+    grass: { nearM: 40, midM: 100, bladesPerM2: 16, bladeBoost: 2.5, cardsPerM2: 2.5 },
   },
   high: {
     name: 'high',
@@ -54,7 +54,7 @@ export const QUALITY: Record<QualityName, QualityTier> = {
     memoryBudgetMiB: BUDGET_HIGH,
     antialias: true,
     shadows: { cascades: 3, mapSize: 2048, maxFar: 1600 },
-    grass: { nearM: 60, midM: 150, bladesPerM2: 28, bladeBoost: 2, cardsPerM2: 2 },
+    grass: { nearM: 60, midM: 150, bladesPerM2: 28, bladeBoost: 2.5, cardsPerM2: 2 },
   },
 };
 

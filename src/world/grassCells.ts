@@ -70,14 +70,17 @@ export class GrassCells {
     return this.ground.height[j * dim + i];
   }
 
-  /** Meadow density (0..255) at the vegetation texel nearest (x, z). @hot */
+  /** Meadow or heath density (0..255, the larger of R and G) at the vegetation texel nearest (x, z): heath carries cards. @hot */
   private meadowAt(x: number, z: number): number {
     const { vegetationDim: dim, vegetationStep: step } = this.ground;
     let i = Math.round((x - WORLD_MIN) / (2 * step));
     let j = Math.round((z - WORLD_MIN) / (2 * step));
     i = i < 0 ? 0 : i >= dim ? dim - 1 : i;
     j = j < 0 ? 0 : j >= dim ? dim - 1 : j;
-    return this.ground.vegetation[(j * dim + i) * 4];
+    const o = (j * dim + i) * 4;
+    const meadow = this.ground.vegetation[o];
+    const heath = this.ground.vegetation[o + 1];
+    return meadow > heath ? meadow : heath;
   }
 
   /**

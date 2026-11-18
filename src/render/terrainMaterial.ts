@@ -57,6 +57,8 @@ const STONE_EDGE_DARKENING = 0.5;
 const MACRO_METRES = 37;
 const GRAIN_METRES = 5.3;
 const RELIEF_METRES = 1.25;
+/** Metres per tile of the fine grass-tip noise beyond the blade range. */
+const TIP_METRES = 1.7;
 /**
  * Specular strength of the ground (scales F0 and F90 of the dielectric; 1 = the default 4 % at normal incidence, rising
  * to 100 % at grazing). Soil, grass and rock are rough and diffuse: with the full Fresnel the low sun behind the ridges
@@ -93,7 +95,12 @@ export function createTerrainMaterial(noise: DataTexture, lite = false, surface:
   const veg: Node<'vec4'> = surface && surfaceUv ? texture(surface.vegetation, surfaceUv) : vec4(1, 0, 0, 0);
   const wet01: Node<'float'> = surface && surfaceUv ? texture(surface.wetness, surfaceUv).r : float(0);
   // Shade between the blades inside the grass range: full at the eye, gone at the range edge (no visible ring).
-  const grassCol = groundCover(macro, wet01, veg, season).mul(canopyShade(veg.r, dist, grassRange));
+  // Beyond the blades the ground carries the sward to the horizon (phase G.7): the blades' tip colour and a fine
+  // grass-tip noise (1.7 m tiles), faded in from the middle of the blade range so the cards and the terrain meet without a ring.
+  const tipNoise = texture(noise, vec2(pW.x, pW.z).div(TIP_METRES)).a.sub(0.5);
+  const tips = veg.r.mul(smoothstep(grassRange.mul(0.35), grassRange.mul(0.8).max(1), dist)).mul(grassRange.greaterThan(0).select(1, 0));
+  const tipColour = mix(vec3(1, 1, 1), vec3(1.14, 1.16, 0.9), tips).mul(float(1).add(tipNoise.mul(0.3).mul(tips)));
+  const grassCol = groundCover(macro, wet01, veg, season).mul(canopyShade(veg.r, dist, grassRange)).mul(lite ? float(1) : tipColour);
   // Stone quays and breakwaters read as stone, not as a flat tan band: darker on the steep flank and at the foot,
   // where the wall meets the water.
   const stoneEdge = max(float(1).sub(nGeo.y).mul(4), float(1).sub(smoothstep(0.2, 1.3, y))).min(1);
