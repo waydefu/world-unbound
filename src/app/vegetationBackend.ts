@@ -77,8 +77,12 @@ export class VegetationBackend {
    * @amortized once at start-up
    */
   prepare(): void {
-    const { terrain, tier, memory, noise } = this.options;
-    if (!this.options.grass || !(terrain instanceof CdlodBackend) || !terrain.gpu || !terrain.data?.masks) return;
+    const { terrain, tier, memory, noise, ocean, uploads } = this.options;
+    if (!(terrain instanceof CdlodBackend) || !terrain.gpu || !terrain.data?.masks) return;
+    // Calm harbour basins (phase D): the ocean shader reads the worker's openness map.
+    ocean.setOpenness(terrain.data.masks.openness);
+    uploads.add(performance.now(), terrain.data.masks.openness.byteLength);
+    if (!this.options.grass) return;
     const wind = new WindTexture(terrain.data.masks.windChannel);
     const grass = new GrassLayer({
       textures: terrain.gpu, data: terrain.data, noise, wind: wind.texture, settings: tier.grass,

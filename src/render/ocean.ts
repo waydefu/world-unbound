@@ -1,6 +1,9 @@
-import { BufferAttribute, BufferGeometry, type DataTexture, DataUtils, Mesh, Vector3 } from 'three/webgpu';
+import {
+  BufferAttribute, BufferGeometry, ClampToEdgeWrapping, DataTexture, DataUtils, LinearFilter, Mesh, RedFormat, UnsignedByteType, Vector3,
+} from 'three/webgpu';
 import { waveSet, waveSlope } from '../env/ocean';
 import type { Weather } from '../env/weather';
+import { OPENNESS_DIM } from '../world/basinOpenness';
 import { COAST_DIM, SEAFLOOR_DIM } from '../world/seaFloor';
 import { FLOOR_OFFSET, createOceanMaterial, createOceanUniforms, createSeaFloorTexture } from './oceanMaterial';
 import type { SkyDome } from './sky';
@@ -86,6 +89,9 @@ export class Ocean {
   private readonly coastData: Uint16Array | null;
   private readonly coastTexture: DataTexture | null;
   readonly hasCoast: boolean;
+  /** Basin openness (R8, 8 m cells): 255 = open everywhere until the worker's map arrives. */
+  private readonly opennessData = new Uint8Array(OPENNESS_DIM * OPENNESS_DIM).fill(255);
+  private readonly opennessTexture = new DataTexture(this.opennessData, OPENNESS_DIM, OPENNESS_DIM, RedFormat, UnsignedByteType);
 
   private windX = 0;
   private windZ = 0.35;
@@ -99,13 +105,23 @@ export class Ocean {
     this.hasCoast = !lite;
     this.coastData = lite ? null : new Uint16Array(COAST_DIM * COAST_DIM).fill(DataUtils.toHalfFloat(DEEP_METRES - FLOOR_OFFSET));
     this.coastTexture = this.coastData ? createSeaFloorTexture(this.coastData, COAST_DIM) : null;
-    this.mesh = new Mesh(geometry, createOceanMaterial(sky, this.floorTexture, this.coastTexture ?? this.floorTexture, noise, this.uniforms, lite));
+    this.mesh = new Mesh(geometry, createOceanMaterial(
+      sky, this.floorTexture, this.coastTexture ?? this.floorTexture, noise, this.uniforms, lite, this.opennessTexture,
+    ));
     this.mesh.name = 'ocean';
     this.mesh.renderOrder = 1;
     this.mesh.frustumCulled = false;
     this.floorTexture.needsUpdate = true;
+    const o = this.opennessTexture;
+    o.magFilter = LinearFilter;
+    o.minFilter = LinearFilter;
+    o.wrapS = ClampToEdgeWrapping;
+    o.wrapT = ClampToEdgeWrapping;
+    o.generateMipmaps = false;
+    o.unpackAlignment = 1;
+    o.needsUpdate = true;
     this.gpuBytes = geometry.getAttribute('position').array.byteLength + (geometry.index?.array.byteLength ?? 0)
-      + this.floorData.byteLength + (this.coastData?.byteLength ?? 0);
+      + this.floorData.byteLength + (this.coastData?.byteLength ?? 0) + this.opennessData.byteLength;
     this.setWeather('clear');
   }
 
@@ -130,6 +146,15 @@ export class Ocean {
     const n = Math.min(heights.length, this.coastData.length);
     for (let i = 0; i < n; i++) this.coastData[i] = DataUtils.toHalfFloat(heights[i] - FLOOR_OFFSET);
     this.coastTexture.needsUpdate = true;
+  }
+
+  /**
+   * Publishes the basin openness map (bytes, OPENNESS_DIM² cells of 8 m, see world/basinOpenness.ts).
+   * @amortized once per session
+   */
+  setOpenness(data: Uint8Array): void {
+    this.opennessData.set(data.subarray(0, this.opennessData.length));
+    this.opennessTexture.needsUpdate = true;
   }
 
   /** @amortized weather changes only */

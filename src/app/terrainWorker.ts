@@ -22,7 +22,7 @@ const ready: Promise<boolean> = loadAndInstallTerrain().then(
 /** The buffers a textures reply moves instead of copying. */
 function transferList(t: TerrainTextureData): Transferable[] {
   const list = [t.height.buffer, t.material.buffer, t.normal.buffer, t.pyramid.buffer];
-  if (t.masks) list.push(t.masks.windChannel.buffer, t.masks.vegetation.buffer, t.masks.wetness.buffer);
+  if (t.masks) list.push(t.masks.windChannel.buffer, t.masks.vegetation.buffer, t.masks.wetness.buffer, t.masks.openness.buffer);
   return list;
 }
 

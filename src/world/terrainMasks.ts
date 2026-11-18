@@ -1,3 +1,4 @@
+import { OPENNESS_CELL_M, OPENNESS_DIM, buildOpenness, buildWaterCells } from './basinOpenness';
 import { AO_APRON } from './terrainAo';
 import { PAD_DIM } from './terrainLattice';
 import { buildVegetation, maskDim } from './vegetationMask';
@@ -11,6 +12,8 @@ export interface TerrainMasks {
   vegetation: Uint8Array;
   /** Wetness proxy R8 on the same lattice. */
   wetness: Uint8Array;
+  /** Basin openness R8 on 8 m cells over the square (basinOpenness.ts): how open to the fjord each water cell is. */
+  openness: Uint8Array;
   /** Milliseconds the masks took, measured by whoever built them. */
   ms: number;
 }
@@ -24,7 +27,9 @@ export function buildTerrainMasks(step: 1 | 2, material: Uint8Array, lattice: In
   const started = performance.now();
   const windChannel = bakeWindChannel();
   const { vegetation, wetness } = buildVegetation(lattice, PAD_DIM, AO_APRON, step, material);
-  return { windChannel, vegetation, wetness, ms: performance.now() - started };
+  const water = buildWaterCells(lattice, PAD_DIM, AO_APRON, OPENNESS_DIM, OPENNESS_CELL_M / 2);
+  const openness = buildOpenness(water, OPENNESS_DIM, OPENNESS_CELL_M);
+  return { windChannel, vegetation, wetness, openness, ms: performance.now() - started };
 }
 
 /** Texels per side of the vegetation and wetness textures: the material lattice. */

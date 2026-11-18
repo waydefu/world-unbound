@@ -78,7 +78,7 @@ export class CdlodBackend implements TerrainBackend {
     // three.js keeps the CPU arrays so a device loss can re-upload. The wind channel stays too (wind texture refresh).
     const masks = data.masks;
     memory.add(MemoryPartition.CpuRetained, data.height.byteLength + data.material.byteLength + data.normal.byteLength + data.pyramid.byteLength
-      + (masks ? masks.vegetation.byteLength + masks.wetness.byteLength + masks.windChannel.byteLength : 0));
+      + (masks ? masks.vegetation.byteLength + masks.wetness.byteLength + masks.windChannel.byteLength + masks.openness.byteLength : 0));
     this.uploads.add(performance.now(), textures.uploadBytes + textures.normalUploadBytes + textures.vegetationUploadBytes);
     const terrain = new CdlodTerrain({
       textures,
