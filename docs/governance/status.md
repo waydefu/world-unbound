@@ -49,7 +49,7 @@ G1 (PRs #13–#15) and the stop-work handoff needed no protected-path changes.
 | 4 | `scripts/audit.mjs` and `scripts/audit-visual.mjs` produce CI evidence but are not sensitive paths | `governance/sensitive-paths.yml` lists `.github/scripts/**` (R3) only; an edit that weakens the audit is classified R0/R1 | Owner: add `scripts/**` (R3, "Validators that produce CI evidence") to `governance/sensitive-paths.yml` — **closed** by PR #16 (merged 2026-11-17) |
 | 5 | `src/env/**` (new in G1.1) has no owner domain | `governance/owners.yml` architecture domain predates it | Owner: add `src/env/**` to the architecture domain — **closed** by PR #16 (merged 2026-11-17) |
 | 6 | No device regression path | Phone results are owner-run and uploaded by hand | M2 |
-| 7 | `materialVariants` telemetry is a hard-coded 2 | Not wired to the renderer's pipeline cache | Agent (G1.3) |
+| 7 | `materialVariants` telemetry is a hard-coded 2 | Not wired to the renderer's pipeline cache | Agent — **closed** by PR #21 (real count of node materials; `pipelinesAfterWarmup` added) |
 
 Gaps 4 and 5 were `governance/` edits; the owner applied them in PR #16 (the agent's fix commit there was owner-authorised).
 
