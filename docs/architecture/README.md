@@ -18,7 +18,7 @@ Accepted decisions: [ADR-0001](../adr/0001-engine-architecture.md) (engine stack
 | --- | --- | --- | --- |
 | `src/world` | own directory | pure, deterministic | Height lattice (2 m cells, Int16 at 2 cm + 600 m offset) read from the installed baked tiles (`terrainData.ts`, `heightField.ts`), terrain colour weights, GPU texture packing (`terrainTextures.ts`), CDLOD node selection (`cdlod*.ts`), chunk grid and LOD, chunk request bookkeeping, worker job (`terrainJob.ts`) |
 | `src/perf` | own directory | pure | Frame statistics, dynamic resolution controller, memory partitions and budgets |
-| `src/env` | own directory | pure | Calendar (32-day year), sun/moon ephemeris at 62.083° N, atmosphere tables (Hillaire 2020), time-sliced sky-view table, weather type |
+| `src/env` | own directory | pure | Calendar (32-day year), sun/moon ephemeris at 62.083° N, atmosphere tables (Hillaire 2020), time-sliced sky-view table, weather type, climate state (season, temperature, wind direction/speed/gust; `climate.ts`) and local wind with fjord channelling (`wind.ts`) |
 | `src/platform` | world, perf, env | browser | Capability probe (WebGPU adapter, limits), crash-recovery session flag |
 | `src/render` | world, perf, env, platform | three.js | Renderer creation and fallback, warm-up, device-loss watch, CDLOD terrain (`cdlodTerrain.ts`, `cdlodShader.ts`; instanced patches displaced from a height texture) or, behind `?terrain=chunks`, terrain chunk meshes in a `BundleGroup`, sky dome, environment lights/fog/exposure, cascaded shadows |
 | `src/ui` | platform | DOM | HUD and debug buttons; receives everything it shows from app |
@@ -53,6 +53,15 @@ Real terrain (Hellesylt, G1.5, [spec](../specs/g1.5-real-terrain.md)) is baked o
 ## Terrain rendering (G2.0, [ADR-0003](../adr/0003-gpu-terrain-cdlod.md))
 
 Default (`?terrain=cdlod`): after the worker installs the tiles it derives GPU copies of the lattice once (`world/terrainTextures.ts`): a 2049² R32F height texture, an RGBA8 material texture (sand, rock, earth weights and baked AO, the values the chunk path writes into vertex colours; 4 m texels on the low tier) and a min/max height pyramid. The CPU lattice stays the authority. Each frame `world/cdlod.ts` selects quadtree nodes (64 m to 4096 m, one 32 x 32 grid patch for all, distance ranges `lod0Distance` x 2^level, neighbours balanced to differ by at most one level), culls them against the camera frustum and writes them into instance buffers; one instanced draw displaces the patch in the vertex shader (`textureLoad`, geomorphing, edge stitching). Shadow casters are separate instanced draws on shadow-only layers, one per cascade, culled against that cascade's light frustum. The far-terrain skin is not used. `?terrain=chunks` keeps the previous path (CPU chunk meshes, streamer, far skin) for A/B and rollback.
+
+## Vegetation, wind and grass (G2.1, [spec](../specs/g2.1-wind-grass.md))
+
+- **Climate** (`env/climate.ts`) is a pure function of (seed, game time, weather, day of year): season, temperature (with the -6.5 C/km lapse as `temperatureAtAltitude`), wind direction (slow seeded noise, hours), speed (per weather, minutes) and gust factor (seconds). `windDirRad` is the bearing the wind blows towards; telemetry and the HUD show the bearing it blows from.
+- **Fjord channelling** (`world/windChannel.ts`) is baked once in the terrain worker: a 256² map (16 m cells) of the valley axis (double-angle encoding of the gradient structure tensor) and sky openness. `env/wind.ts` turns the global wind into the local wind. `render/windTexture.ts` writes a camera-centred toroidal 64 x 64 RGBA16F field (8 m cells) at 10 Hz (32 KiB per refresh, about 0.3 MiB/s counted as upload).
+- **Vegetation mask** (`world/vegetationMask.ts`, `world/manMadeStone.ts`) is baked in the same worker call as the material texture, on the same lattice: RGBA8 meadow / heath / tree / bare, an R8 wetness proxy, and the final sand, rock and stone weights written back into the material texture (`classifyTerrain` and the chunk path are untouched). Constants (`ROCK_SLOPE_DEG`, `TREELINE_M`, ...) cite `docs/research/env/6-hellesylt-flora.md` or are marked `unverified`.
+- **Grass** (`world/grassCells.ts`, `render/grass*.ts`): camera-centred 8 m cells on a snapped grid, culled on the CPU, drawn as up to three instanced draws (dense blades, thin blades, cards). Blades are generated in the vertex shader from `(cell, index)`; nothing is stored per blade. `?grass=0` disables it; the chunk path has none.
+- **Calm basins** (`world/basinOpenness.ts`): an R8 map (8 m cells) of the fraction of 16 directions with more than 150 m of open water; the ocean shader drops foam and narrows the shallow band where it is below 0.25.
+- Wiring lives in `app/vegetationBackend.ts` (climate, wind texture, grass, ocean wind and openness) and `app/appState.ts`.
 
 ## Contracts
 
