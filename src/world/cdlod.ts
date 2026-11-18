@@ -1,5 +1,8 @@
 import { WORLD_MIN } from './constants';
+import { EDGE_COARSER, EDGE_FINER, EDGE_SAME, lodRange } from './cdlodMath';
 import { LEAF_SIZE, LEVELS, LEVEL_OFFSET, NODES_PER_SIDE, ROOT_LEVEL } from './cdlodPyramid';
+
+export { EDGE_COARSER, EDGE_FINER, EDGE_SAME, edgeState, frustumPlanes, lodRange, morphEnd, morphStart } from './cdlodMath';
 
 /**
  * CDLOD node selection (Strugar 2010, adapted; ADR-0003, spec G2.0 phase B). Pure and allocation-free after
@@ -12,59 +15,8 @@ import { LEAF_SIZE, LEVELS, LEVEL_OFFSET, NODES_PER_SIDE, ROOT_LEVEL } from './c
  * Culling only removes output: the selection itself never depends on the camera frustum.
  */
 export const MAX_NODES = 1024;
-
-/** Distance (m) at which level `level` stops being drawn: `lod0Distance` doubled per level. */
-export function lodRange(lod0Distance: number, level: number): number {
-  return lod0Distance * 2 ** level;
-}
-
-/** Distance at which level `level` starts morphing towards its parent: the last 30 % of its band. */
-export function morphStart(lod0Distance: number, level: number): number {
-  if (level === 0) return 0.7 * lod0Distance;
-  const inner = lodRange(lod0Distance, level - 1);
-  return inner + 0.7 * (lodRange(lod0Distance, level) - inner);
-}
-
-/** Distance at which a level has fully morphed to its parent's grid. */
-export function morphEnd(lod0Distance: number, level: number): number {
-  return lodRange(lod0Distance, level);
-}
-
-/**
- * Six frustum planes (inside is `n . p + d >= 0`) as `(nx, ny, nz, d)` from a column-major clip matrix
- * (projection x view). Normalised. The planes live in whatever space the matrix maps from.
- * @hot
- */
-export function frustumPlanes(m: ArrayLike<number>, out: Float32Array): Float32Array {
-  for (let p = 0; p < 6; p++) {
-    const axis = p >> 1;
-    const sign = (p & 1) === 0 ? 1 : -1;
-    let a = m[3] + sign * m[axis];
-    let b = m[7] + sign * m[4 + axis];
-    let c = m[11] + sign * m[8 + axis];
-    let d = m[15] + sign * m[12 + axis];
-    const inv = 1 / Math.hypot(a, b, c);
-    a *= inv;
-    b *= inv;
-    c *= inv;
-    d *= inv;
-    out[p * 4] = a;
-    out[p * 4 + 1] = b;
-    out[p * 4 + 2] = c;
-    out[p * 4 + 3] = d;
-  }
-  return out;
-}
-
-/** Edge relation codes in `edges`: 0 same level, 1 neighbour one level coarser, 2 one level finer. */
-export const EDGE_SAME = 0;
-export const EDGE_COARSER = 1;
-export const EDGE_FINER = 2;
-
-/** Decodes one edge (0 north = -z, 1 east, 2 south, 3 west) from a node's packed edge code. */
-export function edgeState(code: number, edge: number): number {
-  return Math.floor(code / 3 ** edge) % 3;
-}
+/** Most shadow cascades a tier uses (per-cascade caster lists). */
+export const MAX_CASCADES = 4;
 
 const STACK_SIZE = 64;
 const GRID_CELLS = NODES_PER_SIDE * NODES_PER_SIDE;
@@ -77,6 +29,12 @@ export class CdlodSelector {
   /** Shadow casters: same layout, selected by distance only (no camera frustum). */
   readonly casters = new Float32Array(MAX_NODES * 4);
   readonly casterEdges = new Float32Array(MAX_NODES);
+  /** Casters inside each shadow cascade's light frustum (see `cullCascade`): same layout, one list per cascade. */
+  readonly cascadeNodes: Float32Array[] = [];
+  readonly cascadeEdges: Float32Array[] = [];
+  readonly cascadeCount = new Int32Array(MAX_CASCADES);
+  /** Set by `cullCascade`: that cascade's list differs from the previous call's. */
+  readonly cascadeChanged = new Uint8Array(MAX_CASCADES);
   count = 0;
   casterCount = 0;
   /** Selected nodes dropped by the frustum test. */
@@ -100,6 +58,10 @@ export class CdlodSelector {
   constructor(private readonly pyramid: Float32Array, lod0Distance: number, shadowFar: number) {
     for (let level = 0; level < LEVELS; level++) this.range2[level] = lodRange(lod0Distance, level) ** 2;
     this.shadowFar2 = shadowFar * shadowFar;
+    for (let c = 0; c < MAX_CASCADES; c++) {
+      this.cascadeNodes.push(new Float32Array(MAX_NODES * 4));
+      this.cascadeEdges.push(new Float32Array(MAX_NODES));
+    }
   }
 
   /** Nodes selected before culling. */
@@ -122,6 +84,31 @@ export class CdlodSelector {
     this.classify(ex, ey, ez);
     this.balance();
     this.emit(ex, ey, ez, planes);
+  }
+
+  /**
+   * Fills cascade `c`'s list with the casters that intersect its light frustum. `planes` are the light camera's
+   * frustum planes in camera-relative space (as `frustumPlanes` gives them, optionally pushed outwards by a margin);
+   * null keeps every caster. Call after `select`, once per frame per cascade.
+   * @hot
+   */
+  cullCascade(c: number, ex: number, ey: number, ez: number, planes: Float32Array | null): void {
+    const nodes = this.cascadeNodes[c];
+    const edges = this.cascadeEdges[c];
+    const { casters, casterEdges } = this;
+    let n = 0;
+    let changed = false;
+    for (let i = 0; i < this.casterCount; i++) {
+      const x = casters[i * 4];
+      const z = casters[i * 4 + 1];
+      const size = casters[i * 4 + 2];
+      const level = casters[i * 4 + 3];
+      if (planes !== null && !this.inFrustum(planes, x - ex, z - ez, size, level, (x - WORLD_MIN) / size, (z - WORLD_MIN) / size, ey)) continue;
+      if (put(nodes, edges, n, x, z, size, level, casterEdges[i])) changed = true;
+      n++;
+    }
+    this.cascadeChanged[c] = changed || n !== this.cascadeCount[c] ? 1 : 0;
+    this.cascadeCount[c] = n;
   }
 
   /** @hot */

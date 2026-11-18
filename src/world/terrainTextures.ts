@@ -1,3 +1,4 @@
+import { buildHeightPyramid } from './cdlodPyramid';
 import { CELL_SIZE, HEIGHT_QUANTUM, WORLD_MIN } from './constants';
 import { dequantize, sampleQuantized } from './heightField';
 import { AO_APRON, vertexAo } from './terrainAo';
@@ -32,6 +33,8 @@ export interface TerrainTextureData {
   /** materialDim² RGBA8: sand, rock, earth weights and baked AO, as in the chunk vertex colours. */
   material: Uint8Array;
   materialStep: MaterialStep;
+  /** Min/max height pyramid for node selection (see cdlodPyramid.ts), derived from `height`. */
+  pyramid: Float32Array;
   /** Milliseconds the build took, measured by whoever ran it. */
   ms: number;
 }
@@ -104,7 +107,8 @@ export function buildMaterialTexture(step: MaterialStep, out?: Uint8Array): Uint
  * @amortized once at load
  */
 export function buildTerrainTextures(step: MaterialStep): TerrainTextureData {
-  return { height: buildHeightTexture(), material: buildMaterialTexture(step), materialStep: step, ms: 0 };
+  const height = buildHeightTexture();
+  return { height, material: buildMaterialTexture(step), materialStep: step, pyramid: buildHeightPyramid(height, HEIGHT_DIM), ms: 0 };
 }
 
 /** Bytes of the GPU copies, with the material mip chain (a third more). */

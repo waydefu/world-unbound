@@ -81,6 +81,16 @@ export interface AppState {
   loafWorstMs: number;
   loafWorstBlockingMs: number;
   loafTopScript: string | null;
+  /** Terrain renderer in use: 'cdlod' or 'chunks'. */
+  terrainRender: string;
+  /** CDLOD: nodes drawn, nodes dropped by the frustum test, drawn nodes per level (L0 first). */
+  nodesSelected: number;
+  nodesCulled: number;
+  nodesPerLevel: number[];
+  /** CDLOD: nodes drawn into the shadow maps. */
+  shadowCasterNodes: number;
+  /** Milliseconds the worker needed to build the terrain textures (0 on the chunk path). */
+  terrainTexturesMs: number;
 }
 
 const scratch: Percentiles = { p50: 0, p95: 0, p99: 0, mean: 0 };
@@ -162,7 +172,13 @@ export function buildReport(
       chunksInFlight: state.chunksInFlight,
       staleResults: state.staleResults,
       lodBias: state.lodBias,
+      terrainMode: state.terrainRender,
       terrainBuild: state.terrainMode,
+      terrainTexturesMs: round(state.terrainTexturesMs, 1),
+      nodes: state.terrainRender === 'cdlod'
+        ? { selected: state.nodesSelected, culled: state.nodesCulled, perLevel: state.nodesPerLevel.slice() }
+        : null,
+      shadowCasterNodes: state.terrainRender === 'cdlod' ? state.shadowCasterNodes : null,
       drawCalls: state.drawCalls,
       bundledDraws: state.bundledDraws,
       triangles: state.triangles,
@@ -177,12 +193,14 @@ export function buildReport(
         farTerrain: state.trisFar,
       },
       uploadMiBps: round(state.uploadMiBps, 3),
-      workerQueue: { queued: state.workerQueued, inFlight: state.chunksInFlight },
-      chunkBuildMs: {
-        p50: state.buildP50Ms === null ? null : round(state.buildP50Ms),
-        p95: state.buildP95Ms === null ? null : round(state.buildP95Ms),
-        samples: state.buildSamples,
-      },
+      workerQueue: state.terrainRender === 'cdlod' ? null : { queued: state.workerQueued, inFlight: state.chunksInFlight },
+      chunkBuildMs: state.terrainRender === 'cdlod'
+        ? null
+        : {
+          p50: state.buildP50Ms === null ? null : round(state.buildP50Ms),
+          p95: state.buildP95Ms === null ? null : round(state.buildP95Ms),
+          samples: state.buildSamples,
+        },
     },
     memory: { jsHeapMiB: state.jsHeapMiB === null ? null : round(state.jsHeapMiB, 1), jsHeapApproximate: true },
     environment: {

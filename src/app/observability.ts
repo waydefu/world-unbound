@@ -1,11 +1,10 @@
 import type { Camera, DirectionalLight, Material, Mesh, Object3D, Scene } from 'three/webgpu';
 import { SampleRing } from '../perf/sampleRing';
 import { SlidingRate } from '../perf/slidingRate';
-import { createChunkTelemetry, sampleChunkStats } from '../render/chunkStats';
 import { cascadeCameras } from '../render/shadows';
-import type { TerrainChunks } from '../render/terrainChunks';
+import { LEVELS } from '../world/cdlodPyramid';
 import type { AppState } from './report';
-import type { TerrainStreamer } from './terrainStreamer';
+import type { TerrainBackend } from './terrainBackend';
 
 interface LoafScript {
   sourceURL: string;
@@ -95,12 +94,14 @@ export function initialObserved(): Pick<
   AppState, 'residentChunks' | 'visibleChunks' | 'culledChunks' | 'shadowCasterChunks' | 'trisMain' | 'trisShadow'
   | 'shadowCascades' | 'trisOcean' | 'trisFar' | 'uploadMiBps' | 'workerQueued' | 'buildP50Ms' | 'buildP95Ms'
   | 'buildSamples' | 'pipelinesAfterWarmup' | 'jsHeapMiB' | 'loafSupported' | 'loafCount' | 'loafWorstMs' | 'loafWorstBlockingMs' | 'loafTopScript'
+  | 'terrainRender' | 'nodesSelected' | 'nodesCulled' | 'nodesPerLevel' | 'shadowCasterNodes' | 'terrainTexturesMs'
 > {
   return {
     residentChunks: 0, visibleChunks: 0, culledChunks: 0, shadowCasterChunks: 0, trisMain: 0, trisShadow: [0, 0, 0, 0],
     shadowCascades: 0, trisOcean: 0, trisFar: 0, uploadMiBps: 0, workerQueued: 0, buildP50Ms: null, buildP95Ms: null,
     buildSamples: 0, pipelinesAfterWarmup: null, jsHeapMiB: null, loafSupported: false, loafCount: 0, loafWorstMs: 0, loafWorstBlockingMs: 0,
-    loafTopScript: null,
+    loafTopScript: null, terrainRender: 'cdlod', nodesSelected: 0, nodesCulled: 0, nodesPerLevel: new Array<number>(LEVELS).fill(0),
+    shadowCasterNodes: 0, terrainTexturesMs: 0,
   };
 }
 
@@ -110,13 +111,12 @@ export class Observer {
   readonly uploads = new SlidingRate(2000);
   /** Pipelines cached when warm-up finished; later growth is "created after warm-up". */
   pipelineBaseline: number | null = null;
-  private readonly chunkTelemetry = createChunkTelemetry();
   private readonly longFrames = new LongFrames();
   private cascades: ReturnType<typeof cascadeCameras> = [];
   private triangles = { sky: 0, ocean: 0, far: 0 };
 
-  setMeshes(sky: Mesh, ocean: Mesh, far: Mesh): void {
-    this.triangles = { sky: meshTriangles(sky), ocean: meshTriangles(ocean), far: meshTriangles(far) };
+  setMeshes(sky: Mesh, ocean: Mesh, far: Mesh | null): void {
+    this.triangles = { sky: meshTriangles(sky), ocean: meshTriangles(ocean), far: far ? meshTriangles(far) : 0 };
   }
 
   /** Warm-up finished: take the pipeline baseline, count the materials, start the long-frame observer. */
@@ -126,29 +126,15 @@ export class Observer {
     this.longFrames.start();
   }
 
-  /** @amortized scans the chunk table once per telemetry tick */
-  sample(
-    state: AppState, now: number, chunks: TerrainChunks, camera: Camera, sun: DirectionalLight,
-    streamer: TerrainStreamer, renderer: unknown,
-  ): void {
-    const t = this.chunkTelemetry;
+  /** @amortized once per telemetry tick; the terrain backend scans its own tables */
+  sample(state: AppState, now: number, terrain: TerrainBackend, camera: Camera, sun: DirectionalLight, renderer: unknown): void {
     if (this.cascades.length === 0) this.cascades = cascadeCameras(sun);
-    sampleChunkStats(chunks, camera, this.cascades, t);
-    state.residentChunks = t.visible + t.culled;
-    state.visibleChunks = t.visible;
-    state.culledChunks = t.culled;
-    state.shadowCasterChunks = t.casters;
-    state.shadowCascades = t.cascades;
-    for (let c = 0; c < t.cascades; c++) state.trisShadow[c] = t.shadowTriangles[c];
+    terrain.sample(state, camera, this.cascades);
     const { sky, ocean, far } = this.triangles;
-    state.trisMain = chunks.residentTriangles + sky + ocean + far;
+    state.trisMain = terrain.mainTriangles + sky + ocean + far;
     state.trisOcean = ocean;
     state.trisFar = far;
     state.uploadMiBps = this.uploads.perSecond(now) / (1024 * 1024);
-    state.workerQueued = streamer.requests.queuedCount();
-    state.buildP50Ms = streamer.buildMs.percentile(0.5);
-    state.buildP95Ms = streamer.buildMs.percentile(0.95);
-    state.buildSamples = streamer.buildMs.count;
     const pipes = pipelineCount(renderer);
     state.pipelinesAfterWarmup = pipes === null || this.pipelineBaseline === null ? null : Math.max(0, pipes - this.pipelineBaseline);
     state.jsHeapMiB = jsHeapMiB();

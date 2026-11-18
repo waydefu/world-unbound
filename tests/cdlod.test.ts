@@ -299,3 +299,37 @@ describe('shadow casters', () => {
     expect(behind).toBeGreaterThan(0);
   });
 });
+
+describe('per-cascade caster lists', () => {
+  it('keep every caster without planes and only those intersecting the light frustum with planes', () => {
+    const sel = new CdlodSelector(sloped, 150, 1000);
+    sel.select(150, 5, -170, null);
+    sel.cullCascade(0, 150, 5, -170, null);
+    expect(sel.cascadeCount[0]).toBe(sel.casterCount);
+    expect(sel.cascadeChanged[0]).toBe(1);
+    expect(Array.from(sel.cascadeNodes[0].subarray(0, sel.casterCount * 4))).toEqual(Array.from(sel.casters.subarray(0, sel.casterCount * 4)));
+    sel.cullCascade(0, 150, 5, -170, null);
+    expect(sel.cascadeChanged[0]).toBe(0);
+    // A light box 200 m wide in x around the eye (planes at x = +-100 camera-relative; the rest never reject).
+    const planes = new Float32Array(24);
+    planes.set([1, 0, 0, 100]);
+    planes.set([-1, 0, 0, 100], 4);
+    for (let p = 2; p < 6; p++) planes.set([0, 1, 0, 1e9], p * 4);
+    sel.cullCascade(1, 150, 5, -170, planes);
+    expect(sel.cascadeCount[1]).toBeGreaterThan(0);
+    expect(sel.cascadeCount[1]).toBeLessThan(sel.casterCount);
+    for (let n = 0; n < sel.cascadeCount[1]; n++) {
+      const x = sel.cascadeNodes[1][n * 4];
+      const size = sel.cascadeNodes[1][n * 4 + 2];
+      expect(x + size).toBeGreaterThanOrEqual(150 - 100);
+      expect(x).toBeLessThanOrEqual(150 + 100);
+    }
+    // Nothing a light box covers is lost: every caster overlapping x in [50, 250] is in the list.
+    let overlapping = 0;
+    for (let n = 0; n < sel.casterCount; n++) {
+      const x = sel.casters[n * 4];
+      if (x + sel.casters[n * 4 + 2] >= 50 && x <= 250) overlapping++;
+    }
+    expect(sel.cascadeCount[1]).toBe(overlapping);
+  });
+});

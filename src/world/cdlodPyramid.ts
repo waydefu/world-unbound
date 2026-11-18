@@ -1,5 +1,3 @@
-import { HEIGHT_DIM } from './terrainTextures';
-
 /**
  * Quadtree geometry shared by the CDLOD node selection and its tests (ADR-0003, spec G2.0 phase B).
  * The root node is the whole 4096 m square (level 6); leaves are 64 m (level 0). A node of level L is
@@ -14,6 +12,8 @@ export const ROOT_LEVEL = 6;
 export const LEVELS = ROOT_LEVEL + 1;
 /** Quads per side of the shared grid patch. */
 export const PATCH = 32;
+/** Lattice points per side of the height texture covering the square (2049). */
+export const LATTICE_DIM = NODES_PER_SIDE * LEAF_CELLS + 1;
 
 /** Index of the first node of each level in the min/max pyramid (levels are stored coarse after fine). */
 export const LEVEL_OFFSET = new Int32Array(LEVELS + 1);
@@ -33,7 +33,7 @@ export function nodeSize(level: number): number {
  * lattice points, so a mesh built on the lattice never leaves its node's box.
  * @amortized once at load
  */
-export function buildHeightPyramid(heights: Float32Array, dim: number = HEIGHT_DIM, out?: Float32Array): Float32Array {
+export function buildHeightPyramid(heights: Float32Array, dim: number = LATTICE_DIM, out?: Float32Array): Float32Array {
   const pyramid = out ?? new Float32Array(PYRAMID_NODES * 2);
   for (let lz = 0; lz < NODES_PER_SIDE; lz++) {
     for (let lx = 0; lx < NODES_PER_SIDE; lx++) {

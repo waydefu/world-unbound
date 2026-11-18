@@ -1,0 +1,140 @@
+import { type Camera, type DataTexture, type DirectionalLight, Group, type Mesh, type PerspectiveCamera } from 'three/webgpu';
+import { MemoryPartition, type MemoryRegistry } from '../perf/memoryRegistry';
+import type { SlidingRate } from '../perf/slidingRate';
+import type { FrustumSource } from '../render/chunkStats';
+import { CdlodTerrain } from '../render/cdlodTerrain';
+import { cascadeCameras, type CascadeCamera } from '../render/shadows';
+import { createTerrainTextures } from '../render/terrainTextures';
+import { LEVELS } from '../world/cdlodPyramid';
+import type { MaterialStep, TerrainTextureData } from '../world/terrainTextures';
+import type { ResolvedCamera } from './cameras';
+import type { QualityTier } from './quality';
+import type { AppState } from './report';
+import type { TerrainBackend } from './terrainBackend';
+import { TerrainClient } from './terrainClient';
+
+/**
+ * GPU height texture + CDLOD (ADR-0003, the default). The worker builds the textures while the renderer starts;
+ * `prepare()` waits for them, then the terrain exists and every frame only selects nodes. The streamer, the chunk
+ * meshes and the far skin are not used: the root node covers the whole world.
+ */
+export class CdlodBackend implements TerrainBackend {
+  readonly mode = 'cdlod' as const;
+  readonly root = new Group();
+  readonly client = new TerrainClient();
+  readonly farMesh: Mesh | null = null;
+  private terrain: CdlodTerrain | null = null;
+  private readonly textures: Promise<TerrainTextureData>;
+  private texturesMs = 0;
+  private updates = 0;
+  private wetness = 0;
+  private sun: DirectionalLight | null = null;
+  private cascadeCams: readonly CascadeCamera[] = [];
+
+  constructor(
+    private readonly memory: MemoryRegistry,
+    private readonly noise: DataTexture,
+    private readonly tier: QualityTier,
+    private readonly uploads: SlidingRate,
+    /** Shadow cascades to cull casters for; 0 when shadows are off. */
+    private readonly cascades: number,
+  ) {
+    this.root.name = 'terrain-root';
+    // The low tier keeps the material texture at 4 m texels (1025 squared): a quarter of the memory.
+    const step: MaterialStep = tier.name === 'low' ? 2 : 1;
+    this.textures = this.client.requestTextures(step);
+  }
+
+  get settled(): boolean {
+    return this.terrain !== null && this.updates > 0;
+  }
+
+  get mainTriangles(): number {
+    return this.terrain?.mainTriangles ?? 0;
+  }
+
+  get bundledDraws(): number {
+    return 0;
+  }
+
+  /**
+   * Uploads the worker's textures and builds the terrain.
+   * @amortized once at start-up
+   */
+  async prepare(): Promise<void> {
+    const data = await this.textures;
+    const textures = createTerrainTextures(data);
+    this.texturesMs = data.ms;
+    const { memory } = this;
+    memory.add(MemoryPartition.Gpu, textures.heightBytes + textures.materialBytes);
+    // three.js keeps the CPU arrays so a device loss can re-upload.
+    memory.add(MemoryPartition.CpuRetained, data.height.byteLength + data.material.byteLength + data.pyramid.byteLength);
+    this.uploads.add(performance.now(), textures.uploadBytes);
+    const terrain = new CdlodTerrain({
+      textures,
+      pyramid: data.pyramid,
+      noise: this.noise,
+      lod0Distance: this.tier.lod.lod0Distance,
+      shadowFar: this.tier.shadows.maxFar,
+      cascades: this.cascades,
+      lite: this.tier.name === 'low',
+    });
+    terrain.account(memory);
+    this.root.add(terrain.root);
+    terrain.setWetness(this.wetness);
+    this.terrain = terrain;
+  }
+
+  attachSun(sun: DirectionalLight): void {
+    this.sun = sun;
+  }
+
+  prime(): void {}
+
+  invalidate(): void {}
+
+  /** @hot */
+  update(_now: number, eye: ResolvedCamera, camera: PerspectiveCamera): void {
+    const terrain = this.terrain;
+    if (terrain === null) return;
+    camera.updateMatrixWorld();
+    // The cascade light cameras exist after the first shadowed frame; look for them until they do.
+    if (this.cascadeCams.length === 0 && this.sun !== null && (this.updates & 15) === 0) this.cascadeCams = cascadeCameras(this.sun);
+    terrain.update(eye.x, eye.y, eye.z, camera, this.cascadeCams);
+    this.updates++;
+  }
+
+  /** @hot */
+  setEyeOffset(x: number, y: number, z: number): void {
+    this.terrain?.setEyeOffset(x, y, z);
+  }
+
+  setWetness(wetness: number): void {
+    this.terrain?.setWetness(wetness);
+    this.wetness = wetness;
+  }
+
+  setBundled(): void {}
+
+  seaFloorReady(): void {}
+
+  /** @amortized once per telemetry tick */
+  sample(state: AppState, _camera: Camera, cascades: readonly FrustumSource[]): void {
+    const sel = this.terrain?.selector;
+    state.terrainRender = 'cdlod';
+    state.terrainTexturesMs = this.texturesMs;
+    state.terrainMode = this.client.mode;
+    state.terrainWorkerLoadMs = this.client.workerLoadMs;
+    if (!sel || !this.terrain) return;
+    state.nodesSelected = sel.count;
+    state.nodesCulled = sel.culled;
+    for (let level = 0; level < LEVELS; level++) state.nodesPerLevel[level] = sel.perLevel[level];
+    state.shadowCasterNodes = sel.casterCount;
+    // Triangles per cascade: its casters inside the light frustum times the patch (instances are not culled further).
+    state.shadowCascades = Math.min(cascades.length, state.trisShadow.length);
+    for (let c = 0; c < state.shadowCascades; c++) state.trisShadow[c] = this.terrain.casterTriangles(c);
+    // The visual audit's "terrain is resident" check reads chunksLoaded: here it counts the drawn nodes.
+    state.chunksLoaded = sel.count;
+    state.chunksInFlight = 0;
+  }
+}

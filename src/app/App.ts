@@ -9,8 +9,6 @@ import { createNoiseTexture } from '../render/noiseTextures';
 import { attachSunShadows } from '../render/shadows';
 import { COAST_DIM, SEAFLOOR_DIM } from '../world/seaFloor';
 import { createRenderer, warmUp, whenDeviceLost, type RendererHandle } from '../render/renderer';
-import { FarTerrain } from '../render/farTerrain';
-import { TerrainChunks } from '../render/terrainChunks';
 import { Hud, downloadJson } from '../ui/hud';
 import { CAMERAS, resolveCamera, type ResolvedCamera } from './cameras';
 import { GpuTimer } from './gpuTimer';
@@ -20,8 +18,10 @@ import type { DebugParams } from './params';
 import { pixelRatioForBudget, type QualityTier } from './quality';
 import { EnvironmentClock } from './environmentClock';
 import { buildReport, type AppState } from './report';
+import { CdlodBackend } from './cdlodBackend';
+import { ChunkBackend } from './chunkBackend';
 import { loadAndInstallTerrain } from './terrainAssets';
-import { TerrainStreamer } from './terrainStreamer';
+import type { TerrainBackend } from './terrainBackend';
 
 const LOW_FREQUENCY_MS = 500;
 const WARMUP_TIMEOUT_MS = 20000;
@@ -48,9 +48,7 @@ export class App {
   private readonly camera = new PerspectiveCamera(55, 1, 0.3, 7000);
   private readonly environment: Environment;
   private readonly clock: EnvironmentClock;
-  private readonly chunks: TerrainChunks;
-  private readonly farTerrain: FarTerrain;
-  private readonly streamer: TerrainStreamer;
+  private readonly terrain: TerrainBackend;
   private readonly hud: Hud;
   private readonly eye: ResolvedCamera = { x: 0, y: 0, z: 0, targetX: 0, targetY: 0, targetZ: 0, fovDeg: 55 };
   private readonly bufferSize = new Vector2();
@@ -77,14 +75,12 @@ export class App {
     if (params.shadows) this.memory.add(MemoryPartition.Gpu, attachSunShadows(this.environment.sun, tier.shadows));
     this.memory.add(MemoryPartition.Gpu, this.environment.ocean.gpuBytes);
     this.clock = new EnvironmentClock(this.environment);
-    this.chunks = new TerrainChunks(this.memory, noise.texture, tier.shadows.maxFar, lite);
-    this.chunks.uploads = this.observer.uploads;
-    this.farTerrain = new FarTerrain(this.environment.ocean.floorTexture, noise.texture, tier.lod.viewRadius, lite);
-    this.memory.add(MemoryPartition.Gpu, this.farTerrain.gpuBytes);
-    this.chunks.root.add(this.farTerrain.mesh);
-    this.observer.setMeshes(this.environment.sky.mesh, this.environment.ocean.mesh, this.farTerrain.mesh);
-    this.scene.add(this.chunks.root);
-    this.streamer = new TerrainStreamer(this.chunks, this.memory, tier.lod);
+    this.terrain = params.terrain === 'chunks'
+      ? new ChunkBackend(this.memory, noise.texture, this.environment.ocean.floorTexture, tier, this.observer.uploads)
+      : new CdlodBackend(this.memory, noise.texture, tier, this.observer.uploads, params.shadows ? tier.shadows.cascades : 0);
+    this.observer.setMeshes(this.environment.sky.mesh, this.environment.ocean.mesh, this.terrain.farMesh);
+    this.terrain.attachSun(this.environment.sun);
+    this.scene.add(this.terrain.root);
     this.hud = new Hud(options.hudRoot, {
       setCamera: (index) => this.setCamera(index),
       exportReport: () => downloadJson(`world-unbound-telemetry-${Date.now()}.json`, this.report()),
@@ -117,7 +113,7 @@ export class App {
     const { params, capabilities, tier, viewportRoot } = this.options;
     this.startTime = performance.now();
     this.setCamera(params.cam);
-    this.streamer.prime(this.eye.x, this.eye.z);
+    this.terrain.prime(this.eye.x, this.eye.z);
     this.placeWorld(0);
 
     this.handle = await createRenderer({
@@ -127,6 +123,9 @@ export class App {
       antialias: tier.antialias,
       timestampQuery: capabilities.webgpu.features.includes('timestamp-query'),
     });
+    // CDLOD: the worker has been building the terrain textures since construction; they are needed before warm-up.
+    await this.terrain.prepare();
+    this.placeWorld(0);
     this.attachRenderer();
     try {
       this.state.warmupMs = await warmUp(this.handle, this.scene, this.camera, WARMUP_TIMEOUT_MS);
@@ -143,13 +142,13 @@ export class App {
     }
     this.observer.markWarm(this.handle.renderer, this.scene, this.state);
     this.running = true;
-    void this.streamer.client.requestSeaFloor().then((heights) => {
+    void this.terrain.client.requestSeaFloor().then((heights) => {
       this.environment.ocean.setSeaFloor(heights);
       this.observer.uploads.add(performance.now(), SEAFLOOR_DIM * SEAFLOOR_DIM * 2);
-      this.farTerrain.setReady();
+      this.terrain.seaFloorReady();
       // The 2 m coast map follows (the lite tier shades the shore from the 4 m map instead).
       if (this.environment.ocean.hasCoast) {
-        void this.streamer.client.requestSeaFloor(true).then((fine) => {
+        void this.terrain.client.requestSeaFloor(true).then((fine) => {
           this.environment.ocean.setCoastFloor(fine);
           this.observer.uploads.add(performance.now(), COAST_DIM * COAST_DIM * 2);
         });
@@ -174,7 +173,7 @@ export class App {
     this.state.backend = handle.backend;
     this.gpuTimer = new GpuTimer(handle.renderer, handle.backend === 'webgpu');
     handle.renderer.shadowMap.enabled = this.options.params.shadows;
-    this.chunks.setBundled(handle.backend === 'webgpu');
+    this.terrain.setBundled(handle.backend === 'webgpu');
     this.state.fallbackReason = handle.fallbackReason;
     const onLost = (message: string): void => {
       // Losses during warm-up are handled by start(); stale handles are ours.
@@ -243,13 +242,13 @@ export class App {
     this.state.hour = params.hourExplicit ? params.hour : spec.hour ?? params.hour;
     const weather = params.weatherExplicit ? params.weather : spec.weather ?? params.weather;
     this.state.weather = weather;
-    this.chunks.setWetness(WEATHER_WETNESS[weather]);
+    this.terrain.setWetness(WEATHER_WETNESS[weather]);
     this.state.day = params.day;
     this.clock.configure(params.day, this.state.hour, weather, Math.max(2, this.eye.y));
     this.state.season = this.clock.season;
     this.state.sunAltitudeDeg = this.environment.sunAltitudeDeg;
     this.state.moonIllumination = this.clock.celestial.moonIllumination;
-    this.streamer.invalidate();
+    this.terrain.invalidate();
     this.ready = false;
   }
 
@@ -279,9 +278,8 @@ export class App {
 
   /** @hot */
   private placeWorld(seconds: number): void {
-    this.chunks.root.position.set(-this.eye.x, -this.eye.y, -this.eye.z);
-    this.chunks.setEyeOffset(this.eye.x, this.eye.y, this.eye.z);
-    this.farTerrain.setEyeOffset(this.eye.x, this.eye.y, this.eye.z);
+    this.terrain.root.position.set(-this.eye.x, -this.eye.y, -this.eye.z);
+    this.terrain.setEyeOffset(this.eye.x, this.eye.y, this.eye.z);
     this.environment.ocean.update(this.eye.x, this.eye.y, this.eye.z, seconds);
   }
 
@@ -291,7 +289,7 @@ export class App {
     this.lastTime = now;
     this.stats.push(interval, this.dyn.scale);
     if (this.dyn.update(interval)) this.applyRenderScale();
-    this.streamer.update(now, this.eye.x, this.eye.z, 0, 0);
+    this.terrain.update(now, this.eye, this.camera);
     this.placeWorld(now / 1000);
     this.environment.setExposure(this.clock.update(interval));
     this.handle.renderer.render(this.scene, this.camera);
@@ -302,7 +300,7 @@ export class App {
   /** @amortized telemetry and HUD refresh at 2 Hz */
   private lowFrequency(now: number): void {
     this.lastLowFrequency = now;
-    const { state, stats, streamer } = this;
+    const { state, stats, terrain } = this;
     if (state.firstFrameMs === 0) state.firstFrameMs = performance.now() - this.startTime;
     if (!state.refreshMeasured && stats.totalFrames >= 120) {
       const period = snapRefreshPeriod(stats.medianOfRecent(120));
@@ -312,22 +310,15 @@ export class App {
     }
     const info = this.handle.renderer.info.render;
     state.drawCalls = info.drawCalls;
-    state.bundledDraws = this.chunks.bundledCount;
+    state.bundledDraws = terrain.bundledDraws;
     state.triangles = info.triangles;
-    state.chunksLoaded = streamer.requests.loadedCount;
-    state.chunksInFlight = streamer.requests.inFlightCount;
-    state.staleResults = streamer.requests.staleResults;
-    state.lodBias = streamer.lodBias;
-    state.terrainMode = streamer.client.mode;
-    state.terrainWorkerLoadMs = streamer.client.workerLoadMs;
     state.exposure = this.clock.exposure;
     state.gpuPassSumP50Ms = this.gpuTimer.p50();
     state.gpuPassSumP95Ms = this.gpuTimer.p95();
     state.gpuPassesPerFrame = this.gpuTimer.passesPerFrame();
     state.gpuSamples = this.gpuTimer.samples;
-    this.chunks.rebalanceCasters();
-    this.observer.sample(this.state, now, this.chunks, this.camera, this.environment.sun, streamer, this.handle.renderer);
-    if (!this.ready && streamer.settled) {
+    this.observer.sample(this.state, now, terrain, this.camera, this.environment.sun, this.handle.renderer);
+    if (!this.ready && terrain.settled) {
       this.ready = true;
       if (state.worldReadyMs === 0) state.worldReadyMs = performance.now() - this.startTime;
     }

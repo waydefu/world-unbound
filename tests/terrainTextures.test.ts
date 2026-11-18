@@ -103,13 +103,14 @@ describe('terrain texture build', () => {
     expect(data.height.length).toBe(HEIGHT_DIM * HEIGHT_DIM);
     expect(data.material.length).toBe(1025 * 1025 * 4);
     expect(data.materialStep).toBe(2);
+    expect(data.pyramid.length).toBe(5461 * 2);
     expect(terrainTextureBytes(1).height).toBe(HEIGHT_DIM * HEIGHT_DIM * 4);
     expect(terrainTextureBytes(2).material).toBeLessThan(terrainTextureBytes(1).material / 3);
   });
 });
 
 describe('terrain texture upload objects', () => {
-  const textures = createTerrainTextures({ height, material, materialStep: 1, ms: 0 });
+  const textures = createTerrainTextures({ height, material, materialStep: 1, pyramid: new Float32Array(0), ms: 0 });
 
   it('height is nearest-filtered R32F without mipmaps (read by texel fetch only)', () => {
     const t = textures.height;
