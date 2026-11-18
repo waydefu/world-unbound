@@ -25,6 +25,8 @@ export interface DebugParams {
   /** Sun shadows; ?shadows=0 turns them off for A/B cost measurements. */
   shadows: boolean;
   hud: boolean;
+  /** Terrain renderer: CDLOD on a GPU height texture (default) or per-chunk meshes (?terrain=chunks, rollback). */
+  terrain: 'cdlod' | 'chunks';
 }
 
 export const CAMERA_COUNT = 6;
@@ -59,5 +61,6 @@ export function parseParams(search: string): DebugParams {
     dayExplicit: day !== null,
     shadows: p.get('shadows') !== '0',
     hud: p.get('hud') !== '0',
+    terrain: p.get('terrain') === 'chunks' ? 'chunks' : 'cdlod',
   };
 }

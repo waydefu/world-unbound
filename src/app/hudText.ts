@@ -19,8 +19,11 @@ function observabilityLines(state: AppState): string[] {
   const loaf = state.loafSupported
     ? `LoAF ${state.loafCount} · worst ${state.loafWorstMs.toFixed(0)} ms · top ${state.loafTopScript ?? 'n/a'}`
     : 'LoAF n/a';
+  const terrain = state.terrainRender === 'cdlod'
+    ? `nodes ${state.nodesSelected} · cull ${state.nodesCulled} · L0 ${state.nodesPerLevel[0]} · cast ${state.shadowCasterNodes} · q n/a · build n/a`
+    : `chunks vis ${state.visibleChunks}/${state.residentChunks} · cull ${state.culledChunks} · cast ${state.shadowCasterChunks} · q ${state.workerQueued}+${state.chunksInFlight} · build p50 ${fmt(state.buildP50Ms)}/p95 ${fmt(state.buildP95Ms)} ms`;
   return [
-    `chunks vis ${state.visibleChunks}/${state.residentChunks} · cull ${state.culledChunks} · cast ${state.shadowCasterChunks} · q ${state.workerQueued}+${state.chunksInFlight} · build p50 ${fmt(state.buildP50Ms)}/p95 ${fmt(state.buildP95Ms)} ms`,
+    terrain,
     `tris main ${millions(state.trisMain)}M · sh ${shadow ? `${shadow}M` : 'n/a'} · ocean ${thousands(state.trisOcean)} · far ${thousands(state.trisFar)}`,
     `upload ${state.uploadMiBps.toFixed(1)} MiB/s · pipes ${pipes} · mats ${state.materialVariants} · heap ${heap}`,
     loaf,
@@ -41,7 +44,9 @@ export function formatHud(state: AppState, stats: FrameStats, dyn: DynamicResolu
     `long >50ms ${stats.longFrames50} · >100ms ${stats.longFrames100} · frames ${stats.totalFrames}`,
     `buffer ${state.bufferWidth}x${state.bufferHeight} (${(pixels / 1e6).toFixed(2)} MP) · css ${state.cssWidth}x${state.cssHeight} · dpr ${state.devicePixelRatio.toFixed(2)}`,
     `scale ${dyn.scale.toFixed(2)}${dyn.locked ? ' locked' : ''} · changes ${dyn.changes}`,
-    `chunks ${state.chunksLoaded} · in-flight ${state.chunksInFlight} · stale ${state.staleResults} · lod bias ${state.lodBias} · ${state.terrainMode}`,
+    state.terrainRender === 'cdlod'
+      ? `terrain cdlod · levels ${state.nodesPerLevel.join('/')} · textures ${state.terrainTexturesMs.toFixed(0)} ms · ${state.terrainMode}`
+      : `chunks ${state.chunksLoaded} · in-flight ${state.chunksInFlight} · stale ${state.staleResults} · lod bias ${state.lodBias} · ${state.terrainMode}`,
     `draws ${state.drawCalls} (+${state.bundledDraws} bundled) · tris ${(state.triangles / 1000).toFixed(1)}k`,
     `variants ${state.materialVariants}/${state.variantBudget} · warm-up ${state.warmupMs.toFixed(0)} ms · first frame ${state.firstFrameMs.toFixed(0)} ms · world ${state.worldReadyMs.toFixed(0)} ms · terrain load ${state.terrainLoadMs.toFixed(0)} ms`,
   ];

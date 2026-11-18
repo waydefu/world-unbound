@@ -1,8 +1,9 @@
-import { type DataTexture, FrontSide, MeshStandardNodeMaterial, Vector3 } from 'three/webgpu';
+import { type DataTexture, FrontSide, MeshStandardNodeMaterial, type Node, Vector3 } from 'three/webgpu';
 import {
   attribute, clamp, float, max, mix, normalize, normalWorldGeometry, positionView, positionWorld,
-  smoothstep, transformNormalToView, uniform, vec3,
+  smoothstep, texture, transformNormalToView, uniform, vec2, vec3,
 } from 'three/tsl';
+import { WORLD_MIN } from '../world/constants';
 import { triplanarChannel, triplanarSlope } from './noiseSampling';
 
 /**
@@ -18,6 +19,19 @@ export interface TerrainMaterial {
   setWetness(wetness: number): void;
 }
 
+/**
+ * Where the CDLOD terrain gets its inputs (ADR-0003): material weights and AO, and the geometric normal, from
+ * textures sampled at the world xz in the fragment stage, instead of the chunk path's vertex colours and normals.
+ */
+export interface TerrainSurface {
+  /** RGBA8 sand, rock, earth, AO: one texel per `step` lattice cells (2 m each) from WORLD_MIN. */
+  readonly material: DataTexture;
+  readonly materialDim: number;
+  readonly materialStep: number;
+  /** RGBA8 world-space normal (n * 0.5 + 0.5) on the same lattice as `material`, linear and mipmapped. */
+  readonly normal: DataTexture;
+}
+
 const SEABED = vec3(0.105, 0.118, 0.098);
 const SAND = vec3(0.52, 0.45, 0.31);
 const GRASS_DRY = vec3(0.21, 0.24, 0.085);
@@ -29,18 +43,23 @@ const MACRO_METRES = 37;
 const GRAIN_METRES = 5.3;
 const RELIEF_METRES = 1.25;
 
-export function createTerrainMaterial(noise: DataTexture, lite = false): TerrainMaterial {
+export function createTerrainMaterial(noise: DataTexture, lite = false, surface: TerrainSurface | null = null): TerrainMaterial {
   const eyeOffset = uniform(new Vector3());
   const wetness = uniform(0);
 
-  const w = attribute('color', 'vec4');
-  const grass = clamp(float(1).sub(w.x).sub(w.y).sub(w.z), 0, 1);
   const pW = positionWorld.add(eyeOffset);
+  // Texel centres sit on lattice points: uv = (index + 0.5) / dim, index = (x - WORLD_MIN) / (2 m x step).
+  const surfaceUv = surface
+    ? vec2(pW.x, pW.z).sub(WORLD_MIN).div(2 * surface.materialStep).add(0.5).div(surface.materialDim)
+    : null;
+  const w: Node<'vec4'> = surface && surfaceUv ? texture(surface.material, surfaceUv) : attribute('color', 'vec4');
+  const grass = clamp(float(1).sub(w.x).sub(w.y).sub(w.z), 0, 1);
   const y = pW.y;
   const dist = positionView.length();
   const detail = smoothstep(120, 30, dist);
 
-  const nGeo = normalWorldGeometry;
+  // Mipped unit normals average to a shorter vector: renormalise after filtering.
+  const nGeo = surface && surfaceUv ? normalize(texture(surface.normal, surfaceUv).xyz.mul(2).sub(1)) : normalWorldGeometry;
   // Patch noise (B channel, 0..1) mapped to -1..1; world-fixed, triplanar on steep ground.
   const macro = triplanarChannel(noise, pW, nGeo, MACRO_METRES, 'b').mul(2).sub(1);
 
@@ -71,6 +90,8 @@ export function createTerrainMaterial(noise: DataTexture, lite = false): Terrain
       .mul(detail).mul(mix(1, 0.4, wet));
     const nW = normalize(nGeo.sub(g.mul(strength)));
     material.normalNode = transformNormalToView(nW);
+  } else if (surface) {
+    material.normalNode = transformNormalToView(nGeo);
   }
   material.aoNode = w.w;
 

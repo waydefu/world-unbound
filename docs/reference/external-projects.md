@@ -33,3 +33,9 @@ Looked at 2026-11-17 from page source and marketing text only (not run; no perfo
 | --- | --- | --- | --- |
 | Duskward (https://agnt.gg/creation?id=DmDSpPYm) | Single-file raw WebGPU/WGSL world by a user of the AGNT platform; instanced terrain, trees, grass, water, birds; packed vertex formats; desktop only per the page | None stated: learn only | Per-instance variation from a hash of the instance index, nothing stored per blade |
 | Three.js Grassworks (https://grassworks.techredux.co/forest-demo) | Commercial three.js WebGPURenderer + TSL grass system (Tech Redux): instanced blades, distance/frustum culling, LODs, billboard mode, wind, terrain-aware placement, camera-recentred grid | All rights reserved; paid licence: do not copy code | Camera-centred cell grid; blades near, cards mid-distance, nothing far, density fading with distance; density as a quality setting (WebGL2 Lite: hash placement in the vertex stage, lower density) |
+
+## Sky and clouds reference (for the weather step)
+
+- [takustaqu/atmosphere](https://github.com/takustaqu/atmosphere) (MIT). Procedural sky in one WebGL1 fragment shader (raw GLSL, no three.js dependency): the ten cloud genera reduced to four forms at three altitudes, cumulonimbus optionally ray-marched as a volume, value noise baked to a small tiling texture, clouds rendered at a fraction of resolution (`cloudScale`), an experimental keyframed sky cache, screen-space crepuscular rays, precipitation and optics. Desktop timings only (M2 Max 5.3 ms at 1080p); no mobile data.
+- Relevant: the genus-to-form-and-altitude reduction, reduced-resolution clouds, the baked tiling noise (as in our G1.4.1 noise texture), crepuscular rays.
+- Differs: its sky colour is hand-tuned and a function of elevation, not physical; ours is Hillaire (ADR-0002) and must stay the light source for clouds. Read from the README only; `src/` not reviewed yet.
