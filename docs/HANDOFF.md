@@ -18,6 +18,7 @@ Snapshot: 2026-11-18, after G1.4.1 (PR #21, deploy fix #22). Read this, then [IN
 | G1.4 | Ocean (Gerstner waves, sea floor, far-terrain skin, lite tier) | Merged |
 | G1.5 | Real terrain: Hellesylt, Norway (Kartverket DTM, 62.083° N) | Merged (#20) |
 | G1.4.1 | Noise textures instead of per-pixel noise, near-field view radius, observability HUD, shore/night fixes | Merged (#21, #22); phone gate passed |
+| G2.0 | CDLOD terrain from GPU height/material/normal textures ([ADR-0003](adr/0003-gpu-terrain-cdlod.md)); `?terrain=chunks` keeps the old path one release | Merged (#25); phone: 60 FPS at scale 1.0 on cams 2/3/5, 0 frames > 50 ms, 7 terrain draws |
 
 What the screen shows today: real fjord terrain, physical sky, fog, shadows, a shaded ocean with shore foam. No buildings, vegetation, rain, gameplay or audio.
 
@@ -35,13 +36,14 @@ Owner's phone: Adreno 8xx, Chrome 157, WebGPU, 60 Hz, 2.2 MP drawing buffer, med
 
 **Owner:** merge open PRs; T20 still needs a second GitHub account.
 
-**Next agent session** (owner chooses the order):
+**Next agent session** (order agreed with the owner; details in [environment research](research/environment-systems.md)):
 
-1. G2 vegetation (camera-centred grass cells, blades near, cards mid; refs in [external projects](reference/external-projects.md)).
-2. Weather: visible rain and cloud (blind review found rain nights unreadable as rain).
-3. Chunk system: CDLOD geomorph, horizon beyond 4 km, terrain data streaming, occlusion culling.
-4. Bathymetry realism (seabed is synthesised from distance to land; shallows look uniform).
-5. End of G1: fly-through benchmark and 10-minute soak.
+1. **G2.1 (in progress):** wind (`ClimateState` v1 + wind field) and grass; a vegetation mask that also decides where rock shows (owner: keep real far cliffs, green the moderate slopes) and gives breakwaters/quays a stone material; calm water and no foam band inside enclosed harbour basins.
+2. Weather W1/W2: layered clouds, fog layers, rain/snow, surface wetness, lightning.
+3. Ocean O1: tide, wind-driven sea state, water colour and caustics, bathymetry constrained by Kartverket soundings.
+4. Player controller (needed by S1 and gameplay), then S1 soil and ground system (footprints that recover, puddles after rain, mud).
+5. Audio A1, ecology numbers with the economy (G3); terrain beyond 4 km and occlusion culling when needed.
+6. End of G1: fly-through benchmark and 10-minute soak.
 
 ## How to resume
 
