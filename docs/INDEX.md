@@ -28,6 +28,8 @@ Where everything is. Start with [HANDOFF.md](HANDOFF.md) to pick up the work.
 | [reference/game-spec-v1.md](reference/game-spec-v1.md) | Game specification v1.0 (owner's source document) |
 | [reference/aegis-v2.md](reference/aegis-v2.md) | AEGIS ∞ v2.0 governance specification (owner's source document) |
 | [process/visual-review.md](process/visual-review.md) | Blind visual critic step for every visual PR (`wu-critic` subagent) |
+| [process/subagents.md](process/subagents.md) | Which subagent and model for which job; parallel fan-outs use Haiku |
+| [research/environment-systems.md](research/environment-systems.md) | Environment systems research overview (fields, weather, sky, water, ecology, surface, audio) and proposed order |
 
 ## Governance and security
 
