@@ -1,4 +1,4 @@
-import { type DataTexture, FrontSide, MeshStandardNodeMaterial, type Node, Vector3 } from 'three/webgpu';
+import { type DataTexture, FrontSide, MeshPhysicalNodeMaterial, type Node, Vector3 } from 'three/webgpu';
 import {
   attribute, clamp, float, max, mix, normalize, normalWorldGeometry, positionView, positionWorld,
   smoothstep, texture, transformNormalToView, uniform, vec2, vec3, vec4,
@@ -14,7 +14,7 @@ import { triplanarChannel, triplanarSlope } from './noiseSampling';
  * eye offset) so patterns stay fixed in the world as the root moves.
  */
 export interface TerrainMaterial {
-  readonly material: MeshStandardNodeMaterial;
+  readonly material: MeshPhysicalNodeMaterial;
   /** @hot writes an existing uniform only */
   setEyeOffset(x: number, y: number, z: number): void;
   setWetness(wetness: number): void;
@@ -57,6 +57,14 @@ const CANOPY_SHADE = 0.32;
 const MACRO_METRES = 37;
 const GRAIN_METRES = 5.3;
 const RELIEF_METRES = 1.25;
+/**
+ * Specular strength of the ground (scales F0 and F90 of the dielectric; 1 = the default 4 % at normal incidence, rising
+ * to 100 % at grazing). Soil, grass and rock are rough and diffuse: with the full Fresnel the low sun behind the ridges
+ * bleached every sun-facing slope to grey-white at grazing view angles (cam 2). Wet ground is a little glossier.
+ */
+const SPECULAR_DRY = 0.2;
+const SPECULAR_WET = 0.45;
+const WET_ROUGHNESS = 0.55;
 
 export function createTerrainMaterial(noise: DataTexture, lite = false, surface: TerrainSurface | null = null): TerrainMaterial {
   const eyeOffset = uniform(new Vector3());
@@ -97,14 +105,16 @@ export function createTerrainMaterial(noise: DataTexture, lite = false, surface:
   const shore = float(1).sub(smoothstep(0.2, 1.4, y));
   const wet = max(shore, wetness.mul(float(1).sub(w.y.mul(0.5))));
   const albedo = base.mul(mix(1, 0.55, wet));
-  const roughness = mix(rough, 0.3, wet);
+  // Wet ground gets a gentler sheen than a water film would (roughness 0.3 turned the low sun into a silver streak).
+  const roughness = mix(rough, WET_ROUGHNESS, wet);
 
 
-  const material = new MeshStandardNodeMaterial({ metalness: 0, side: FrontSide });
+  const material = new MeshPhysicalNodeMaterial({ metalness: 0, side: FrontSide });
   material.vertexColors = false;
   material.name = 'terrain';
   material.colorNode = albedo;
   material.roughnessNode = roughness;
+  material.specularIntensityNode = mix(SPECULAR_DRY, SPECULAR_WET, wet);
   if (!lite) {
     // Micro-relief: one slope fetch (the texture stores the gradient), no finite differences.
     const g = triplanarSlope(noise, pW, nGeo, RELIEF_METRES);
