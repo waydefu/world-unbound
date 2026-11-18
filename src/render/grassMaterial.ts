@@ -116,11 +116,11 @@ function buildVertex(kind: GrassKind, inp: GrassInputs, u: GrassUniforms, layout
     if (kind !== 'card') {
       const green = float(1).sub(u.season.z);
       const seeds = a.hay.mul(smoothstep(0.78, 0.9, t)).mul(step(f.rnd(11), 0.08)).mul(0.85);
-      colour = mix(colour, SEED_HEAD.mul(mix(1, 0.8, u.season.y)), seeds);
+      colour = mix(colour, SEED_HEAD.mul(mix(1, 0.8, u.season.y)).mul(wetDark), seeds);
       const r = f.rnd(11).mul(1.0);
       const tip = smoothstep(0.82, 0.95, t).mul(a.hay).mul(green);
-      colour = mix(colour, BUTTERCUP, step(0.9, r).mul(step(r, 0.93)).mul(tip));
-      colour = mix(colour, CLOVER, step(0.93, r).mul(step(r, 0.96)).mul(tip));
+      colour = mix(colour, BUTTERCUP.mul(wetDark), step(0.9, r).mul(step(r, 0.93)).mul(tip));
+      colour = mix(colour, CLOVER.mul(wetDark).mul(0.8), step(0.93, r).mul(step(r, 0.96)).mul(tip));
     }
     vColour.assign(colour);
     vNormal.assign(normal);
