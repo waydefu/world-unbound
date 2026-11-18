@@ -20,24 +20,33 @@ export function generateAoTile(cx: number, cz: number, out: Int16Array): Int16Ar
   return out;
 }
 
+/** Squared ground distance (m) of every (direction, step) pair, precomputed once. */
+const DIST2 = new Float64Array(8 * 4);
+for (let d = 0; d < 8; d++) {
+  const diag = DIRS_X[d] !== 0 && DIRS_Z[d] !== 0 ? Math.SQRT2 : 1;
+  for (let s = 0; s < 4; s++) {
+    const dist = STEPS[s] * CELL_SIZE * diag;
+    DIST2[d * 4 + s] = dist * dist;
+  }
+}
+
 /**
  * Horizon-based AO for chunk-local sample (i, j) in [0, CHUNK_SAMPLES-1];
  * returns [0.25, 1], 1 = open sky.
  */
 export function vertexAo(tile: Int16Array, dim: number, apron: number, i: number, j: number): number {
-  const h0 = tile[(j + apron) * dim + (i + apron)];
+  const base = (j + apron) * dim + (i + apron);
+  const h0 = tile[base];
   let sum = 0;
   for (let d = 0; d < 8; d++) {
-    const dx = DIRS_X[d];
-    const dz = DIRS_Z[d];
-    const diag = dx !== 0 && dz !== 0 ? Math.SQRT2 : 1;
+    const stride = DIRS_Z[d] * dim + DIRS_X[d];
     let best = 0;
     for (let s = 0; s < 4; s++) {
-      const k = STEPS[s];
-      const hk = tile[(j + dz * k + apron) * dim + (i + dx * k + apron)];
-      const dh = (hk - h0) * HEIGHT_QUANTUM; // differences: the offset cancels
-      const dist = k * CELL_SIZE * diag;
-      const sinElev = dh / Math.sqrt(dh * dh + dist * dist);
+      const dq = tile[base + stride * STEPS[s]] - h0;
+      // Only ground rising above the point can raise the horizon (the offset cancels in differences).
+      if (dq <= 0) continue;
+      const dh = dq * HEIGHT_QUANTUM;
+      const sinElev = dh / Math.sqrt(dh * dh + DIST2[d * 4 + s]);
       if (sinElev > best) best = sinElev;
     }
     sum += best;

@@ -1,5 +1,6 @@
 import { COAST_DIM, SEAFLOOR_DIM, buildCoastFloor, buildSeaFloor } from '../world/seaFloor';
 import { runTerrainJob, type TerrainRequest, type TerrainResult } from '../world/terrainJob';
+import { buildTerrainTextures, type MaterialStep, type TerrainTextureData } from '../world/terrainTextures';
 
 /**
  * Sends terrain jobs to the worker and queues results for the frame loop.
@@ -8,6 +9,7 @@ import { runTerrainJob, type TerrainRequest, type TerrainResult } from '../world
  */
 type WorkerNotice =
   | { kind: 'seafloor'; fine: boolean; heights: Float32Array }
+  | { kind: 'textures'; textures: TerrainTextureData }
   | { kind: 'terrain-ready'; ms: number }
   | { kind: 'terrain-error'; message: string };
 
@@ -22,6 +24,8 @@ export class TerrainClient {
   private readonly outstanding = new Map<number, TerrainRequest>();
   /** Pending sea-floor request (worker mode), resolved by the matching reply. */
   private seaFloorWaiters: Array<{ fine: boolean; resolve: (heights: Float32Array) => void }> = [];
+  /** Pending terrain-texture request (worker mode). */
+  private textureWaiter: { step: MaterialStep; resolve: (data: TerrainTextureData) => void } | null = null;
 
   constructor() {
     try {
@@ -37,6 +41,11 @@ export class TerrainClient {
           if (data.kind === 'terrain-error') {
             console.warn(`[world-unbound] terrain worker could not load the tiles: ${data.message}`);
             this.fallBack();
+            return;
+          }
+          if (data.kind === 'textures') {
+            this.textureWaiter?.resolve(data.textures);
+            this.textureWaiter = null;
             return;
           }
           const index = this.seaFloorWaiters.findIndex((w) => w.fine === data.fine);
@@ -62,6 +71,16 @@ export class TerrainClient {
     const waiters = this.seaFloorWaiters;
     this.seaFloorWaiters = [];
     for (const waiter of waiters) waiter.resolve(this.buildFloor(waiter.fine));
+    const textures = this.textureWaiter;
+    this.textureWaiter = null;
+    if (textures) textures.resolve(this.buildTextures(textures.step));
+  }
+
+  private buildTextures(step: MaterialStep): TerrainTextureData {
+    const started = performance.now();
+    const data = buildTerrainTextures(step);
+    data.ms = performance.now() - started;
+    return data;
   }
 
   private buildFloor(fine: boolean): Float32Array {
@@ -74,6 +93,18 @@ export class TerrainClient {
     return new Promise((resolve) => {
       this.seaFloorWaiters.push({ fine, resolve });
       this.worker?.postMessage({ kind: 'seafloor', fine });
+    });
+  }
+
+  /**
+   * Height and material textures for the CDLOD terrain (4 m material texels when `step` is 2), built in the
+   * worker or, if it is gone, inline. The buffers are transferred, so each call yields fresh arrays.
+   */
+  requestTextures(step: MaterialStep): Promise<TerrainTextureData> {
+    if (!this.worker) return Promise.resolve(this.buildTextures(step));
+    return new Promise((resolve) => {
+      this.textureWaiter = { step, resolve };
+      this.worker?.postMessage({ kind: 'textures', step });
     });
   }
 

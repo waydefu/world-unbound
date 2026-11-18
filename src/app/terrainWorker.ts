@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 import { COAST_DIM, SEAFLOOR_DIM, buildCoastFloor, buildSeaFloor } from '../world/seaFloor';
 import { runTerrainJob, type TerrainRequest } from '../world/terrainJob';
+import { buildTerrainTextures, type MaterialStep } from '../world/terrainTextures';
 import { loadAndInstallTerrain } from './terrainAssets';
 
 /** Terrain worker: tile generation and mesh building off the main thread. */
@@ -18,9 +19,19 @@ const ready: Promise<boolean> = loadAndInstallTerrain().then(
   },
 );
 
-scope.onmessage = async (event: MessageEvent<TerrainRequest | { kind: 'seafloor'; fine?: boolean }>): Promise<void> => {
+type WorkerRequest = TerrainRequest | { kind: 'seafloor'; fine?: boolean } | { kind: 'textures'; step: MaterialStep };
+
+scope.onmessage = async (event: MessageEvent<WorkerRequest>): Promise<void> => {
   const data = event.data;
   if (!(await ready)) return;
+  if ('kind' in data && data.kind === 'textures') {
+    // The GPU height and material textures (ADR-0003), derived from the lattice this worker just installed.
+    const started = performance.now();
+    const textures = buildTerrainTextures(data.step);
+    textures.ms = performance.now() - started;
+    scope.postMessage({ kind: 'textures', textures }, [textures.height.buffer, textures.material.buffer]);
+    return;
+  }
   if ('kind' in data) {
     const fine = data.fine === true;
     const heights = fine
