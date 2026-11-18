@@ -4,7 +4,7 @@ import {
   smoothstep, texture, transformNormalToView, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
 import { WORLD_MIN } from '../world/constants';
-import { groundCover } from './grassPalette';
+import { canopyShade, groundCover } from './grassPalette';
 import { triplanarChannel, triplanarSlope } from './noiseSampling';
 
 /**
@@ -53,8 +53,6 @@ const ROCK = vec3(0.2, 0.19, 0.175);
 const STONE = vec3(0.24, 0.245, 0.25);
 /** Share of the stone albedo lost on its darkest edge (steep flanks, the foot at the waterline). */
 const STONE_EDGE_DARKENING = 0.5;
-/** Darkening of the ground between blades where the meadow is dense (fraction of the albedo). */
-const CANOPY_SHADE = 0.32;
 /** Metres per noise tile: macro patches, grain and micro-relief. */
 const MACRO_METRES = 37;
 const GRAIN_METRES = 5.3;
@@ -62,11 +60,12 @@ const RELIEF_METRES = 1.25;
 /**
  * Specular strength of the ground (scales F0 and F90 of the dielectric; 1 = the default 4 % at normal incidence, rising
  * to 100 % at grazing). Soil, grass and rock are rough and diffuse: with the full Fresnel the low sun behind the ridges
- * bleached every sun-facing slope to grey-white at grazing view angles (cam 2). Wet ground is a little glossier.
+ * bleached every sun-facing slope to grey-white at grazing view angles (cam 2). Wet ground shows as darker albedo; its
+ * gloss stays low, since at grazing angles toward the sun even 0.3-0.55 roughness drew a silver streak across the field.
  */
 const SPECULAR_DRY = 0.2;
-const SPECULAR_WET = 0.45;
-const WET_ROUGHNESS = 0.55;
+const SPECULAR_WET = 0.12;
+const WET_ROUGHNESS = 0.7;
 
 export function createTerrainMaterial(noise: DataTexture, lite = false, surface: TerrainSurface | null = null): TerrainMaterial {
   const eyeOffset = uniform(new Vector3());
@@ -94,8 +93,7 @@ export function createTerrainMaterial(noise: DataTexture, lite = false, surface:
   const veg: Node<'vec4'> = surface && surfaceUv ? texture(surface.vegetation, surfaceUv) : vec4(1, 0, 0, 0);
   const wet01: Node<'float'> = surface && surfaceUv ? texture(surface.wetness, surfaceUv).r : float(0);
   // Shade between the blades inside the grass range: full at the eye, gone at the range edge (no visible ring).
-  const canopy = veg.r.mul(float(1).sub(smoothstep(grassRange.mul(0.4), grassRange.max(1), dist))).mul(grassRange.greaterThan(0).select(1, 0));
-  const grassCol = groundCover(macro, wet01, veg, season).mul(float(1).sub(canopy.mul(CANOPY_SHADE)));
+  const grassCol = groundCover(macro, wet01, veg, season).mul(canopyShade(veg.r, dist, grassRange));
   // Stone quays and breakwaters read as stone, not as a flat tan band: darker on the steep flank and at the foot,
   // where the wall meets the water.
   const stoneEdge = max(float(1).sub(nGeo.y).mul(4), float(1).sub(smoothstep(0.2, 1.3, y))).min(1);
