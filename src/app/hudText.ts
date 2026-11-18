@@ -47,7 +47,7 @@ export function formatHud(state: AppState, stats: FrameStats, dyn: DynamicResolu
     state.terrainRender === 'cdlod'
       ? `terrain cdlod · levels ${state.nodesPerLevel.join('/')} · textures ${state.terrainTexturesMs.toFixed(0)} ms · ${state.terrainMode}`
       : `chunks ${state.chunksLoaded} · in-flight ${state.chunksInFlight} · stale ${state.staleResults} · lod bias ${state.lodBias} · ${state.terrainMode}`,
-    `draws ${state.drawCalls} (+${state.bundledDraws} bundled) · tris ${(state.triangles / 1000).toFixed(1)}k`,
+    `draws ${state.drawCalls} (+${state.bundledDraws} bundled) · tris ${(state.triangles / 1000).toFixed(1)}k${state.grassEnabled ? ` · grass ${thousands(state.grassBlades + state.grassCards)}` : ''}`,
     `variants ${state.materialVariants}/${state.variantBudget} · warm-up ${state.warmupMs.toFixed(0)} ms · first frame ${state.firstFrameMs.toFixed(0)} ms · world ${state.worldReadyMs.toFixed(0)} ms · terrain load ${state.terrainLoadMs.toFixed(0)} ms`,
   ];
   let mem = 'mem MiB';

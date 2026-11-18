@@ -131,7 +131,7 @@ export class Observer {
     if (this.cascades.length === 0) this.cascades = cascadeCameras(sun);
     terrain.sample(state, camera, this.cascades);
     const { sky, ocean, far } = this.triangles;
-    state.trisMain = terrain.mainTriangles + sky + ocean + far;
+    state.trisMain = terrain.mainTriangles + sky + ocean + far + state.grassTris;
     state.trisOcean = ocean;
     state.trisFar = far;
     state.uploadMiBps = this.uploads.perSecond(now) / (1024 * 1024);

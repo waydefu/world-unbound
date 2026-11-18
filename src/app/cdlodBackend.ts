@@ -131,6 +131,11 @@ export class CdlodBackend implements TerrainBackend {
     this.terrain?.setSeason(fresh, summer, straw);
   }
 
+  /** Grass reach in metres (0 = none): the ground is shaded between the blades out to there. */
+  setGrassRange(midM: number): void {
+    this.terrain?.setGrassRange(midM);
+  }
+
   setBundled(): void {}
 
   seaFloorReady(): void {}

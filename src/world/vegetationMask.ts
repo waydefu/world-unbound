@@ -38,7 +38,7 @@ const FOREST_SLOPE_FROM_DEG = 8;
 const FOREST_SLOPE_FULL_DEG = 16;
 const FOREST_SLOPE_TO_DEG = 38;
 /** Meadow density on the village lawn (short grass, no tracks yet). */
-export const TOWN_LAWN_DENSITY = 0.55;
+export const TOWN_LAWN_DENSITY = 0.75;
 /** Sea water: lattice heights below this many metres. */
 const SEA_LEVEL_M = 0;
 /** The 10 m smoothing of the CDLOD material bake: half-width in lattice cells (5 x 5 box). */

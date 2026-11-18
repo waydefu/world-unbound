@@ -27,6 +27,8 @@ export interface DebugParams {
   hud: boolean;
   /** Terrain renderer: CDLOD on a GPU height texture (default) or per-chunk meshes (?terrain=chunks, rollback). */
   terrain: 'cdlod' | 'chunks';
+  /** Grass; ?grass=0 turns it off for A/B comparisons (CDLOD only). */
+  grass: boolean;
 }
 
 export const CAMERA_COUNT = 6;
@@ -62,5 +64,6 @@ export function parseParams(search: string): DebugParams {
     shadows: p.get('shadows') !== '0',
     hud: p.get('hud') !== '0',
     terrain: p.get('terrain') === 'chunks' ? 'chunks' : 'cdlod',
+    grass: p.get('grass') !== '0',
   };
 }

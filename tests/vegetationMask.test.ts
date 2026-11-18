@@ -94,8 +94,8 @@ describe('vegetation rules', () => {
       const masks = buildVegetation(lattice(() => 3), PAD, APRON, 1, material, { originX: x - 64, originZ: z - 64 });
       return at(masks, material, 32, 32).meadow;
     };
-    expect(at0(TOWN_X, TOWN_Z)).toBeLessThan(0.6);
-    expect(at0(TOWN_X, TOWN_Z)).toBeGreaterThan(0.4);
+    expect(at0(TOWN_X, TOWN_Z)).toBeLessThan(0.8);
+    expect(at0(TOWN_X, TOWN_Z)).toBeGreaterThan(0.7);
     expect(at0(TOWN_X + TOWN_RADIUS * 2, TOWN_Z)).toBeGreaterThan(0.98);
   });
 

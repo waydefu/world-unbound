@@ -1,4 +1,5 @@
 import { BUDGET_BALANCED, BUDGET_HIGH } from '../perf/memoryRegistry';
+import type { GrassSettings } from '../render/grass';
 import type { ShadowSettings } from '../render/shadows';
 import type { LodPolicy } from '../world/chunkGrid';
 import type { QualityName } from './params';
@@ -14,6 +15,8 @@ export interface QualityTier {
   readonly memoryBudgetMiB: readonly number[];
   readonly antialias: boolean;
   readonly shadows: ShadowSettings;
+  /** Grass reach and density (spec G2.1: low = cards only to 60 m, no blades). */
+  readonly grass: GrassSettings;
 }
 
 
@@ -30,6 +33,7 @@ export const QUALITY: Record<QualityName, QualityTier> = {
     memoryBudgetMiB: BUDGET_BALANCED,
     antialias: false,
     shadows: { cascades: 2, mapSize: 1024, maxFar: 600 },
+    grass: { nearM: 0, midM: 60, bladesPerM2: 0, cardsPerM2: 3 },
   },
   med: {
     name: 'med',
@@ -39,6 +43,7 @@ export const QUALITY: Record<QualityName, QualityTier> = {
     memoryBudgetMiB: BUDGET_BALANCED,
     antialias: true,
     shadows: { cascades: 3, mapSize: 1024, maxFar: 1000 },
+    grass: { nearM: 40, midM: 100, bladesPerM2: 16, cardsPerM2: 1.2 },
   },
   high: {
     name: 'high',
@@ -49,6 +54,7 @@ export const QUALITY: Record<QualityName, QualityTier> = {
     memoryBudgetMiB: BUDGET_HIGH,
     antialias: true,
     shadows: { cascades: 3, mapSize: 2048, maxFar: 1600 },
+    grass: { nearM: 60, midM: 150, bladesPerM2: 28, cardsPerM2: 0.8 },
   },
 };
 

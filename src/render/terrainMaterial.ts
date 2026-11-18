@@ -20,6 +20,11 @@ export interface TerrainMaterial {
   setWetness(wetness: number): void;
   /** Season weights (fresh, summer, straw) for the grass colour; see vegetationSeason in env/climate.ts. */
   setSeason(fresh: number, summer: number, straw: number): void;
+  /**
+   * Distance (m) to which grass is drawn over the ground (0 = no grass layer). Out to there the ground colour is
+   * darkened where the meadow is dense: it stands for the shade between the blades, so the blades read as a sward.
+   */
+  setGrassRange(midM: number): void;
 }
 
 /**
@@ -46,6 +51,8 @@ const ROCK = vec3(0.2, 0.19, 0.175);
  * man-made stone (breakwaters, piers, quay walls): weathered grey concrete and granite, lighter than the rock.
  */
 const STONE = vec3(0.3, 0.295, 0.28);
+/** Darkening of the ground between blades where the meadow is dense (fraction of the albedo). */
+const CANOPY_SHADE = 0.32;
 /** Metres per noise tile: macro patches, grain and micro-relief. */
 const MACRO_METRES = 37;
 const GRAIN_METRES = 5.3;
@@ -55,6 +62,7 @@ export function createTerrainMaterial(noise: DataTexture, lite = false, surface:
   const eyeOffset = uniform(new Vector3());
   const wetness = uniform(0);
   const season = uniform(new Vector3(1, 0, 0));
+  const grassRange = uniform(0);
 
   const pW = positionWorld.add(eyeOffset);
   // Texel centres sit on lattice points: uv = (index + 0.5) / dim, index = (x - WORLD_MIN) / (2 m x step).
@@ -75,7 +83,9 @@ export function createTerrainMaterial(noise: DataTexture, lite = false, surface:
   // Vegetation (CDLOD only): heath above the treeline, forest tint, wetter and lusher hollows, seasonal colour.
   const veg: Node<'vec4'> = surface && surfaceUv ? texture(surface.vegetation, surfaceUv) : vec4(1, 0, 0, 0);
   const wet01: Node<'float'> = surface && surfaceUv ? texture(surface.wetness, surfaceUv).r : float(0);
-  const grassCol = groundCover(macro, wet01, veg, season);
+  // Shade between the blades inside the grass range: full at the eye, gone at the range edge (no visible ring).
+  const canopy = veg.r.mul(float(1).sub(smoothstep(grassRange.mul(0.4), grassRange.max(1), dist))).mul(grassRange.greaterThan(0).select(1, 0));
+  const grassCol = groundCover(macro, wet01, veg, season).mul(float(1).sub(canopy.mul(CANOPY_SHADE)));
   let base = grassCol.mul(grass).add(SAND.mul(w.x)).add(ROCK.mul(w.y)).add(STONE.mul(w.z));
   base = mix(base, SEABED, float(1).sub(smoothstep(-2.2, -0.2, y)));
   if (!lite) {
@@ -118,6 +128,9 @@ export function createTerrainMaterial(noise: DataTexture, lite = false, surface:
     },
     setSeason(fresh: number, summer: number, straw: number): void {
       season.value.set(fresh, summer, straw);
+    },
+    setGrassRange(midM: number): void {
+      grassRange.value = midM;
     },
   };
 }

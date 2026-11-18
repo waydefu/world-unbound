@@ -167,6 +167,11 @@ export class CdlodTerrain {
     this.terrainMaterial.setSeason(fresh, summer, straw);
   }
 
+  /** Grass reach in metres (0 when there is no grass layer); see TerrainMaterial.setGrassRange. */
+  setGrassRange(midM: number): void {
+    this.terrainMaterial.setGrassRange(midM);
+  }
+
   /**
    * Selects the nodes for the eye and the camera's frustum, culls the casters per cascade against the light
    * frustums, and refreshes the instance buffers that changed. The matrices must be current (the app updates the
