@@ -1,7 +1,8 @@
 import {
-  BufferAttribute, BufferGeometry, BundleGroup, Group, Mesh, type MeshStandardNodeMaterial, Sphere, Vector3,
+  BufferAttribute, BufferGeometry, BundleGroup, type DataTexture, Group, Mesh, type MeshStandardNodeMaterial, Sphere, Vector3,
 } from 'three/webgpu';
-import type { TerrainResult } from '../world/terrainJob';
+import { resultBytes, type TerrainResult } from '../world/terrainJob';
+import type { SlidingRate } from '../perf/slidingRate';
 import { MemoryPartition, type MemoryRegistry } from '../perf/memoryRegistry';
 import { CHUNK_COUNT, CHUNK_SIZE, MAX_LOD } from '../world/constants';
 import { lodIndexCount, lodVertexCount, slotCx, slotCz } from '../world/chunkGrid';
@@ -10,6 +11,8 @@ import { createTerrainMaterial, type TerrainMaterial } from './terrainMaterial';
 
 const BYTES_PER_VERTEX = 12 + 12 + 4;
 const POOL_LIMIT = 24;
+/** A chunk stays a shadow caster this many metres beyond the caster radius before it is demoted. */
+const CASTER_HYSTERESIS = 64;
 
 /**
  * GPU-facing terrain: one Mesh per resident chunk, geometries pooled per LOD
@@ -25,7 +28,11 @@ const POOL_LIMIT = 24;
  */
 export class TerrainChunks {
   readonly root = new Group();
-  private readonly bundle = new BundleGroup();
+  /** Chunks within the shadow-caster radius (castShadow = true) and all others (receive only). */
+  private readonly nearBundle = new BundleGroup();
+  private readonly farBundle = new BundleGroup();
+  private eyeX = 0;
+  private eyeZ = 0;
   private bundled = false;
   /** Chunk meshes currently installed (counted in apply/evict, not by scanning). */
   private residentChunkCount = 0;
@@ -37,9 +44,17 @@ export class TerrainChunks {
   private readonly meshPool: Mesh[] = [];
   private readonly indices: BufferAttribute[] = [];
   residentTriangles = 0;
+  /** Per slot: bounding sphere (x, y, z, radius) in `root` space; telemetry reads it (frustum counts). */
+  readonly chunkSpheres = new Float32Array(CHUNK_COUNT * 4);
+  /** Per slot: triangles of the resident mesh (0 = not resident). */
+  readonly chunkTriangles = new Int32Array(CHUNK_COUNT);
+  /** Per slot: 1 when the chunk casts shadows. */
+  readonly casterMask = new Uint8Array(CHUNK_COUNT);
+  /** Receives the bytes of every geometry upload (set by the app). */
+  uploads: SlidingRate | null = null;
 
-  constructor(private readonly memory: MemoryRegistry, lite = false) {
-    this.terrainMaterial = createTerrainMaterial(lite);
+  constructor(private readonly memory: MemoryRegistry, noise: DataTexture, private readonly casterRadius: number, lite = false) {
+    this.terrainMaterial = createTerrainMaterial(noise, lite);
     this.material = this.terrainMaterial.material;
     for (let lod = 0; lod <= MAX_LOD; lod++) {
       this.geometryPool.push([]);
@@ -50,12 +65,15 @@ export class TerrainChunks {
       memory.add(MemoryPartition.CpuRetained, index.array.byteLength);
     }
     this.root.name = 'terrain-root';
-    this.bundle.name = 'terrain-bundle';
-    this.root.add(this.bundle);
+    this.nearBundle.name = 'terrain-bundle-near';
+    this.farBundle.name = 'terrain-bundle-far';
+    this.root.add(this.nearBundle, this.farBundle);
   }
 
   /** @hot delegates to a uniform write */
   setEyeOffset(x: number, y: number, z: number): void {
+    this.eyeX = x;
+    this.eyeZ = z;
     this.terrainMaterial.setEyeOffset(x, y, z);
   }
 
@@ -73,7 +91,8 @@ export class TerrainChunks {
     this.bundled = bundled;
     for (const mesh of this.meshes) if (mesh) mesh.frustumCulled = !bundled;
     for (const mesh of this.meshPool) mesh.frustumCulled = !bundled;
-    this.bundle.needsUpdate = true;
+    this.nearBundle.needsUpdate = true;
+    this.farBundle.needsUpdate = true;
   }
 
   private acquireGeometry(lod: number): BufferGeometry {
@@ -118,7 +137,9 @@ export class TerrainChunks {
       mesh.position.set(slotCx(slot) * CHUNK_SIZE, 0, slotCz(slot) * CHUNK_SIZE);
       mesh.updateMatrix();
       this.meshes[slot] = mesh;
-      this.bundle.add(mesh);
+      const near = this.distanceToEye(mesh.position.x + CHUNK_SIZE / 2, mesh.position.z + CHUNK_SIZE / 2) <= this.casterRadius;
+      mesh.castShadow = near;
+      (near ? this.nearBundle : this.farBundle).add(mesh);
       this.residentChunkCount++;
     }
     const geometry = this.acquireGeometry(lod);
@@ -131,18 +152,57 @@ export class TerrainChunks {
     sphere.center.set(half, midY, half);
     sphere.radius = Math.hypot(half, half, (result.maxY - result.minY) / 2);
     mesh.geometry = geometry;
+    const o = slot * 4;
+    this.chunkSpheres[o] = mesh.position.x + half;
+    this.chunkSpheres[o + 1] = midY;
+    this.chunkSpheres[o + 2] = mesh.position.z + half;
+    this.chunkSpheres[o + 3] = sphere.radius;
+    this.chunkTriangles[slot] = lodIndexCount(lod) / 3;
+    this.casterMask[slot] = mesh.castShadow ? 1 : 0;
+    this.uploads?.add(performance.now(), resultBytes(result));
     this.meshLod[slot] = lod;
     this.residentTriangles += lodIndexCount(lod) / 3;
-    this.bundle.needsUpdate = true;
+    (mesh.castShadow ? this.nearBundle : this.farBundle).needsUpdate = true;
   }
 
   private createMesh(): Mesh {
     const mesh = new Mesh(undefined, this.material);
     mesh.matrixAutoUpdate = false;
-    mesh.castShadow = true;
+    mesh.castShadow = false;
     mesh.receiveShadow = true;
     mesh.frustumCulled = !this.bundled;
     return mesh;
+  }
+
+  private distanceToEye(x: number, z: number): number {
+    return Math.hypot(x - this.eyeX, z - this.eyeZ);
+  }
+
+  /**
+   * Moves chunks between the shadow-casting and the receive-only bundle as the camera moves. A chunk
+   * becomes a caster inside `casterRadius` and stops being one only beyond `casterRadius + CASTER_HYSTERESIS`.
+   * @amortized scans the resident chunks at the 2 Hz telemetry tick; re-records a bundle only when a chunk moved
+   */
+  rebalanceCasters(): void {
+    let movedToNear = false;
+    let movedToFar = false;
+    for (let slot = 0; slot < CHUNK_COUNT; slot++) {
+      const mesh = this.meshes[slot];
+      if (!mesh) continue;
+      const d = this.distanceToEye(mesh.position.x + CHUNK_SIZE / 2, mesh.position.z + CHUNK_SIZE / 2);
+      const near = mesh.castShadow ? d <= this.casterRadius + CASTER_HYSTERESIS : d <= this.casterRadius;
+      if (near === mesh.castShadow) continue;
+      (mesh.castShadow ? this.nearBundle : this.farBundle).remove(mesh);
+      mesh.castShadow = near;
+      (near ? this.nearBundle : this.farBundle).add(mesh);
+      this.casterMask[slot] = near ? 1 : 0;
+      if (near) movedToNear = true;
+      else movedToFar = true;
+    }
+    if (movedToNear || movedToFar) {
+      this.nearBundle.needsUpdate = true;
+      this.farBundle.needsUpdate = true;
+    }
   }
 
   evict(slot: number): void {
@@ -150,10 +210,13 @@ export class TerrainChunks {
     if (!mesh) return;
     this.releaseGeometry(this.meshLod[slot], mesh.geometry);
     this.residentTriangles -= lodIndexCount(this.meshLod[slot]) / 3;
-    this.bundle.remove(mesh);
-    this.bundle.needsUpdate = true;
+    const group = mesh.castShadow ? this.nearBundle : this.farBundle;
+    group.remove(mesh);
+    group.needsUpdate = true;
     this.meshes[slot] = null;
     this.meshLod[slot] = -1;
+    this.chunkTriangles[slot] = 0;
+    this.casterMask[slot] = 0;
     this.residentChunkCount--;
     this.meshPool.push(mesh);
   }

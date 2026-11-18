@@ -17,10 +17,14 @@ export interface QualityTier {
 }
 
 
+/**
+ * Streamed chunks only cover the near field (`viewRadius`): the far-terrain skin covers the whole 4 km world,
+ * so a larger ring only multiplies draw calls (and, with three shadow cascades, shadow draws).
+ */
 export const QUALITY: Record<QualityName, QualityTier> = {
   low: {
     name: 'low',
-    lod: { lod0Distance: 110, viewRadius: 900 },
+    lod: { lod0Distance: 110, viewRadius: 600 },
     maxScale: 0.8,
     pixelBudget: 1_300_000,
     memoryBudgetMiB: BUDGET_BALANCED,
@@ -29,7 +33,7 @@ export const QUALITY: Record<QualityName, QualityTier> = {
   },
   med: {
     name: 'med',
-    lod: { lod0Distance: 150, viewRadius: 1300 },
+    lod: { lod0Distance: 150, viewRadius: 800 },
     maxScale: 1,
     pixelBudget: 2_200_000,
     memoryBudgetMiB: BUDGET_BALANCED,
@@ -38,7 +42,7 @@ export const QUALITY: Record<QualityName, QualityTier> = {
   },
   high: {
     name: 'high',
-    lod: { lod0Distance: 200, viewRadius: 1700 },
+    lod: { lod0Distance: 200, viewRadius: 1100 },
     maxScale: 1,
     // POCO F8 Ultra native panel: 2608 x 1200 = 3,129,600 px.
     pixelBudget: 3_200_000,

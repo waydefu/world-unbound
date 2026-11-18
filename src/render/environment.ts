@@ -1,7 +1,9 @@
-import { Color, DirectionalLight, FogExp2, HemisphereLight, type Scene } from 'three/webgpu';
+import { type DataTexture, Color, DirectionalLight, FogExp2, HemisphereLight, type Scene } from 'three/webgpu';
+import type { SlidingRate } from '../perf/slidingRate';
 import type { Weather } from '../env/weather';
 import type { CelestialState } from '../env/ephemeris';
 import type { SkySummary } from '../env/skyView';
+import { SV_H, SV_W } from '../env/skyView';
 import { Ocean } from './ocean';
 import { SkyDome } from './sky';
 
@@ -27,6 +29,13 @@ const MOON_TINT = new Color(0.62, 0.74, 1);
 const TINT = [MOON_TINT.r, MOON_TINT.g, MOON_TINT.b];
 /** Starlight and airglow floor so moonless nights are dark but not black (radiance units). */
 const NIGHT_FLOOR = 3e-7;
+/** Share of the overcast zenith radiance added to the ambient light under full cloud. */
+const OVERCAST_LIFT = 1.2;
+/** Share of the overcast zenith radiance shown by the cloud deck under full cloud at night. */
+const NIGHT_DECK = 0.15;
+/** Exposure key of a sky-ambient-lit white surface at night: 0.12 in clear air, lower under cloud (night reads as night). */
+const NIGHT_KEY = 0.12;
+const NIGHT_KEY_OVERCAST = 0.09;
 const MIN_EXPOSURE = 0.4;
 /** Upper bound of adaptation: scotopic vision reaches roughly 1e-6 of daylight. */
 const MAX_EXPOSURE = 1e6;
@@ -46,6 +55,8 @@ export class Environment {
   readonly ocean: Ocean;
   private readonly fog = new FogExp2(0x000000, 0.0002);
   sunAltitudeDeg = 0;
+  /** Receives the bytes of every sky-table upload (set by the app). */
+  uploads: SlidingRate | null = null;
   /** Exposure that would map this lighting to mid-grey; the app adapts towards it. */
   targetExposure = 1;
   private sunBase = 0;
@@ -53,8 +64,8 @@ export class Environment {
   private readonly fogBase = new Color();
   private readonly overcastZenith = new Float64Array(3);
 
-  constructor(scene: Scene, lite = false) {
-    this.ocean = new Ocean(this.sky, lite);
+  constructor(scene: Scene, noise: DataTexture, lite = false) {
+    this.ocean = new Ocean(this.sky, noise, lite);
     scene.add(this.sun, this.sun.target, this.moon, this.moon.target, this.ambient, this.ocean.mesh, this.sky.mesh);
     scene.fog = this.fog;
     scene.background = null;
@@ -87,10 +98,13 @@ export class Environment {
     const eLum = luminance(e);
     const overcastMix = (c: number): number => (e[c] + (eLum - e[c]) * w.overcast) * w.dim;
     const night = NIGHT_FLOOR * Math.PI;
+    // Under cloud the ground is lit by the whole deck: lift the floor by a share of the overcast zenith (not
+    // only by the starlight floor) so terrain stays readable against the brighter sky. Exposure does not see it.
+    const lift = (c: number): number => OVERCAST_LIFT * w.overcast * (9 / 7) * (eLum * w.dim + NIGHT_FLOOR * TINT[c]);
     this.ambient.color.setRGB(
-      Math.PI * overcastMix(0) + night * MOON_TINT.r,
-      Math.PI * overcastMix(1) + night * MOON_TINT.g,
-      Math.PI * overcastMix(2) + night * MOON_TINT.b,
+      Math.PI * (overcastMix(0) + lift(0)) + night * MOON_TINT.r,
+      Math.PI * (overcastMix(1) + lift(1)) + night * MOON_TINT.g,
+      Math.PI * (overcastMix(2) + lift(2)) + night * MOON_TINT.b,
     );
     // Ground bounce: 0.35 x sky plus 10% of the sun's irradiance scattered by average (0.25) ground albedo.
     const bounce = 0.1 * 0.25 * this.sunBase;
@@ -102,8 +116,12 @@ export class Environment {
 
     // Cloud deck: CIE standard overcast sky with the same irradiance, E = 7 pi Lz / 9,
     // so the overcast sky and the ambient light it casts always agree.
+    // Under cloud at night the deck is only lit from below by town and moon: show it darker than the ground it
+    // lights (the ambient above keeps the full lift), otherwise the sky reads brighter than the land.
+    const darkSky = w.overcast * (1 - smooth(-0.1, 0.05, sinAlt));
+    const deck = 1 - (1 - NIGHT_DECK) * darkSky;
     const zenith = this.overcastZenith;
-    for (let c = 0; c < 3; c++) zenith[c] = (9 / 7) * (eLum * w.dim + NIGHT_FLOOR * TINT[c]);
+    for (let c = 0; c < 3; c++) zenith[c] = (9 / 7) * (eLum * w.dim + NIGHT_FLOOR * TINT[c]) * deck;
 
     // Aerial perspective approximated by exponential fog tinted with the horizon radiance.
     const h = summary.horizon;
@@ -113,15 +131,36 @@ export class Environment {
 
     const moonDisc = Math.PI * MOON_ILLUMINANCE * celestial.moonIllumination * (1 / 6.4e-5) * (1 - 0.9 * w.overcast);
     this.ocean.setWeather(weather);
+    // Zenith radiance as the dome shows it: the table's top row (azimuth-averaged), mixed with the overcast deck.
+    let top0 = 0;
+    let top1 = 0;
+    let top2 = 0;
+    const row = (SV_H - 1) * SV_W * 4;
+    for (let i = 0; i < SV_W; i++) {
+      top0 += table[row + i * 4];
+      top1 += table[row + i * 4 + 1];
+      top2 += table[row + i * 4 + 2];
+    }
+    const k = Math.PI / SV_W;
+    this.ocean.setZenith(
+      top0 * k + (zenith[0] - top0 * k) * w.overcast,
+      top1 * k + (zenith[1] - top1 * k) * w.overcast,
+      top2 * k + (zenith[2] - top2 * k) * w.overcast,
+    );
     this.sky.setTable(table);
+    this.uploads?.add(performance.now(), this.sky.tableBytes);
     this.sky.setCelestial(celestial.sun, celestial.moon, t, moonDisc, 4e-6 * (1 - sunVisible) * (1 - w.overcast),
       w.overcast, sunVisible * (1 - w.overcast), zenith);
 
     // White-surface radiance (sun on a horizontal surface + sky + moon + floor) sets exposure;
-    // nights keep a lower key so they read as night (dark adaptation), not as dim day.
+    // nights keep a lower key so they read as night (dark adaptation), not as dim day. Under cloud there
+    // is no direct sun, so the key ramp starts at the horizon instead of in twilight: a white surface lit
+    // only by sky ambient maps to ~0.12 until the sun is up, which keeps overcast dusk/night from
+    // showing a sky far brighter than the ground.
     const white = luminance(t) * Math.max(0, sinAlt) * w.sun * sunVisible + eLum * w.dim
       + moonIllum * Math.max(0, Math.sin(celestial.moonAltitude)) + NIGHT_FLOOR;
-    const key = 0.12 + 0.88 * smooth(-0.1, 0.06, sinAlt);
+    const nightKey = NIGHT_KEY + (NIGHT_KEY_OVERCAST - NIGHT_KEY) * w.overcast;
+    const key = nightKey + (1 - nightKey) * smooth(-0.1 + 0.1 * w.overcast, 0.06 + 0.1 * w.overcast, sinAlt);
     this.targetExposure = Math.min(MAX_EXPOSURE, Math.max(MIN_EXPOSURE, key / white));
   }
 
@@ -137,5 +176,6 @@ export class Environment {
     this.ambient.intensity = exposure;
     this.fog.color.copy(this.fogBase).multiplyScalar(exposure);
     this.sky.setExposure(exposure);
+    this.ocean.setExposure(exposure);
   }
 }

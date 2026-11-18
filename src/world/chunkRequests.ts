@@ -59,6 +59,16 @@ export class ChunkRequests {
     return best;
   }
 
+  /** Wanted slots not yet resident at the wanted LOD and not in flight (the dispatch queue). @amortized telemetry only */
+  queuedCount(): number {
+    let n = 0;
+    for (let slot = 0; slot < CHUNK_COUNT; slot++) {
+      const want = this.desired[slot];
+      if (want >= 0 && want !== this.loaded[slot] && this.inFlight[slot] < 0) n++;
+    }
+    return n;
+  }
+
   /** Marks a slot as dispatched and returns the sequence number to send with it. */
   dispatch(slot: number): number {
     this.seq = (this.seq + 1) >>> 0;

@@ -1,4 +1,5 @@
 import type { DirectionalLight } from 'three/webgpu';
+import type { FrustumSource } from './chunkStats';
 import { CSMShadowNode } from 'three/addons/csm/CSMShadowNode.js';
 
 /** Cascaded sun shadows (G1.2). Budgeted from the phone GPU ramp: about 1.5-3 ms for three cascades. */
@@ -36,4 +37,17 @@ export function attachSunShadows(sun: DirectionalLight, settings: ShadowSettings
   shadow.shadowNode = csm;
   // 32-bit depth per texel, one map per cascade.
   return settings.cascades * settings.mapSize * settings.mapSize * 4;
+}
+
+const NO_CASCADES: readonly FrustumSource[] = [];
+
+/**
+ * The per-cascade light cameras of the sun's CSM shadow (empty until the first render has built them, or
+ * when shadows are off). Their matrices are those of the last rendered frame.
+ */
+export function cascadeCameras(sun: DirectionalLight): readonly FrustumSource[] {
+  const node = sun.shadow.shadowNode as unknown as { lights?: Array<{ shadow: { camera: FrustumSource } }> } | null;
+  const lights = node?.lights;
+  if (!lights || lights.length === 0) return NO_CASCADES;
+  return lights.map((l) => l.shadow.camera);
 }

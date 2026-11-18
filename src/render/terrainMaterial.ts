@@ -1,8 +1,9 @@
-import { FrontSide, MeshStandardNodeMaterial, Vector3 } from 'three/webgpu';
+import { type DataTexture, FrontSide, MeshStandardNodeMaterial, Vector3 } from 'three/webgpu';
 import {
-  attribute, clamp, float, max, mix, mx_noise_float, normalize, normalWorldGeometry, positionView, positionWorld,
+  attribute, clamp, float, max, mix, normalize, normalWorldGeometry, positionView, positionWorld,
   smoothstep, transformNormalToView, uniform, vec3,
 } from 'three/tsl';
+import { triplanarChannel, triplanarSlope } from './noiseSampling';
 
 /**
  * Procedural PBR terrain material (G1.3). The chunk colour attribute carries
@@ -23,9 +24,12 @@ const GRASS_DRY = vec3(0.21, 0.24, 0.085);
 const GRASS_LUSH = vec3(0.075, 0.16, 0.045);
 const ROCK = vec3(0.2, 0.19, 0.175);
 const EARTH = vec3(0.19, 0.15, 0.105);
-const E = 0.05;
+/** Metres per noise tile: macro patches, grain and micro-relief. */
+const MACRO_METRES = 37;
+const GRAIN_METRES = 5.3;
+const RELIEF_METRES = 1.25;
 
-export function createTerrainMaterial(lite = false): TerrainMaterial {
+export function createTerrainMaterial(noise: DataTexture, lite = false): TerrainMaterial {
   const eyeOffset = uniform(new Vector3());
   const wetness = uniform(0);
 
@@ -36,14 +40,15 @@ export function createTerrainMaterial(lite = false): TerrainMaterial {
   const dist = positionView.length();
   const detail = smoothstep(120, 30, dist);
 
-  const macro = mx_noise_float(pW.xz.mul(0.027));
-  const relief = (p: typeof pW) => mx_noise_float(p.mul(0.8));
+  const nGeo = normalWorldGeometry;
+  // Patch noise (B channel, 0..1) mapped to -1..1; world-fixed, triplanar on steep ground.
+  const macro = triplanarChannel(noise, pW, nGeo, MACRO_METRES, 'b').mul(2).sub(1);
 
   const grassCol = mix(GRASS_DRY, GRASS_LUSH, smoothstep(-0.6, 0.6, macro).mul(0.6).add(0.2));
   let base = grassCol.mul(grass).add(SAND.mul(w.x)).add(ROCK.mul(w.y)).add(EARTH.mul(w.z));
   base = mix(base, SEABED, float(1).sub(smoothstep(-2.2, -0.2, y)));
   if (!lite) {
-    const grain = mx_noise_float(pW.xz.mul(0.19));
+    const grain = triplanarChannel(noise, pW, nGeo, GRAIN_METRES, 'a').mul(2).sub(1);
     base = base.mul(float(1).add(grain.mul(0.14).mul(mix(0.4, 1, detail))));
   }
 
@@ -60,12 +65,11 @@ export function createTerrainMaterial(lite = false): TerrainMaterial {
   material.colorNode = albedo;
   material.roughnessNode = roughness;
   if (!lite) {
-    const h0 = relief(pW);
-    const gx = relief(pW.add(vec3(E, 0, 0))).sub(h0).div(E);
-    const gz = relief(pW.add(vec3(0, 0, E))).sub(h0).div(E);
+    // Micro-relief: one slope fetch (the texture stores the gradient), no finite differences.
+    const g = triplanarSlope(noise, pW, nGeo, RELIEF_METRES);
     const strength = grass.mul(0.3).add(w.x.mul(0.15)).add(w.y.mul(0.6)).add(w.z.mul(0.25))
       .mul(detail).mul(mix(1, 0.4, wet));
-    const nW = normalize(normalWorldGeometry.sub(vec3(gx, 0, gz).mul(strength).mul(0.25)));
+    const nW = normalize(nGeo.sub(g.mul(strength)));
     material.normalNode = transformNormalToView(nW);
   }
   material.aoNode = w.w;

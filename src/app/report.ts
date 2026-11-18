@@ -48,10 +48,38 @@ export interface AppState {
   exposure: number;
   atmosphereLutMs: number;
   backgroundSuspends: number;
-  /** GPU frame time percentiles from timestamp queries; null on WebGL2 or without the feature. */
-  gpuP50Ms: number | null;
-  gpuP95Ms: number | null;
+  /**
+   * Sum of per-pass GPU durations of the last frame (timestamp queries; NOT a frame span, see gpuTimer.ts);
+   * null on WebGL2 or without the feature.
+   */
+  gpuPassSumP50Ms: number | null;
+  gpuPassSumP95Ms: number | null;
   gpuSamples: number | null;
+  /** Timestamped passes in the last resolved frame. */
+  gpuPassesPerFrame: number | null;
+  /** Observability (G1.4.1 phase E); all sampled at the 2 Hz tick. */
+  residentChunks: number;
+  visibleChunks: number;
+  culledChunks: number;
+  /** Resident chunks that cast shadows. */
+  shadowCasterChunks: number;
+  trisMain: number;
+  /** Triangles per shadow cascade (first `shadowCascades` entries are valid). */
+  trisShadow: number[];
+  shadowCascades: number;
+  trisOcean: number;
+  trisFar: number;
+  uploadMiBps: number;
+  workerQueued: number;
+  buildP50Ms: number | null;
+  buildP95Ms: number | null;
+  buildSamples: number;
+  pipelinesAfterWarmup: number | null;
+  jsHeapMiB: number | null;
+  loafSupported: boolean;
+  loafCount: number;
+  loafWorstMs: number;
+  loafTopScript: string | null;
 }
 
 const scratch: Percentiles = { p50: 0, p95: 0, p99: 0, mean: 0 };
@@ -103,9 +131,13 @@ export function buildReport(
       p50Ms: round(p.p50),
       p95Ms: round(p.p95),
       p99Ms: round(p.p99),
-      gpuP50Ms: state.gpuP50Ms === null ? null : round(state.gpuP50Ms),
-      gpuP95Ms: state.gpuP95Ms === null ? null : round(state.gpuP95Ms),
+      gpuPassSumP50Ms: state.gpuPassSumP50Ms === null ? null : round(state.gpuPassSumP50Ms),
+      gpuPassSumP95Ms: state.gpuPassSumP95Ms === null ? null : round(state.gpuPassSumP95Ms),
+      gpuPassesPerFrame: state.gpuPassesPerFrame,
       gpuSamples: state.gpuSamples,
+      longAnimationFrames: state.loafSupported
+        ? { count: state.loafCount, worstMs: round(state.loafWorstMs, 1), topScript: state.loafTopScript }
+        : null,
       longOver50Ms: stats.longFrames50,
       longOver100Ms: stats.longFrames100,
       refreshHz: round(state.refreshHz, 1),
@@ -116,6 +148,7 @@ export function buildReport(
     memoryLogical: memory.snapshot(),
     shaders: {
       materialVariants: state.materialVariants,
+      pipelinesAfterWarmup: state.pipelinesAfterWarmup,
       variantBudget: state.variantBudget,
       warmupCompileMs: round(state.warmupMs, 1),
       firstFrameMs: round(state.firstFrameMs, 1),
@@ -132,7 +165,25 @@ export function buildReport(
       drawCalls: state.drawCalls,
       bundledDraws: state.bundledDraws,
       triangles: state.triangles,
+      residentChunks: state.residentChunks,
+      visibleChunks: state.visibleChunks,
+      culledChunks: state.culledChunks,
+      shadowCasterChunks: state.shadowCasterChunks,
+      trianglesPerPass: {
+        main: state.trisMain,
+        shadow: state.trisShadow.slice(0, state.shadowCascades),
+        ocean: state.trisOcean,
+        farTerrain: state.trisFar,
+      },
+      uploadMiBps: round(state.uploadMiBps, 3),
+      workerQueue: { queued: state.workerQueued, inFlight: state.chunksInFlight },
+      chunkBuildMs: {
+        p50: state.buildP50Ms === null ? null : round(state.buildP50Ms),
+        p95: state.buildP95Ms === null ? null : round(state.buildP95Ms),
+        samples: state.buildSamples,
+      },
     },
+    memory: { jsHeapMiB: state.jsHeapMiB === null ? null : round(state.jsHeapMiB, 1), jsHeapApproximate: true },
     environment: {
       day: state.day,
       season: state.season,

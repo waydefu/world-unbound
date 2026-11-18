@@ -1,7 +1,7 @@
-import { BufferAttribute, BufferGeometry, DataUtils, Mesh } from 'three/webgpu';
+import { BufferAttribute, BufferGeometry, type DataTexture, DataUtils, Mesh, Vector3 } from 'three/webgpu';
 import { waveSet, waveSlope } from '../env/ocean';
 import type { Weather } from '../env/weather';
-import { SEAFLOOR_DIM } from '../world/seaFloor';
+import { COAST_DIM, SEAFLOOR_DIM } from '../world/seaFloor';
 import { FLOOR_OFFSET, createOceanMaterial, createOceanUniforms, createSeaFloorTexture } from './oceanMaterial';
 import type { SkyDome } from './sky';
 
@@ -77,16 +77,26 @@ export class Ocean {
   private readonly uniforms = createOceanUniforms();
   private readonly floorData = new Uint16Array(SEAFLOOR_DIM * SEAFLOOR_DIM).fill(DataUtils.toHalfFloat(DEEP_METRES - FLOOR_OFFSET));
   readonly floorTexture = createSeaFloorTexture(this.floorData, SEAFLOOR_DIM);
+  /** 2 m coast map for the fragment shader's waterline (null in lite: the 4 m map is used). */
+  private readonly coastData: Uint16Array | null;
+  private readonly coastTexture: DataTexture | null;
+  readonly hasCoast: boolean;
 
-  constructor(sky: SkyDome, lite = false) {
+  /** Zenith radiance before exposure (scene units); setExposure folds the exposure in. */
+  private readonly zenithBase = new Vector3(0.1, 0.15, 0.3);
+
+  constructor(sky: SkyDome, noise: DataTexture, lite = false) {
     const geometry = buildGrid(lite ? HALF_CELLS_LITE : HALF_CELLS);
-    this.mesh = new Mesh(geometry, createOceanMaterial(sky, this.floorTexture, this.uniforms, lite));
+    this.hasCoast = !lite;
+    this.coastData = lite ? null : new Uint16Array(COAST_DIM * COAST_DIM).fill(DataUtils.toHalfFloat(DEEP_METRES - FLOOR_OFFSET));
+    this.coastTexture = this.coastData ? createSeaFloorTexture(this.coastData, COAST_DIM) : null;
+    this.mesh = new Mesh(geometry, createOceanMaterial(sky, this.floorTexture, this.coastTexture ?? this.floorTexture, noise, this.uniforms, lite));
     this.mesh.name = 'ocean';
     this.mesh.renderOrder = 1;
     this.mesh.frustumCulled = false;
     this.floorTexture.needsUpdate = true;
     this.gpuBytes = geometry.getAttribute('position').array.byteLength + (geometry.index?.array.byteLength ?? 0)
-      + this.floorData.byteLength;
+      + this.floorData.byteLength + (this.coastData?.byteLength ?? 0);
     this.setWeather('clear');
   }
 
@@ -100,6 +110,17 @@ export class Ocean {
     const n = Math.min(heights.length, this.floorData.length);
     for (let i = 0; i < n; i++) this.floorData[i] = DataUtils.toHalfFloat(heights[i] - FLOOR_OFFSET);
     this.floorTexture.needsUpdate = true;
+  }
+
+  /**
+   * Publishes the 2 m coast map (metres).
+   * @amortized once per session: ~4 M conversions (2048 x 2048 texels), in the background after start
+   */
+  setCoastFloor(heights: Float32Array): void {
+    if (!this.coastData || !this.coastTexture) return;
+    const n = Math.min(heights.length, this.coastData.length);
+    for (let i = 0; i < n; i++) this.coastData[i] = DataUtils.toHalfFloat(heights[i] - FLOOR_OFFSET);
+    this.coastTexture.needsUpdate = true;
   }
 
   /** @amortized weather changes only */
@@ -116,6 +137,16 @@ export class Ocean {
     const slope = waveSlope(weather);
     // Crest foam only in rain and storm: ramps from slope 0.05 to 0.11.
     this.uniforms.weather.value.set(slope, sum, Math.min(1, Math.max(0, slope - 0.05) / 0.06), 0);
+  }
+
+  /** Hemisphere radiance (rgb, before exposure) that lights the water body and the foam. @amortized sky publish only */
+  setZenith(r: number, g: number, b: number): void {
+    this.zenithBase.set(r, g, b);
+  }
+
+  /** @hot uniform writes only */
+  setExposure(exposure: number): void {
+    this.uniforms.zenith.value.copy(this.zenithBase).multiplyScalar(exposure);
   }
 
   /** @hot uniform and transform writes only */

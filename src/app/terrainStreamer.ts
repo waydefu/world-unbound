@@ -3,7 +3,9 @@ import type { TerrainChunks } from '../render/terrainChunks';
 import { ChunkRequests } from '../world/chunkRequests';
 import { slotCx, slotCz, type LodPolicy } from '../world/chunkGrid';
 import { CHUNK_COUNT } from '../world/constants';
+import type { SampleRing } from '../perf/sampleRing';
 import { TerrainClient } from './terrainClient';
+import { createBuildRing } from './observability';
 import { resultBytes, runTerrainJob, type TerrainRequest } from '../world/terrainJob';
 
 const MAX_IN_FLIGHT = 16;
@@ -19,6 +21,8 @@ const PREFETCH_SECONDS = 0.75;
 export class TerrainStreamer {
   readonly requests = new ChunkRequests();
   readonly client = new TerrainClient();
+  /** Per-chunk build times (ms) reported by the worker; ring of the latest 120. */
+  readonly buildMs: SampleRing = createBuildRing();
   /** Raised under GPU memory pressure: coarser LODs everywhere. */
   lodBias = 0;
   /** True once every wanted chunk is resident at its wanted LOD. */
@@ -73,6 +77,7 @@ export class TerrainStreamer {
       if (!result) break;
       const bytes = resultBytes(result);
       this.memory.add(MemoryPartition.Staging, bytes);
+      if (result.buildMs !== undefined) this.buildMs.push(result.buildMs);
       if (requests.complete(result.slot, result.seq, result.lod)) this.chunks.apply(result);
       this.memory.remove(MemoryPartition.Staging, bytes);
       if (performance.now() >= deadline) break;

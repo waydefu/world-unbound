@@ -21,6 +21,8 @@ export interface TerrainResult {
   colors: Uint8Array;
   minY: number;
   maxY: number;
+  /** Milliseconds the job took, measured by whoever ran it (worker or main thread); absent in tests. */
+  buildMs?: number;
 }
 
 const TILE_CACHE_LIMIT = 256;
