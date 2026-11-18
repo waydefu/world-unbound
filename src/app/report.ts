@@ -79,6 +79,7 @@ export interface AppState {
   loafSupported: boolean;
   loafCount: number;
   loafWorstMs: number;
+  loafWorstBlockingMs: number;
   loafTopScript: string | null;
 }
 
@@ -136,7 +137,7 @@ export function buildReport(
       gpuPassesPerFrame: state.gpuPassesPerFrame,
       gpuSamples: state.gpuSamples,
       longAnimationFrames: state.loafSupported
-        ? { count: state.loafCount, worstMs: round(state.loafWorstMs, 1), topScript: state.loafTopScript }
+        ? { count: state.loafCount, worstMs: round(state.loafWorstMs, 1), worstBlockingMs: round(state.loafWorstBlockingMs, 1), topScript: state.loafTopScript }
         : null,
       longOver50Ms: stats.longFrames50,
       longOver100Ms: stats.longFrames100,

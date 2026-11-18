@@ -17,8 +17,11 @@ interface LoafScript {
 export class LongFrames {
   supported = false;
   count = 0;
-  /** Largest `blockingDuration` (ms) seen. */
+  /** Longest frame `duration` (ms) seen. */
   worstMs = 0;
+  /** Largest `blockingDuration` (ms) seen: the part of long tasks beyond 50 ms each; 0 when a frame is
+   * long because of rendering or many short tasks rather than one blocking script. */
+  worstBlockingMs = 0;
   /** `sourceURL:sourceFunctionName` of the script that ran longest inside the worst frame. */
   topScript: string | null = null;
   private observer: PerformanceObserver | null = null;
@@ -40,9 +43,9 @@ export class LongFrames {
           scripts?: LoafScript[];
         };
         this.count++;
-        const blocking = frame.blockingDuration ?? frame.duration;
-        if (blocking < this.worstMs) continue;
-        this.worstMs = blocking;
+        this.worstBlockingMs = Math.max(this.worstBlockingMs, frame.blockingDuration ?? 0);
+        if (frame.duration < this.worstMs) continue;
+        this.worstMs = frame.duration;
         let top: LoafScript | null = null;
         for (const script of frame.scripts ?? []) if (!top || script.duration > top.duration) top = script;
         if (top) this.topScript = `${top.sourceURL.split('/').pop() || 'inline'}:${top.sourceFunctionName || 'anonymous'}`;
@@ -91,12 +94,12 @@ export function meshTriangles(mesh: Mesh): number {
 export function initialObserved(): Pick<
   AppState, 'residentChunks' | 'visibleChunks' | 'culledChunks' | 'shadowCasterChunks' | 'trisMain' | 'trisShadow'
   | 'shadowCascades' | 'trisOcean' | 'trisFar' | 'uploadMiBps' | 'workerQueued' | 'buildP50Ms' | 'buildP95Ms'
-  | 'buildSamples' | 'pipelinesAfterWarmup' | 'jsHeapMiB' | 'loafSupported' | 'loafCount' | 'loafWorstMs' | 'loafTopScript'
+  | 'buildSamples' | 'pipelinesAfterWarmup' | 'jsHeapMiB' | 'loafSupported' | 'loafCount' | 'loafWorstMs' | 'loafWorstBlockingMs' | 'loafTopScript'
 > {
   return {
     residentChunks: 0, visibleChunks: 0, culledChunks: 0, shadowCasterChunks: 0, trisMain: 0, trisShadow: [0, 0, 0, 0],
     shadowCascades: 0, trisOcean: 0, trisFar: 0, uploadMiBps: 0, workerQueued: 0, buildP50Ms: null, buildP95Ms: null,
-    buildSamples: 0, pipelinesAfterWarmup: null, jsHeapMiB: null, loafSupported: false, loafCount: 0, loafWorstMs: 0,
+    buildSamples: 0, pipelinesAfterWarmup: null, jsHeapMiB: null, loafSupported: false, loafCount: 0, loafWorstMs: 0, loafWorstBlockingMs: 0,
     loafTopScript: null,
   };
 }
@@ -152,6 +155,7 @@ export class Observer {
     state.loafSupported = this.longFrames.supported;
     state.loafCount = this.longFrames.count;
     state.loafWorstMs = this.longFrames.worstMs;
+    state.loafWorstBlockingMs = this.longFrames.worstBlockingMs;
     state.loafTopScript = this.longFrames.topScript;
   }
 }

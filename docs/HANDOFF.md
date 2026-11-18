@@ -1,48 +1,47 @@
 # Handoff
 
-Snapshot: 2026-11-17, work paused at the owner's request after G1.2. Read this, then [INDEX.md](INDEX.md).
+Snapshot: 2026-11-18, after G1.4.1 (PR #21, deploy fix #22). Read this, then [INDEX.md](INDEX.md).
 
 ## Where the project is
 
-- **Live build:** https://waydefu.github.io/world-unbound/ (deployed from `main` by `pages.yml`); spike page at `/world-unbound/spike/engines.html`.
+- **Live build:** https://waydefu.github.io/world-unbound/ (deployed from `main` by `pages.yml`; check the Actions run, a red unit test skips the deploy); spike page at `/world-unbound/spike/engines.html`.
 - **Governance:** M0 complete, M1 complete on the agent side ([status](governance/status.md)).
-- **Game:** G0 engine skeleton done; G0.5 engine decision done, erosion bake deferred; G1 in progress:
+- **Process:** subagents implement from a written spec (`.claude/agents/`), a render-only critic reviews screenshots ([visual review](process/visual-review.md)), the owner tests on the phone.
+- **Game:** G0 done; G0.5 engine decision done; G1 in progress:
 
 | Step | Content | State |
 | --- | --- | --- |
-| G1.0 | GPU load ramp on the spike page | Merged (#13); phone result below |
+| G1.0 | GPU load ramp on the spike page | Merged (#13) |
 | G1.1 | Physical sky and atmosphere, calendar, ephemeris, auto-exposure | Merged (#14) |
 | G1.2 | Cascaded sun shadows; main-app terrain in a render bundle | Merged (#15) |
-| — | Stop-work: module layers enforced, index, governance status, this handoff | Merged (#15) |
-| G1.3 | Terrain PBR materials (weathering, slope/height blending) | In progress (local) |
-| G1.4 | Ocean (multi-band waves, shoreline, reflections) | Not started |
-| G1.5 | Real terrain: Hellesylt, Norway (Kartverket DTM, baked tiles, 62.083° N sun, new cameras, credits) | Implemented locally (phases A–C, [spec](specs/g1.5-real-terrain.md)); phase D visual review pending |
+| G1.3 | Terrain materials (weathering, slope/height blending) | Merged |
+| G1.4 | Ocean (Gerstner waves, sea floor, far-terrain skin, lite tier) | Merged |
+| G1.5 | Real terrain: Hellesylt, Norway (Kartverket DTM, 62.083° N) | Merged (#20) |
+| G1.4.1 | Noise textures instead of per-pixel noise, near-field view radius, observability HUD, shore/night fixes | Merged (#21, #22); phone gate passed |
 
-What the screen shows today: terrain, coastline, physical sky with sun/moon/stars, fog, terrain shadows, a flat placeholder sea. No buildings, vegetation, gameplay or audio.
+What the screen shows today: real fjord terrain, physical sky, fog, shadows, a shaded ocean with shore foam. No buildings, vegetation, rain, gameplay or audio.
 
 ## Measurements to build on
 
-Owner's phone: Adreno 8xx, Chrome 157, WebGPU, 60 Hz, 2.2 MP drawing buffer.
+Owner's phone: Adreno 8xx, Chrome 157, WebGPU, 60 Hz, 2.2 MP drawing buffer, med tier.
 
+- **G1.4.1 gate (2026-11-18), passed:** cams 2, 3, 5 hold 60 FPS at render scale 1.0 for 70 s (0 scale changes, p95 16.7–16.8 ms); 1–2 frames > 50 ms each, attributed by LoAF to terrain loading at start. Resident chunks 491 (was 1296), visible 53–73.
+- **GPU ramp (2026-11-18):** the spike scene (terrain only, 1298 chunks, pinned 1300 m ring) holds 60 FPS up to 8 passes, drops at 10 → one pass ≤ 12.5 % of a frame, far above the 30 % headroom rule. It does not include ocean or shadows; the app numbers above are the real evidence.
+- `gpu Σpass` (`frames.gpuPassSumP50Ms`) is the **sum of per-pass durations** from three.js, inflated by down-clocking and tiled-GPU overlap; it is not a frame time (11–13 ms at a steady 60 FPS).
 - Render bundles cut CPU per frame from ~7 ms to ~1.6–2.3 ms ([engine spike](spikes/engine-spike.md)).
-- GPU ramp (2026-11-17): 60 FPS held up to 5 full terrain passes, dropped at 6 → one pass ≈ 2.8–3.3 ms at full clocks. Per-pass timestamps read 11–13 ms because the GPU down-clocks when lightly loaded; use the ramp, not raw timestamps.
-- Budget: target ≈ 11.5 ms GPU per frame (30 % thermal margin) → ≈ 3 ms base scene + ≈ 8 ms for G1 effects. Shadows are allotted 1.5–3 ms.
-- Not yet measured: shadow cost on device, sustained (10 min+) thermal behaviour, atmosphere table build time on the phone (`environment.atmosphereLutMs`).
+- Not yet measured: sustained (10 min+) thermal behaviour.
 
 ## Next actions
 
-**Owner**
+**Owner:** merge open PRs; T20 still needs a second GitHub account.
 
-1. Review and merge the G1.3 PR.
-2. Bundles + shadows are verified on the phone (WebGPU, med tier, 58.7 FPS at 2.2 MP). The shadows-off A/B was invalid (a false crash-recovery forced the low tier; fixed in G1.3), so after merging: in **one tab**, open `?cam=5&hour=19.8`, export JSON, then change the URL to `?cam=5&hour=19.8&shadows=0`, reload, export JSON.
-3. Optional: second GitHub account for T20.
+**Next agent session** (owner chooses the order):
 
-**Next agent session**
-
-1. Analyse the two telemetry files; if shadows exceed ~3 ms, reduce cascades or map size per tier in `src/app/quality.ts`.
-2. G1.3 terrain materials, then G1.4 ocean, each as its own PR with before/after screenshots of the six cameras.
-3. Wire `materialVariants` telemetry to the real pipeline count.
-4. After G1: 10-minute thermal run, then revisit the erosion bake ([findings](spikes/terrain-erosion.md)).
+1. G2 vegetation (camera-centred grass cells, blades near, cards mid; refs in [external projects](reference/external-projects.md)).
+2. Weather: visible rain and cloud (blind review found rain nights unreadable as rain).
+3. Chunk system: CDLOD geomorph, horizon beyond 4 km, terrain data streaming, occlusion culling.
+4. Bathymetry realism (seabed is synthesised from distance to land; shallows look uniform).
+5. End of G1: fly-through benchmark and 10-minute soak.
 
 ## How to resume
 
@@ -64,5 +63,9 @@ npm run check               # lint, typecheck, tests, build, static audit, visua
 - WebGL2 draw calls roughly triple with shadows (Lite tier); may need shadows off there.
 - Atmosphere tables are built on the main thread at boot; move to a worker or bake if the phone time is high.
 - Fog is exponential height-less fog, not a full aerial-perspective volume.
-- Terrain is the real Hellesylt DTM (G1.5). The world is a 4 km square; the sea floor skin is half-float (1 m steps above 1024 m) and the material rules still key on height (everything below 2.4 m is sand, so the flat village reads as beach); the single seabed cell next to land gives a dark 2 m drop at every shore.
+- Terrain is the real Hellesylt DTM (G1.5), a 4 km square; the far skin covers it beyond the streamed ring (600/800/1100 m by tier). The seabed is synthesised from the distance to land, so shallows have a uniform width.
+- The near/far shadow-caster split (G1.4.1) saves nothing at current settings: shadow `maxFar` ≥ view radius, so every resident chunk casts. Shadow passes are small (≤ 0.12 M triangles per cascade on the phone).
+- Ocean shading near the coast waits ~2 s for the 2 m coast map (built in the worker); until then the water reads as deep.
+- `shaders.pipelinesAfterWarmup` reads three's private `_pipelines.caches` and becomes null if three moves it.
+- Open blind-review findings (G1.4.1 round 2): smeared near meadow (needs vegetation), crushed-black cliff shadows (cam 2), narrow sun glitter and pale water at low sun (cam 3), no visible rain (cam 4).
 - `vite build` warns that `spike/threeRunner.ts` is both statically and dynamically imported (spike only, harmless).
