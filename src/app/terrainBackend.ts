@@ -38,6 +38,8 @@ export interface TerrainBackend {
   /** @hot */
   setEyeOffset(x: number, y: number, z: number): void;
   setWetness(wetness: number): void;
+  /** Season weights of the grass colour: fresh, summer, straw (CDLOD only; the chunk path keeps its spring palette). */
+  setSeason(fresh: number, summer: number, straw: number): void;
   /** The backend is known (WebGPU bundles chunk draws). */
   setBundled(bundled: boolean): void;
   /** The sea-floor heights are uploaded (the chunk path's far skin shows then). */

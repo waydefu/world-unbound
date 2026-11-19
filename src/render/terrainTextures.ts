@@ -13,6 +13,10 @@ export interface TerrainTextures {
   /** Texels per side of the material texture. */
   /** RGBA8 world-space geometric normal (n * 0.5 + 0.5), same lattice as `material`, linear with mipmaps. */
   readonly normal: DataTexture;
+  /** RGBA8 meadow, heath, tree, bare (vegetationMask.ts), same lattice as `material`, linear with mipmaps. */
+  readonly vegetation: DataTexture;
+  /** R8 wetness proxy on the same lattice, linear with mipmaps. */
+  readonly wetness: DataTexture;
   readonly materialDim: number;
   /** Lattice cells between material texels: 1 (2 m) or 2 (4 m, low tier). */
   readonly materialStep: 1 | 2;
@@ -25,6 +29,9 @@ export interface TerrainTextures {
   readonly uploadBytes: number;
   /** Bytes the normal texture upload moves (its base level), counted on top of `uploadBytes`. */
   readonly normalUploadBytes: number;
+  /** Vegetation + wetness with their mip chains, and the bytes their base levels move on upload. */
+  readonly vegetationBytes: number;
+  readonly vegetationUploadBytes: number;
 }
 
 const ANISOTROPY = 8;
@@ -66,11 +73,33 @@ export function createTerrainTextures(data: TerrainTextureData): TerrainTextures
   material.anisotropy = ANISOTROPY;
   normal.anisotropy = ANISOTROPY;
 
+  // Vegetation masks (G2.1); hand-made data without them gets neutral 1 x 1 textures (all meadow, nothing bare).
+  const masks = data.masks;
+  const vegDim = masks ? dim : 1;
+  const vegetation = new DataTexture(masks ? masks.vegetation : new Uint8Array([255, 0, 0, 0]), vegDim, vegDim, RGBAFormat, UnsignedByteType);
+  const wetness = new DataTexture(masks ? masks.wetness : new Uint8Array([0]), vegDim, vegDim, RedFormat, UnsignedByteType);
+  vegetation.name = 'terrain-vegetation';
+  wetness.name = 'terrain-wetness';
+  for (const t of [vegetation, wetness]) {
+    t.magFilter = LinearFilter;
+    t.minFilter = LinearMipmapLinearFilter;
+    t.wrapS = ClampToEdgeWrapping;
+    t.wrapT = ClampToEdgeWrapping;
+    t.generateMipmaps = true;
+    t.unpackAlignment = 1;
+    t.needsUpdate = true;
+  }
+
   const bytes = terrainTextureBytes(data.materialStep);
+  const texels = vegDim * vegDim;
   return {
     height,
     material,
     normal,
+    vegetation,
+    wetness,
+    vegetationBytes: masks ? Math.round((texels * 5 * 4) / 3) : 5,
+    vegetationUploadBytes: texels * 5,
     materialDim: dim,
     materialStep: data.materialStep,
     heightBytes: bytes.height,

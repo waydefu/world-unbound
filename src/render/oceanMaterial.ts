@@ -6,6 +6,7 @@ import {
   Discard, Fn, clamp, cos, dFdx, dFdy, float, length, max, min, mix, normalize, positionLocal, positionWorld, pow, reflect,
   smoothstep, sin, texture, uniform, varyingProperty, vec2, vec3,
 } from 'three/tsl';
+import { WORLD_MAX, WORLD_MIN } from '../world/constants';
 import { seaDepth as sampleSeaDepth } from './seaFloorSampling';
 import type { SkyDome } from './sky';
 
@@ -17,7 +18,10 @@ const DETAIL_A_METRES = 23;
 const DETAIL_B_METRES = 6.5;
 const FOAM_METRES = 3;
 const DEEP = vec3(0.004, 0.016, 0.022);
-const SHALLOW = vec3(0.02, 0.09, 0.085);
+/** Shallow water over the bottom: a murky green-teal, not a bright turquoise (the band was read as a cyan stroke). */
+const SHALLOW = vec3(0.022, 0.07, 0.058);
+/** Water of a closed harbour basin: dark and green-grey, no turquoise at the edge. */
+const BASIN = vec3(0.01, 0.03, 0.03);
 const SHALLOW_SAND = vec3(0.1, 0.12, 0.09);
 const SSS = vec3(0.02, 0.18, 0.15);
 const FOAM_ALBEDO = 0.8;
@@ -34,6 +38,10 @@ export interface OceanUniforms {
   waveB: Array<UniformNode<'vec4'>>;
   /** Weather: (wave slope, sum of amplitudes, crest-foam factor, 0). */
   weather: UniformNode<'vec4'>;
+  /** Wind (G2.1): distance in metres the surface layers have drifted since start (xz), integrated on the CPU. */
+  drift: UniformNode<'vec2'>;
+  /** Wind choppiness factor of the detail normals, ~0.9 (calm) .. 1.4 (gale). */
+  chop: UniformNode<'float'>;
   /** Zenith (hemisphere) radiance for body and foam lighting, pre-exposed (set from the CPU sky summary). */
   zenith: UniformNode<'vec3'>;
 }
@@ -48,6 +56,7 @@ export function createOceanUniforms(): OceanUniforms {
   return {
     eye: uniform(new Vector3()), eyeSnap: uniform(new Vector2()), time: uniform(0),
     waveA, waveB, weather: uniform(new Vector4(0.035, 0.1, 0, 0)), zenith: uniform(new Vector3(0.1, 0.15, 0.3)),
+    drift: uniform(new Vector2()), chop: uniform(1),
   };
 }
 
@@ -69,8 +78,9 @@ export function createSeaFloorTexture(data: Uint16Array, size: number): DataText
  */
 export function createOceanMaterial(
   sky: SkyDome, floor: DataTexture, coast: DataTexture, noise: DataTexture, u: OceanUniforms, lite = false,
+  openness: DataTexture | null = null,
 ): MeshBasicNodeMaterial {
-  const { eye, eyeSnap, time, waveA, waveB, weather, zenith } = u;
+  const { eye, eyeSnap, time, waveA, waveB, weather, zenith, drift, chop } = u;
   const vNormal = varyingProperty('vec3', 'oceanNormal');
   const vWaveY = varyingProperty('float', 'oceanWaveY');
 
@@ -111,16 +121,21 @@ export function createOceanMaterial(
   const fragment = Fn(() => {
     const p = positionWorld.xz.add(vec2(eye.x, eye.z)).toVar();
     const dist = length(positionWorld);
-    const t = time;
     const slope = weather.x;
     // Noise samples first, before any discard, so the mip selection derivatives stay in uniform control flow.
-    // Slopes (rg) decode to -1..1 with rms ~0.3; both layers drift (the first with the wind, +z).
-    const slopeA = texture(noise, p.add(vec2(0, 0.35).mul(t)).div(DETAIL_A_METRES)).rg.mul(2).sub(1).toVar();
+    // Slopes (rg) decode to -1..1 with rms ~0.3; every layer drifts with the wind (`drift` integrates the global
+    // wind velocity on the CPU, so a change of wind direction bends the drift instead of jumping it).
+    const slopeA = texture(noise, p.add(drift).div(DETAIL_A_METRES)).rg.mul(2).sub(1).toVar();
     const slopeB = lite
       ? vec2(0, 0)
-      : texture(noise, p.add(vec2(0.45, 0.4).mul(t)).div(DETAIL_B_METRES)).rg.mul(2).sub(1).toVar();
+      : texture(noise, p.add(drift.mul(1.7)).div(DETAIL_B_METRES)).rg.mul(2).sub(1).toVar();
     // Foam breakup (alpha channel) at 1/3 m; lite uses the Gerstner phase instead.
-    const grain = (lite ? float(0) : texture(noise, p.add(vec2(0.1, 0.25).mul(t)).div(FOAM_METRES)).a).toVar();
+    const grain = (lite ? float(0) : texture(noise, p.add(drift.mul(0.75)).div(FOAM_METRES)).a).toVar();
+
+    // Basin openness (G2.1 phase D): 1 in the open fjord, towards 0 in harbour basins that no 150 m run of open water
+    // reaches. Sampled before the discard with the other texture reads. `calm` is 1 inside enclosed basins.
+    const open01 = openness ? texture(openness, p.sub(WORLD_MIN).div(WORLD_MAX - WORLD_MIN)).r : float(1);
+    const calm = float(1).sub(smoothstep(0.15, 0.3, open01)).toVar();
 
     // Fragment: bicubic near the shore (not in lite), so the waterline follows the terrain smoothly.
     const sea = sampleSeaDepth(coast, p, !lite).toVar();
@@ -137,7 +152,7 @@ export function createOceanMaterial(
     Discard(sea.lessThan(-0.5));
 
     // Detail normal: sum of the decoded slopes, scaled by weather and faded out with distance.
-    const amp = slope.mul(1.5).add(0.05).mul(smoothstep(400, 60, dist));
+    const amp = slope.mul(1.5).add(0.05).mul(chop).mul(smoothstep(400, 60, dist)).mul(mix(1, 0.55, calm));
     const detail = slopeA.add(slopeB.mul(0.6)).mul(amp);
     const Ng = normalize(vNormal);
     const N = normalize(Ng.sub(vec3(detail.x, 0, detail.y))).toVar();
@@ -163,9 +178,14 @@ export function createOceanMaterial(
     // Water body lit by sky irradiance (zenith radiance x pi x 0.5) plus the sun's illuminance on a horizontal surface.
     const sunIlluminance = sunE.mul(max(sunDir.y, 0));
     const bodyLight = zenith.mul(Math.PI * 0.5).add(sunIlluminance);
-    // Deep -> turquoise shallows over ~8 m, sand-tinted right at the shore (no hard turquoise edge).
+    // Deep -> green shallows. The tint is depth-graded (e-folding 2.2 m, 1 m on steep coasts: quays, breakwaters), broken up
+    // by the low-frequency noise so it is not one even stroke along every shore, and absent in closed basins, which
+    // take a dark green-grey instead.
     const shallow = mix(SHALLOW, SHALLOW_SAND, smoothstep(1.5, 0, depth));
-    const body = mix(DEEP, shallow, depth.negate().div(3).exp()).mul(bodyLight).toVar();
+    const narrow = smoothstep(0.25, 0.7, shoreSlope);
+    const patchy = mix(0.55, 1, smoothstep(-0.35, 0.35, slopeA.y));
+    const tint = depth.negate().div(mix(2.2, 1, narrow)).exp().mul(patchy).mul(mix(1, 0.12, calm));
+    const body = mix(mix(DEEP, BASIN, calm), shallow, tint).mul(bodyLight).toVar();
     // Backlit crests: sun shining through the wave when looking towards it.
     const crest = clamp(vWaveY.div(weather.y), 0, 1);
     const sunH = normalize(vec3(sunDir.x, 0, sunDir.z).add(vec3(1e-5, 0, 0)));
@@ -178,7 +198,8 @@ export function createOceanMaterial(
     const shoreDist = depth.div(shoreSlope);
     const reach = lite ? float(1.2) : grain.mul(1.2).add(0.6);
     const shore = smoothstep(1, 0, shoreDist.div(reach)).mul(breakup).mul(0.6);
-    const foam = lite ? min(shore, 1) : min(shore.add(smoothstep(0.8, 1, crest).mul(0.4).mul(weather.z)), 1);
+    // Enclosed basins stay calm: no shore or crest foam.
+    const foam = (lite ? min(shore, 1) : min(shore.add(smoothstep(0.8, 1, crest).mul(0.4).mul(weather.z)), 1)).mul(float(1).sub(calm));
     const sunIrradianceTerm = sunE.mul(max(sunDir.y, 0).div(Math.PI));
     const foamColour = zenith.add(sunIrradianceTerm).mul(FOAM_ALBEDO);
 

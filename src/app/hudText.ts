@@ -47,7 +47,7 @@ export function formatHud(state: AppState, stats: FrameStats, dyn: DynamicResolu
     state.terrainRender === 'cdlod'
       ? `terrain cdlod · levels ${state.nodesPerLevel.join('/')} · textures ${state.terrainTexturesMs.toFixed(0)} ms · ${state.terrainMode}`
       : `chunks ${state.chunksLoaded} · in-flight ${state.chunksInFlight} · stale ${state.staleResults} · lod bias ${state.lodBias} · ${state.terrainMode}`,
-    `draws ${state.drawCalls} (+${state.bundledDraws} bundled) · tris ${(state.triangles / 1000).toFixed(1)}k`,
+    `draws ${state.drawCalls} (+${state.bundledDraws} bundled) · tris ${(state.triangles / 1000).toFixed(1)}k${state.grassEnabled ? ` · grass ${thousands(state.grassBlades + state.grassCards)}` : ''}`,
     `variants ${state.materialVariants}/${state.variantBudget} · warm-up ${state.warmupMs.toFixed(0)} ms · first frame ${state.firstFrameMs.toFixed(0)} ms · world ${state.worldReadyMs.toFixed(0)} ms · terrain load ${state.terrainLoadMs.toFixed(0)} ms`,
   ];
   let mem = 'mem MiB';
@@ -56,7 +56,7 @@ export function formatHud(state: AppState, stats: FrameStats, dyn: DynamicResolu
   }
   lines.push(mem);
   lines.push(...observabilityLines(state));
-  lines.push(`day ${state.day.toFixed(1)} ${state.season} · hour ${state.hour.toFixed(1)} · ${state.weather} · sun ${state.sunAltitudeDeg.toFixed(0)}° · exp ${state.exposure.toPrecision(3)}`);
+  lines.push(`day ${state.day.toFixed(1)} ${state.season} · hour ${state.hour.toFixed(1)} · ${state.weather} · sun ${state.sunAltitudeDeg.toFixed(0)}° · exp ${state.exposure.toPrecision(3)} · wind ${state.windSpeedMs.toFixed(1)} m/s ${state.windDirDeg.toFixed(0)}°`);
   lines.push(`lost ${state.deviceLostCount} · bg ${state.backgroundSuspends}`);
   return lines.join('\n');
 }
