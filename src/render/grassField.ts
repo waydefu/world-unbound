@@ -1,7 +1,7 @@
 import type { DataTexture, Node, UniformNode, Vector3, Vector4 } from 'three/webgpu';
 import {
   clamp, cos, dot, float, floor, hash, ivec2, length, max, mix, positionGeometry, attribute, pow, sin, smoothstep,
-  texture, uint, vec2, vec3,
+  sqrt, texture, uint, vec2, vec3,
 } from 'three/tsl';
 import { TOWN_RADIUS, TOWN_X, TOWN_Z, WORLD_MIN } from '../world/constants';
 import { CELL_M } from '../world/grassCells';
@@ -63,6 +63,8 @@ const RIPPLE_WAVELENGTH_M = 11;
 const FULL_LEAN_MS = 10;
 /** Clumps per 8 m cell: one per 0.67 m2, a clump every 0.8 m or so (research note 7: clumps of 0.6-1.5 m). */
 export const CLUMPS_PER_CELL = 96;
+/** The thin mesh reuses one of every four dense blades. */
+export const THIN_BLADE_STRIDE = 4;
 /** Metres per noise tile of the macro patches the terrain shader uses (the colour must match) and of the patch noise. */
 export const MACRO_METRES = 37;
 const PATCH_M = 17;
@@ -110,6 +112,8 @@ export interface GrassField {
   macro: F;
   /** Horizontal distance from the eye (m). */
   dist: F;
+  /** Distance to the cell centre, used to finish the dense fade before the CPU switches LOD. */
+  cellDist: F;
   archetype: Archetype;
   /** Where the blade leans when no wind blows: unit xz direction and the fraction of its height the tip moves. */
   restDir: Node<'vec2'>;
@@ -168,11 +172,12 @@ export function grassField(inp: GrassInputs, u: GrassUniforms, layout: GrassLayo
   const clumpHue = cr(5).sub(0.5);
   const radius = sel(PASTURE.radius, HAY.radius, TUSSOCK.radius, HEATH.radius);
 
-  // The blade: scattered around the centre, densest at the middle.
+  // Mix irregular clumps with dispersed blades so contiguous uncovered strips cannot form between clumps.
   const angle = rnd(0).mul(TWO_PI);
-  const rad = rnd(1).mul(radius);
-  const x = cx.add(cos(angle).mul(rad));
-  const z = cz.add(sin(angle).mul(rad));
+  const rad = sqrt(rnd(1)).mul(radius).mul(1.25);
+  const dispersed = rnd(2).lessThan(mix(0.4, 0.15, isTussock));
+  const x = dispersed.select(cell.x.add(rnd(0).mul(CELL_M)), cx.add(cos(angle).mul(rad)));
+  const z = dispersed.select(cell.y.add(rnd(1).mul(CELL_M)), cz.add(sin(angle).mul(rad)));
   const edge = float(1).sub(rad.div(radius).mul(0.25));
 
   const uv = surfaceUv(x, z);
@@ -222,6 +227,7 @@ export function grassField(inp: GrassInputs, u: GrassUniforms, layout: GrassLayo
   // Colour noise: the terrain shader's macro patches (top projection of the shared noise texture, channel b).
   const macro = texture(inp.noise, vec2(x, z).div(MACRO_METRES)).level(LOD0).b.mul(2).sub(1);
   const dist = length(vec2(x.sub(u.eye.x), z.sub(u.eye.z)));
+  const cellDist = length(cell.xy.add(CELL_M / 2).sub(u.eye.xz));
 
   // Wind: the local velocity at the root from the wind texture, and gust fronts travelling along the global wind.
   const w = texture(inp.wind, vec2(x, z).div(WIND_SPAN_M)).level(LOD0);
@@ -244,5 +250,5 @@ export function grassField(inp: GrassInputs, u: GrassUniforms, layout: GrassLayo
     return steady.add(gusts).add(flutter).mul(stiffness);
   };
 
-  return { rnd, root, terrainNormal: nrm, veg, wet, macro, dist, archetype, restDir, restBend, windDir, lean, densityMul, variation };
+  return { rnd, root, terrainNormal: nrm, veg, wet, macro, dist, cellDist, archetype, restDir, restBend, windDir, lean, densityMul, variation };
 }

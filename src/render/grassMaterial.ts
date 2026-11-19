@@ -3,7 +3,7 @@ import {
   Fn, attribute, cos, dot, float, max, mix, normalize, positionGeometry, positionWorld, pow, saturate, sin, smoothstep, step,
   transformNormalToView, varyingProperty, vec3,
 } from 'three/tsl';
-import { grassField, type GrassField, type GrassInputs, type GrassLayout, type GrassUniforms } from './grassField';
+import { THIN_BLADE_STRIDE, grassField, type GrassField, type GrassInputs, type GrassLayout, type GrassUniforms } from './grassField';
 import { canopyShade, groundCover } from './grassPalette';
 
 /**
@@ -47,17 +47,20 @@ function buildVertex(kind: GrassKind, inp: GrassInputs, u: GrassUniforms, layout
     const d = f.dist;
     const yaw = f.rnd(9).mul(TWO_PI);
 
-    // Fade by dropping blades (phase G.6): survivors keep their place and size. Dense blades thin out from 30 % to
-    // 50 % of the ring (where the thin class, a quarter of the blades, takes over), thin blades from 70 % to the edge,
-    // cards drop in over the last 40 % of the blade ring and out over the last 30 % of the mid ring.
+    // Every fourth dense blade is also in the thin mesh. Fade only the extra blades as the cell approaches
+    // the CPU's halfway switch, keeping the same surviving roots and probability on either side.
     // Cards stand for grass and heath alike; blades only for grass (meadow density).
     let keep: Node<'float'> = f.veg.r.mul(f.densityMul);
     if (kind === 'dense') {
-      keep = keep.mul(mix(1, 0.3, smoothstep(near.mul(0.3), near.mul(0.5), d)));
+      const shared = positionGeometry.z.div(THIN_BLADE_STRIDE).fract().equal(0);
+      const distance = max(d, f.cellDist);
+      const extra = float(1).sub(smoothstep(near.mul(0.3), near.mul(0.48), distance));
+      keep = keep.mul(shared.select(1, extra));
     } else if (kind === 'thin') {
       keep = keep.mul(float(1).sub(smoothstep(near.mul(0.7), near, d)));
     } else {
-      const fade = smoothstep(inner, inner.add(near.mul(0.4).max(1)), d).mul(float(1).sub(smoothstep(mid.mul(0.7), mid, d)));
+      const fadeDistance = d.add(f.rnd(3).sub(0.5).mul(near.mul(0.12)));
+      const fade = smoothstep(inner, inner.add(near.mul(0.4).max(1)), d).mul(float(1).sub(smoothstep(mid.mul(0.55), mid, max(d, fadeDistance))));
       keep = keep.add(f.veg.g.mul(0.8).mul(a.heath)).mul(0.85).mul(fade);
     }
     // Heath has no blades: its meadow density is already ~0 there, cards carry it.

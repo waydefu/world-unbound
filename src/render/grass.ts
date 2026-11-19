@@ -6,7 +6,7 @@ import { CELL_M, GrassCells } from '../world/grassCells';
 import type { TerrainTextureData } from '../world/terrainTextures';
 import { type GrassGeometry, createBladeGeometry, createCardGeometry } from './grassGeometry';
 import { createGrassMaterial, type GrassKind } from './grassMaterial';
-import { CLUMPS_PER_CELL, GUST_WAVELENGTH_M, type GrassInputs, type GrassLayout, type GrassUniforms } from './grassField';
+import { CLUMPS_PER_CELL, GUST_WAVELENGTH_M, THIN_BLADE_STRIDE, type GrassInputs, type GrassLayout, type GrassUniforms } from './grassField';
 import type { TerrainTextures } from './terrainTextures';
 
 /** Per-tier grass reach and density (spec G2.1 phase C.1, C.2, C.8). */
@@ -82,7 +82,7 @@ export class GrassLayer {
       { nearM: settings.nearM, midM: settings.midM, cardInnerM: blades ? settings.nearM * CARD_INNER_SHARE : 0 },
     );
     this.bladesPerDenseCell = Math.min(MAX_BLADES_PER_CELL, Math.round(CELL_AREA * settings.bladesPerM2));
-    this.bladesPerThinCell = Math.round(this.bladesPerDenseCell / 4);
+    this.bladesPerThinCell = Math.ceil(this.bladesPerDenseCell / THIN_BLADE_STRIDE);
     this.cardsPerCell = Math.min(7000, Math.round(CELL_AREA * settings.cardsPerM2));
     this.uniforms = {
       eye: uniform(new Vector3()), wind: uniform(new Vector4(0, 1, 3, 0)), time: uniform(0), gustPhase: uniform(0),
@@ -96,7 +96,7 @@ export class GrassLayer {
     // Clump layout: dense blades per clump, a thin blade is every fourth dense blade, cards per clump (grassField.ts).
     const perClump = this.bladesPerDenseCell / CLUMPS_PER_CELL;
     const denseLayout: GrassLayout = { stride: 1, perClump };
-    const thinLayout: GrassLayout = { stride: Math.round(this.bladesPerDenseCell / this.bladesPerThinCell), perClump };
+    const thinLayout: GrassLayout = { stride: THIN_BLADE_STRIDE, perClump };
     const cardLayout: GrassLayout = { stride: 1, perClump: this.cardsPerCell / CLUMPS_PER_CELL };
     this.draws = [
       blades ? this.draw('dense', createBladeGeometry(this.bladesPerDenseCell, 3, this.cells.dense), inputs, denseLayout, shadows, lite) : null,
