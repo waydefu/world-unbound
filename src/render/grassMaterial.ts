@@ -1,7 +1,7 @@
 import { DoubleSide, MeshLambertNodeMaterial, type Node } from 'three/webgpu';
 import {
   Fn, attribute, cos, dot, float, max, mix, normalize, positionGeometry, positionWorld, pow, saturate, sin, smoothstep, step,
-  transformNormalToView, varyingProperty, vec3,
+  texture, transformNormalToView, varying, varyingProperty, vec2, vec3,
 } from 'three/tsl';
 import { CARD_FADE_JITTER_SHARE, THIN_BLADE_STRIDE, grassField, type GrassField, type GrassInputs, type GrassLayout, type GrassUniforms } from './grassField';
 import { canopyShade, groundCover, meadowTint } from './grassPalette';
@@ -36,6 +36,7 @@ function buildVertex(kind: GrassKind, inp: GrassInputs, u: GrassUniforms, layout
   const vColour = varyingProperty('vec3', `grassColour_${kind}`);
   const vNormal = varyingProperty('vec3', `grassNormal_${kind}`);
   const vHeight = varyingProperty('float', `grassHeight_${kind}`);
+  const vCardDetail = kind === 'card' && inp.cardMask ? varyingProperty('float', 'grassCardDetail') : null;
   const position = Fn(() => {
     const companion = kind === 'dense' ? attribute('part', 'float') : null;
     const f: GrassField = grassField(inp, u, layout, SALT[kind], companion);
@@ -52,6 +53,7 @@ function buildVertex(kind: GrassKind, inp: GrassInputs, u: GrassUniforms, layout
     // the CPU's halfway switch, keeping the same surviving roots and probability on either side.
     // Cards stand for grass and heath alike; blades only for grass (meadow density).
     let keep: Node<'float'> = f.veg.r.mul(f.densityMul);
+    if (inp.sward) keep = keep.mul(mix(1, 1.38, f.lawn));
     const shared = positionGeometry.z.div(THIN_BLADE_STRIDE).fract().equal(0);
     if (kind === 'dense') {
       const spread = f.rnd(5).sub(0.5).mul(near.mul(0.24));
@@ -74,7 +76,7 @@ function buildVertex(kind: GrassKind, inp: GrassInputs, u: GrassUniforms, layout
     // Total bend: the rest lean of the clump plus the wind (fraction of the height the tip moves, quadratic along t).
     const bend = f.restBend.add(lean);
     const leafHeight = companion ? companion.greaterThan(0).select(mix(f.rnd(13).mul(0.38).add(0.45), f.rnd(13).mul(0.25).add(0.3), a.hay), 1) : float(1);
-    const hs = a.height.mul(alive).mul(leafHeight);
+    const hs = a.height.mul(alive).mul(leafHeight).mul(inp.sward ? mix(1, 1.18, f.lawn) : float(1));
     // Shared dense blades converge to the thin triangle's straight silhouette before the cell switches.
     const straight = kind === 'dense' ? shared.select(smoothstep(near.mul(0.38), near.mul(0.5), f.cellDist), 0) : float(0);
     const bendAlong = mix(t.mul(t), t, straight);
@@ -82,8 +84,8 @@ function buildVertex(kind: GrassKind, inp: GrassInputs, u: GrassUniforms, layout
     const windOff = f.windDir.mul(lean.mul(hs).mul(bendAlong));
     // The root stays inset for contact. Restore that buried length only for short pasture
     // blades so their visible height still reflects the pasture archetype.
-    const inset = float(1).sub(f.terrainNormal.y).mul(0.25).add(0.03);
-    const aboveRoot = kind !== 'card' ? inset.mul(a.pasture).mul(alive) : float(0);
+    const visibleBase = kind !== 'card' ? a.pasture : inp.sward ? a.pasture.mul(0.65) : float(0);
+    const aboveRoot = f.rootInset.mul(visibleBase).mul(alive);
     const lift = t.mul(hs.mul(float(1).sub(bend.mul(bend).mul(0.3))).add(aboveRoot));
 
     let px = out.x;
@@ -96,7 +98,12 @@ function buildVertex(kind: GrassKind, inp: GrassInputs, u: GrassUniforms, layout
       const outX = cos(psi);
       const outZ = sin(psi);
       const tuft = f.rnd(10).mul(0.5).add(0.6);
-      const width = max(a.width, d.mul(MIN_WIDTH_PER_M)).mul(2.6).mul(float(1).sub(t.mul(0.9))).mul(alive);
+      // Spread the cutout over the overlap zone. At long range, keep the original stable tuft silhouette.
+      const detail = vCardDetail
+        ? float(1).sub(smoothstep(mid.mul(0.43), mid.mul(0.75), d)).mul(float(1).sub(a.heath))
+        : float(0);
+      if (vCardDetail) vCardDetail.assign(detail);
+      const width = max(a.width, d.mul(MIN_WIDTH_PER_M)).mul(mix(2.6, 5.2, detail)).mul(float(1).sub(t.mul(0.9))).mul(alive);
       const reach = float(0.07).mul(alive).add(t.mul(hs).mul(0.3));
       px = out.x.add(outX.mul(reach)).add(outZ.negate().mul(side).mul(width).mul(0.5)).add(rest.x.mul(tuft)).add(windOff.x.mul(tuft));
       py = out.y.add(lift.mul(tuft));
@@ -110,8 +117,11 @@ function buildVertex(kind: GrassKind, inp: GrassInputs, u: GrassUniforms, layout
       const taper = mix(remaining.pow(1.4).mul(0.92).add(0.08), remaining, straight);
       const leafWidth = companion ? companion.greaterThan(0).select(1.35, 1) : float(1);
       // Pasture basal leaves spread gently from their rooted centre; longer hay stems remain upright.
-      const fan = companion ? companion.greaterThan(0).select(a.pasture.mul(0.06).mul(t), 0) : float(0);
-      const widthM = max(a.width, d.mul(MIN_WIDTH_PER_M)).mul(taper).mul(alive).mul(leafWidth);
+      const fan = companion ? companion.greaterThan(0).select(
+        (inp.sward ? mix(0.06, 0.105, f.lawn) : float(0.06)).mul(a.pasture).mul(t).mul(alive), 0,
+      ) : float(0);
+      const lawnWidth = inp.sward ? mix(1, 1.25, f.lawn) : float(1);
+      const widthM = max(a.width.mul(lawnWidth), d.mul(MIN_WIDTH_PER_M)).mul(taper).mul(alive).mul(leafWidth);
       px = out.x.add(right.x.mul(side).mul(widthM).mul(0.5)).add(rest.x).add(windOff.x).add(fwd.x.mul(fan));
       py = out.y.add(lift);
       pz = out.z.add(right.z.mul(side).mul(widthM).mul(0.5)).add(rest.y).add(windOff.y).add(fwd.z.mul(fan));
@@ -130,8 +140,14 @@ function buildVertex(kind: GrassKind, inp: GrassInputs, u: GrassUniforms, layout
     if (!lite) ground = ground.mul(meadowTint(f.veg.r, u.season.z));
     ground = mix(ground, ground.mul(SILVER), a.tussock.mul(0.7));
     ground = mix(ground, HEATHER.mul(float(1).add(u.season.y)).mul(wetDark), a.heath);
-    const tipLift = mix(vec3(1, 1, 1), vec3(1.14, 1.16, 0.9), smoothstep(0.1, 1, t));
+    const tipIntensity = inp.sward ? mix(1, 0.52, a.pasture) : float(1);
+    const tipLift = mix(vec3(1, 1, 1), vec3(1.14, 1.16, 0.9), smoothstep(0.1, 1, t).mul(tipIntensity));
     let colour = ground.mul(f.variation).mul(tipLift);
+    if (inp.sward) {
+      // Darker leaf bases describe overlap in the short canopy; muted tips keep the edge from sparkling.
+      const lawnShade = mix(0.73, 1.10, smoothstep(0, 0.9, t));
+      colour = colour.mul(mix(1, lawnShade, f.lawn));
+    }
     if (kind !== 'card') {
       const green = float(1).sub(u.season.z);
       const seeds = a.hay.mul(smoothstep(0.78, 0.9, t)).mul(step(f.rnd(11), 0.08)).mul(0.85);
@@ -146,17 +162,22 @@ function buildVertex(kind: GrassKind, inp: GrassInputs, u: GrassUniforms, layout
     vHeight.assign(t);
     return vec3(px, py, pz);
   });
-  return { position, vColour, vNormal, vHeight };
+  return { position, vColour, vNormal, vHeight, vCardDetail };
 }
 
 /** Builds the material of one grass class. `lite` skips the translucency term (low tier). */
 export function createGrassMaterial(kind: GrassKind, inp: GrassInputs, u: GrassUniforms, layout: GrassLayout, lite: boolean): MeshLambertNodeMaterial {
-  const { position, vColour, vNormal, vHeight } = buildVertex(kind, inp, u, layout, lite);
+  const { position, vColour, vNormal, vHeight, vCardDetail } = buildVertex(kind, inp, u, layout, lite);
   const material = new MeshLambertNodeMaterial({ side: DoubleSide });
   material.name = `grass-${kind}`;
   material.positionNode = position();
   material.colorNode = vColour;
   material.normalNode = transformNormalToView(vNormal);
+  if (vCardDetail && inp.cardMask) {
+    const uv = varying(vec2(positionGeometry.x.mul(0.5).add(0.5), positionGeometry.y));
+    material.opacityNode = mix(1, texture(inp.cardMask, uv).r, vCardDetail);
+    material.alphaTest = 0.34;
+  }
   if (!lite) {
     // Backlit blades glow: pow(saturate(V . -L), 4), strongest at the tip, tinted by the blade colour. The sun's
     // pre-exposed illuminance over pi is the radiance a fully lit white Lambert surface returns.

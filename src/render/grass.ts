@@ -7,6 +7,7 @@ import type { TerrainTextureData } from '../world/terrainTextures';
 import { type GrassGeometry, createBladeGeometry, createCardGeometry } from './grassGeometry';
 import { createGrassMaterial, type GrassKind } from './grassMaterial';
 import { CARD_FADE_JITTER_SHARE, CLUMPS_PER_CELL, GUST_WAVELENGTH_M, THIN_BLADE_STRIDE, type GrassInputs, type GrassLayout, type GrassUniforms } from './grassField';
+import { createGrassCardTexture } from './noiseTextures';
 import type { TerrainTextures } from './terrainTextures';
 
 /** Per-tier grass reach and density (spec G2.1 phase C.1, C.2, C.8). */
@@ -66,12 +67,18 @@ export class GrassLayer {
   private readonly viewProjection = new Matrix4();
   private readonly planes = new Float32Array(24);
   private lastS = 0;
+  readonly cardUploadBytes: number;
+  private readonly cardGpuBytes: number;
 
   constructor(options: {
     textures: TerrainTextures; data: TerrainTextureData; noise: DataTexture; wind: DataTexture;
-    settings: GrassSettings; shadows: boolean; lite: boolean;
+    settings: GrassSettings; shadows: boolean; lite: boolean; sward?: boolean;
   }) {
     const { textures, data, noise, wind, settings, shadows, lite } = options;
+    const sward = options.sward === true && !lite;
+    const card = sward ? createGrassCardTexture() : null;
+    this.cardUploadBytes = card?.uploadBytes ?? 0;
+    this.cardGpuBytes = card?.gpuBytes ?? 0;
     const masks = data.masks;
     if (!masks) throw new Error('grass needs the vegetation masks of the terrain bake');
     const blades = settings.nearM > 0;
@@ -92,7 +99,7 @@ export class GrassLayer {
     };
     const inputs: GrassInputs = {
       height: textures.height, normal: textures.normal, vegetation: textures.vegetation, wetness: textures.wetness,
-      noise, wind, vegetationDim: textures.materialDim, vegetationStep: textures.materialStep,
+      noise, wind, sward, cardMask: card?.texture ?? null, vegetationDim: textures.materialDim, vegetationStep: textures.materialStep,
     };
     // Clump layout: dense blades per clump, a thin blade is every second dense blade, cards per clump (grassField.ts).
     const perClump = this.bladesPerDenseCell / CLUMPS_PER_CELL;
@@ -125,8 +132,8 @@ export class GrassLayer {
 
   /** Accounts the static buffers (GPU copy and retained CPU arrays); the textures are accounted by the app. */
   account(memory: MemoryRegistry): void {
-    memory.add(MemoryPartition.Gpu, this.bytes);
-    memory.add(MemoryPartition.CpuRetained, this.bytes);
+    memory.add(MemoryPartition.Gpu, this.bytes + this.cardGpuBytes);
+    memory.add(MemoryPartition.CpuRetained, this.bytes + this.cardUploadBytes);
   }
 
   /** Season weights (fresh, summer, straw). */

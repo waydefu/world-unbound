@@ -26,6 +26,8 @@ export interface GrassInputs {
   readonly wetness: DataTexture;
   readonly noise: DataTexture;
   readonly wind: DataTexture;
+  readonly sward: boolean;
+  readonly cardMask: DataTexture | null;
   /** Texels per side of the vegetation lattice and lattice cells per texel (the material texture's). */
   readonly vegetationDim: number;
   readonly vegetationStep: number;
@@ -107,6 +109,7 @@ export interface GrassField {
   rnd: (k: number) => F;
   /** Root position: x, terrain height, z (absolute world). */
   root: Node<'vec3'>;
+  rootInset: F;
   /** Unit terrain normal, world axes. */
   terrainNormal: Node<'vec3'>;
   /** Meadow, heath, tree, bare at the root; wetness; macro noise -1..1. */
@@ -117,6 +120,8 @@ export interface GrassField {
   dist: F;
   /** Distance to the cell centre, used to finish the dense fade before the CPU switches LOD. */
   cellDist: F;
+  /** World-fixed weight of the short lawn inside the village. */
+  lawn: F;
   archetype: Archetype;
   /** Where the blade leans when no wind blows: unit xz direction and the fraction of its height the tip moves. */
   restDir: Node<'vec2'>;
@@ -209,7 +214,9 @@ export function grassField(inp: GrassInputs, u: GrassUniforms, layout: GrassLayo
   const upper = h11.add(h01.sub(h11).mul(float(1).sub(fx))).add(h10.sub(h11).mul(float(1).sub(fz)));
   const y = fx.add(fz).lessThanEqual(1).select(lower, upper);
   // Roots sit a little below the surface (more on slopes, where the bilinear height and the mesh differ most).
-  const root = vec3(x, y.sub(float(1).sub(nrm.y).mul(0.25).add(0.03)), z);
+  const lawn = town.mul(pasture);
+  const rootInset = float(1).sub(nrm.y).mul(0.25).add(inp.sward ? mix(0.03, 0.014, lawn) : float(0.03));
+  const root = vec3(x, y.sub(rootInset), z);
 
   // Patch noise (alpha channel, ~17 m): tall and short, thick and thin, dry and lush areas.
   const patch = texture(inp.noise, vec2(x, z).div(PATCH_M)).level(LOD0).a;
@@ -259,5 +266,5 @@ export function grassField(inp: GrassInputs, u: GrassUniforms, layout: GrassLayo
     return steady.add(gusts).add(flutter).mul(stiffness);
   };
 
-  return { rnd, root, terrainNormal: nrm, veg, wet, macro, dist, cellDist, archetype, restDir, restBend, windDir, lean, densityMul, variation };
+  return { rnd, root, rootInset, terrainNormal: nrm, veg, wet, macro, dist, cellDist, lawn, archetype, restDir, restBend, windDir, lean, densityMul, variation };
 }

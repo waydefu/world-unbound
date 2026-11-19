@@ -62,3 +62,46 @@ export function resolveCamera(spec: CameraSpec, out: ResolvedCamera): ResolvedCa
   out.fovDeg = spec.fovDeg;
   return out;
 }
+
+const WALK_METRES = 8.4;
+const WALK_DURATION_MS = 12000;
+const WALK_GROUND_STEPS = 84;
+
+/** Repeat an 8.4 m out-and-back path at fixed eye height above ground for phone A/B captures. */
+export class GrassTestWalk {
+  private spec: CameraSpec | null = null;
+  private start = -1;
+  private dx = 0;
+  private dz = 0;
+  private readonly ground = new Float32Array(WALK_GROUND_STEPS + 1);
+
+  reset(spec: CameraSpec | null): void {
+    this.spec = spec;
+    this.start = -1;
+    if (!spec) return;
+    const dx = spec.targetX - spec.x;
+    const dz = spec.targetZ - spec.z;
+    const length = Math.hypot(dx, dz);
+    this.dx = dx / length;
+    this.dz = dz / length;
+    for (let i = 0; i <= WALK_GROUND_STEPS; i++) {
+      const distance = i * WALK_METRES / WALK_GROUND_STEPS;
+      this.ground[i] = Math.max(heightAt(spec.x + this.dx * distance, spec.z + this.dz * distance), SEA_LEVEL) + spec.lift;
+    }
+  }
+
+  /** @hot */
+  update(now: number, eye: ResolvedCamera): void {
+    const spec = this.spec;
+    if (!spec) return;
+    if (this.start < 0) this.start = now;
+    const phase = ((now - this.start) % WALK_DURATION_MS) / WALK_DURATION_MS;
+    const progress = 0.5 - 0.5 * Math.cos(phase * 2 * Math.PI);
+    const distance = progress * WALK_METRES;
+    const at = progress * WALK_GROUND_STEPS;
+    const i = Math.min(Math.floor(at), WALK_GROUND_STEPS - 1);
+    eye.x = spec.x + this.dx * distance;
+    eye.z = spec.z + this.dz * distance;
+    eye.y = this.ground[i] + (this.ground[i + 1] - this.ground[i]) * (at - i);
+  }
+}

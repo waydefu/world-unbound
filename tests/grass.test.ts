@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { Matrix4, PerspectiveCamera } from 'three/webgpu';
+import { CAMERAS, GrassTestWalk, resolveCamera, type ResolvedCamera } from '../src/app/cameras';
 import { QUALITY } from '../src/app/quality';
 import { parseParams } from '../src/app/params';
 import { frustumPlanes } from '../src/world/cdlod';
 import { WORLD_MIN } from '../src/world/constants';
+import { buildGrassCardMask, buildSwardCover, GRASS_CARD_DIM, GRASS_COVER_DIM } from '../src/world/grassCover';
 import { CELL_M, GrassCells, MAX_CARD_CELLS, MAX_DENSE_CELLS, MAX_THIN_CELLS, WORLD_CELLS } from '../src/world/grassCells';
 import { HEIGHT_DIM, buildTerrainTextures, materialDim } from '../src/world/terrainTextures';
 import { createTerrainTextures } from '../src/render/terrainTextures';
@@ -217,4 +219,37 @@ describe('grass layer on the Hellesylt terrain', () => {
       expect(layer.root.children.length).toBe(tier === 'low' ? 1 : 3);
     });
   }
+});
+
+describe('measured-density grass prototype', () => {
+  it('bakes deterministic coverage and leaves gaps in the canopy and cutout', () => {
+    const cover = buildSwardCover();
+    expect(cover).toHaveLength(GRASS_COVER_DIM ** 2);
+    expect(cover).toEqual(buildSwardCover());
+    expect(cover.some((value) => value === 85)).toBe(true);
+    expect(cover.some((value) => value >= 180)).toBe(true);
+    const mask = buildGrassCardMask();
+    expect(mask).toHaveLength(GRASS_CARD_DIM ** 2);
+    expect(mask.includes(0)).toBe(true);
+    expect(mask.includes(255)).toBe(true);
+  });
+
+  it('opts in from the URL and repeats the same 8.4 m test path', () => {
+    expect(parseParams('?cam=2')).toMatchObject({ sward: false, walk: false });
+    expect(parseParams('?cam=2&sward=1&walk=1')).toMatchObject({ sward: true, walk: true });
+    const spec = CAMERAS[2];
+    const eye: ResolvedCamera = { x: 0, y: 0, z: 0, targetX: 0, targetY: 0, targetZ: 0, fovDeg: 60 };
+    resolveCamera(spec, eye);
+    const walk = new GrassTestWalk();
+    walk.reset(spec);
+    walk.update(0, eye);
+    const start = { ...eye };
+    walk.update(6000, eye);
+    expect(Math.hypot(eye.x - start.x, eye.z - start.z)).toBeCloseTo(8.4);
+    expect(eye.targetX).toBe(start.targetX);
+    walk.update(12000, eye);
+    expect(eye.x).toBeCloseTo(start.x);
+    expect(eye.y).toBeCloseTo(start.y);
+    expect(eye.z).toBeCloseTo(start.z);
+  });
 });

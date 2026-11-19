@@ -65,6 +65,7 @@ function instancedPatch(
 
 export interface CdlodOptions {
   readonly grassCover: DataTexture | null;
+  readonly sward: boolean;
   readonly textures: TerrainTextures;
   readonly pyramid: Float32Array;
   readonly noise: DataTexture;
@@ -112,6 +113,7 @@ export class CdlodTerrain {
       vegetation: textures.vegetation,
       wetness: textures.wetness,
       grassCover,
+      sward: options.sward,
     });
     this.material = this.terrainMaterial.material;
     this.material.positionNode = shaders.position;

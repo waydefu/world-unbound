@@ -44,6 +44,7 @@ export class CdlodBackend implements TerrainBackend {
     private readonly uploads: SlidingRate,
     /** Shadow cascades to cull casters for; 0 when shadows are off. */
     private readonly cascades: number,
+    private readonly sward = false,
   ) {
     this.root.name = 'terrain-root';
     // The low tier keeps the material texture at 4 m texels (1025 squared): a quarter of the memory.
@@ -82,7 +83,7 @@ export class CdlodBackend implements TerrainBackend {
       + (masks ? masks.vegetation.byteLength + masks.wetness.byteLength + masks.windChannel.byteLength + masks.openness.byteLength : 0));
     this.uploads.add(performance.now(), textures.uploadBytes + textures.normalUploadBytes + textures.vegetationUploadBytes);
     const lite = this.tier.name === 'low';
-    const grassCover = lite ? null : createGrassCoverTexture();
+    const grassCover = lite ? null : createGrassCoverTexture(this.sward);
     if (grassCover) {
       memory.add(MemoryPartition.Gpu, grassCover.gpuBytes);
       memory.add(MemoryPartition.CpuRetained, grassCover.uploadBytes);
@@ -97,6 +98,7 @@ export class CdlodBackend implements TerrainBackend {
       cascades: this.cascades,
       lite,
       grassCover: grassCover?.texture ?? null,
+      sward: this.sward && !lite,
     });
     terrain.account(memory);
     this.root.add(terrain.root);

@@ -10,7 +10,7 @@ import { attachSunShadows } from '../render/shadows';
 import { COAST_DIM, SEAFLOOR_DIM } from '../world/seaFloor';
 import { createRenderer, warmUp, whenDeviceLost, type RendererHandle } from '../render/renderer';
 import { Hud, downloadJson } from '../ui/hud';
-import { CAMERAS, resolveCamera, type ResolvedCamera } from './cameras';
+import { CAMERAS, GrassTestWalk, resolveCamera, type ResolvedCamera } from './cameras';
 import { GpuTimer } from './gpuTimer';
 import { Observer } from './observability';
 import { createAppState } from './appState';
@@ -54,6 +54,7 @@ export class App {
   private readonly vegetation: VegetationBackend;
   private readonly hud: Hud;
   private readonly eye: ResolvedCamera = { x: 0, y: 0, z: 0, targetX: 0, targetY: 0, targetZ: 0, fovDeg: 55 };
+  private readonly grassWalk = new GrassTestWalk();
   private readonly bufferSize = new Vector2();
   private handle!: RendererHandle;
   private gpuTimer!: GpuTimer;
@@ -80,10 +81,10 @@ export class App {
     this.clock = new EnvironmentClock(this.environment);
     this.terrain = params.terrain === 'chunks'
       ? new ChunkBackend(this.memory, noise.texture, this.environment.ocean.floorTexture, tier, this.observer.uploads)
-      : new CdlodBackend(this.memory, noise.texture, tier, this.observer.uploads, params.shadows ? tier.shadows.cascades : 0);
+      : new CdlodBackend(this.memory, noise.texture, tier, this.observer.uploads, params.shadows ? tier.shadows.cascades : 0, params.sward);
     this.vegetation = new VegetationBackend({
       ocean: this.environment.ocean, sun: this.environment.sun, terrain: this.terrain, tier, memory: this.memory,
-      uploads: this.observer.uploads, noise: noise.texture, grass: params.grass, shadows: params.shadows,
+      uploads: this.observer.uploads, noise: noise.texture, grass: params.grass, sward: params.sward, shadows: params.shadows,
     });
     this.observer.setMeshes(this.environment.sky.mesh, this.environment.ocean.mesh, this.terrain.farMesh);
     this.terrain.attachSun(this.environment.sun);
@@ -229,6 +230,7 @@ export class App {
     const spec = CAMERAS[index] ?? CAMERAS[0];
     const { params } = this.options;
     resolveCamera(spec, this.eye);
+    this.grassWalk.reset(params.walk && (index === 1 || index === 2) ? spec : null);
     this.state.cameraIndex = CAMERAS.indexOf(spec);
     this.state.cameraName = spec.name;
     this.camera.fov = spec.fovDeg;
@@ -287,6 +289,7 @@ export class App {
     this.lastTime = now;
     this.stats.push(interval, this.dyn.scale);
     if (this.dyn.update(interval)) this.applyRenderScale();
+    if (this.ready) this.grassWalk.update(now, this.eye);
     this.terrain.update(now, this.eye, this.camera);
     this.vegetation.update(now, this.eye, this.camera);
     this.placeWorld(now / 1000);

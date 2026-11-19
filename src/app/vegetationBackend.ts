@@ -38,6 +38,7 @@ export interface VegetationOptions {
   readonly noise: DataTexture;
   /** `?grass=0` turns the grass off. */
   readonly grass: boolean;
+  readonly sward?: boolean;
   /** Sun shadows are on (blades receive them on the med and high tiers). */
   readonly shadows: boolean;
 }
@@ -84,11 +85,16 @@ export class VegetationBackend {
     uploads.add(performance.now(), terrain.data.masks.openness.byteLength);
     if (!this.options.grass) return;
     const wind = new WindTexture(terrain.data.masks.windChannel);
+    const sward = this.options.sward === true;
+    const settings = sward && tier.name === 'med'
+      ? { ...tier.grass, bladesPerM2: tier.grass.bladesPerM2 + 4 }
+      : tier.grass;
     const grass = new GrassLayer({
-      textures: terrain.gpu, data: terrain.data, noise, wind: wind.texture, settings: tier.grass,
-      shadows: this.options.shadows && tier.name !== 'low', lite: tier.name === 'low',
+      textures: terrain.gpu, data: terrain.data, noise, wind: wind.texture, settings,
+      shadows: this.options.shadows && tier.name !== 'low', lite: tier.name === 'low', sward,
     });
     grass.account(memory);
+    if (grass.cardUploadBytes) uploads.add(performance.now(), grass.cardUploadBytes);
     memory.add(MemoryPartition.Gpu, WIND_BYTES);
     memory.add(MemoryPartition.CpuRetained, WIND_BYTES);
     grass.setSeason(this.seasonWeights[0], this.seasonWeights[1], this.seasonWeights[2]);

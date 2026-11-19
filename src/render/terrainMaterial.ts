@@ -43,6 +43,7 @@ export interface TerrainSurface {
   readonly vegetation: DataTexture;
   readonly wetness: DataTexture;
   readonly grassCover: DataTexture | null;
+  readonly sward: boolean;
 }
 
 const SEABED = vec3(0.105, 0.118, 0.098);
@@ -105,12 +106,14 @@ export function createTerrainMaterial(noise: DataTexture, lite = false, surface:
   // Overlapping leaf shapes replace the smooth ground between sparse geometry. Mips average them into the
   // distant grass colour. Rotate the sample away from the terrain grid while preserving its scale.
   const tipUv = vec2(pW.x.add(pW.z), pW.z.sub(pW.x)).div(GRASS_COVER_METRES * Math.SQRT2);
-  const tipNoise = surface?.grassCover ? texture(surface.grassCover, tipUv).r.sub(0.55) : float(0);
+  const tipNoise = surface?.grassCover
+    ? texture(surface.grassCover, tipUv).r.sub(surface.sward ? 0.80 : 0.55) : float(0);
   const grassDist = length(pW.xz.sub(eyeOffset.xz));
   const tips = veg.r.mul(smoothstep(grassRange.mul(0.08), grassRange.mul(0.40).max(1), grassDist))
     .mul(grassRange.greaterThan(0).select(1, 0));
-  const tipColour = meadowTint(veg.r, season.z).mul(mix(1, 1.08, tips));
-  const grassDetail = float(1).add(tipNoise.mul(mix(1.55, 0.85, tips)).mul(veg.r));
+  // Keep the mean canopy colour stable between cards and terrain; mips average the small gaps.
+  const tipColour = surface?.sward ? meadowTint(veg.r, season.z) : meadowTint(veg.r, season.z).mul(mix(1, 1.08, tips));
+  const grassDetail = float(1).add(tipNoise.mul(surface?.sward ? float(0.82) : mix(1.55, 0.85, tips)).mul(veg.r));
   const grassCol = groundCover(macro, wet01, veg, season).mul(canopyShade(veg.r, grassDist, grassRange))
     .mul(surface && !lite ? tipColour.mul(grassDetail) : float(1));
   // Stone quays and breakwaters read as stone, not as a flat tan band: darker on the steep flank and at the foot,
@@ -121,7 +124,7 @@ export function createTerrainMaterial(noise: DataTexture, lite = false, surface:
   let base = grassCol.mul(grass).add(SAND.mul(w.x)).add(rockCol.mul(rock)).add(stoneCol.mul(w.z));
   base = mix(base, SEABED, float(1).sub(smoothstep(-2.2, -0.2, y)));
   if (!lite) {
-    const grainWeight = surface ? grass.add(w.x) : float(1);
+    const grainWeight = surface ? grass.mul(surface.sward ? float(1).sub(veg.r.mul(0.7)) : float(1)).add(w.x) : float(1);
     base = base.mul(float(1).add(grain.mul(0.14).mul(mix(0.4, 1, detail)).mul(grainWeight)));
   }
 
