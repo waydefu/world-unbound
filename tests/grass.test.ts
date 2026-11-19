@@ -86,16 +86,41 @@ describe('grass cells', () => {
     for (let c = 0; c < culled.cardCount; c++) expect(culled.cards[c * 4] + CELL_M).toBeGreaterThan(-1);
   });
 
-  it('skips the work while the eye cell and the frustum stay the same, and is deterministic', () => {
+  it('reuses selection at the same eye and frustum, and is deterministic', () => {
     const a = new GrassCells(meadowGround(255), RINGS);
     const b = new GrassCells(meadowGround(255), RINGS);
     a.select(10, 5, 10, null);
     b.select(10, 5, 10, null);
     expect(Array.from(a.cards.subarray(0, a.cardCount * 4))).toEqual(Array.from(b.cards.subarray(0, b.cardCount * 4)));
-    a.select(11, 5, 11, null);
+    a.select(10, 5, 10, null);
     expect(a.changed).toBe(false);
     a.select(30, 5, 10, null);
     expect(a.changed).toBe(true);
+  });
+
+  it('reclassifies cells when the eye moves within one 8 m cell', () => {
+    const ground = meadowGround(255);
+    const moved = new GrassCells(ground, RINGS);
+    const fresh = new GrassCells(ground, RINGS);
+    const camera = new PerspectiveCamera(60, 16 / 9, 0.3, 500);
+    camera.lookAt(1, 0, 0);
+    camera.updateMatrixWorld();
+    const planes = frustumPlanes(new Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse).elements, new Float32Array(24));
+    moved.select(0, 5, 4, planes);
+    moved.select(0, 5, 4, planes); // Warm the unchanged-frustum fast path before moving.
+    moved.select(4, 5, 4, planes);
+    fresh.select(4, 5, 4, planes);
+    for (const kind of ['dense', 'thin', 'cards'] as const) {
+      const count = kind === 'dense' ? 'denseCount' : kind === 'thin' ? 'thinCount' : 'cardCount';
+      expect(Array.from(moved[kind].subarray(0, moved[count] * 4)))
+        .toEqual(Array.from(fresh[kind].subarray(0, fresh[count] * 4)));
+    }
+    const hasTarget = (list: Float32Array, count: number) => {
+      for (let i = 0; i < count; i++) if (list[i * 4] === 16 && list[i * 4 + 1] === 0) return true;
+      return false;
+    };
+    expect(hasTarget(moved.dense, moved.denseCount)).toBe(true);
+    expect(hasTarget(moved.thin, moved.thinCount)).toBe(false);
   });
 
   it('never overflows its lists at the largest tier with no culling', () => {
@@ -128,7 +153,7 @@ describe('grass geometry and tiers', () => {
   it('tiers match the spec: blades per m2 low 0 / med 40 / high 70 near (phase G density), cards only on low out to 60 m', () => {
     expect(QUALITY.low.grass.nearM).toBe(0);
     expect(QUALITY.low.grass.midM).toBe(60);
-    expect(QUALITY.med.grass).toMatchObject({ nearM: 40, midM: 100, bladesPerM2: 40 });
+    expect(QUALITY.med.grass).toMatchObject({ nearM: 40, midM: 94, bladesPerM2: 40 });
     expect(QUALITY.high.grass).toMatchObject({ nearM: 60, midM: 150, bladesPerM2: 70 });
   });
 

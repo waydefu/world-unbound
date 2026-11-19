@@ -63,8 +63,10 @@ const RIPPLE_WAVELENGTH_M = 11;
 const FULL_LEAN_MS = 10;
 /** Clumps per 8 m cell: one per 0.67 m2, a clump every 0.8 m or so (research note 7: clumps of 0.6-1.5 m). */
 export const CLUMPS_PER_CELL = 96;
-/** The thin mesh reuses one of every four dense blades. */
-export const THIN_BLADE_STRIDE = 4;
+/** The thin mesh reuses one of every two dense blades. */
+export const THIN_BLADE_STRIDE = 2;
+/** Full width of the card fade-distance jitter as a fraction of near reach. */
+export const CARD_FADE_JITTER_SHARE = 0.18;
 /** Metres per noise tile of the macro patches the terrain shader uses (the colour must match) and of the patch noise. */
 export const MACRO_METRES = 37;
 const PATCH_M = 17;
@@ -82,6 +84,7 @@ type F = Node<'float'>;
  *   tussock   - tufted hair-grass: 40-80 cm, tight clumps that arch outwards (hollows, moist ground);
  *   heath     - heather, crowberry: short dark purple-brown cards only, no blades (above the treeline, thin soil).
  */
+// Widths are screen-coverage proxies, wider than many actual grass leaves; distance widening is applied separately.
 const PASTURE = { height: 0.085, width: 0.016, radius: 0.6, stiffness: 0.6, bend: 0.08 }; // unverified
 const HAY = { height: 0.43, width: 0.022, radius: 0.8, stiffness: 1, bend: 0.32 }; // unverified
 const TUSSOCK = { height: 0.57, width: 0.017, radius: 0.36, stiffness: 0.8, bend: 0.55 }; // unverified

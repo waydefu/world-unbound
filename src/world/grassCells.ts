@@ -6,8 +6,8 @@ import { WORLD_MAX, WORLD_MIN } from './constants';
  * The world is tiled with square cells of CELL_M metres on a grid snapped to the cell size, so a cell keeps its
  * identity (and so its blades, which the vertex shader derives from a hash of the cell index) however the camera
  * moves. Each frame the cells around the eye are classified by distance and culled against the camera frustum:
- *   dense:  blades with three segments, cells whose centre is nearer than `nearM / 2`;
- *   thin:   fewer, wider one-segment blades, the cells from there out to `nearM`;
+ *   dense:  blades with two segments and short companion leaves, cells whose centre is nearer than `nearM / 2`;
+ *   thin:   fewer one-segment blades, the cells from there out to `nearM`;
  *   cards:  tufts of three blades, cells from `cardInnerM` to `midM`.
  * A cell can be in the thin and the card list at once (blades fade out as cards fade in). Cells whose
  * vegetation density is zero everywhere (water, rock, scree) are dropped, which keeps the sea and the cliffs free of
@@ -55,7 +55,9 @@ export class GrassCells {
   /** True if a list overflowed its capacity (cells were dropped). */
   overflow = false;
   private readonly lastPlanes = new Float32Array(24);
-  private lastCell = -1;
+  private lastX = NaN;
+  private lastY = NaN;
+  private lastZ = NaN;
   private lastHadPlanes = false;
 
   constructor(private readonly ground: GrassGround, private readonly rings: GrassRings) {}
@@ -85,17 +87,18 @@ export class GrassCells {
 
   /**
    * Selects the cells for an eye at (ex, ey, ez). `planes` are the camera-relative frustum planes
-   * (`frustumPlanes`); null keeps every cell in range. Skips all work when the eye cell and the planes equal the
-   * previous call's.
+   * (`frustumPlanes`); null keeps every cell in range. Skips all work when the eye position and planes equal the previous call's.
    * @hot
    */
   select(ex: number, ey: number, ez: number, planes: Float32Array | null): void {
-    const eyeCell = Math.floor((ez - WORLD_MIN) / CELL_M) * WORLD_CELLS + Math.floor((ex - WORLD_MIN) / CELL_M);
-    if (eyeCell === this.lastCell && this.samePlanes(planes)) {
+    const planesUnchanged = this.samePlanes(planes);
+    if (ex === this.lastX && ey === this.lastY && ez === this.lastZ && planesUnchanged) {
       this.changed = false;
       return;
     }
-    this.lastCell = eyeCell;
+    this.lastX = ex;
+    this.lastY = ey;
+    this.lastZ = ez;
     const { nearM, midM, cardInnerM } = this.rings;
     // Exclusive by cell-centre distance: a cell is drawn with one blade class only.
     const denseMax = nearM * 0.5;

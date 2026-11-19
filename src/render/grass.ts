@@ -6,7 +6,7 @@ import { CELL_M, GrassCells } from '../world/grassCells';
 import type { TerrainTextureData } from '../world/terrainTextures';
 import { type GrassGeometry, createBladeGeometry, createCardGeometry } from './grassGeometry';
 import { createGrassMaterial, type GrassKind } from './grassMaterial';
-import { CLUMPS_PER_CELL, GUST_WAVELENGTH_M, THIN_BLADE_STRIDE, type GrassInputs, type GrassLayout, type GrassUniforms } from './grassField';
+import { CARD_FADE_JITTER_SHARE, CLUMPS_PER_CELL, GUST_WAVELENGTH_M, THIN_BLADE_STRIDE, type GrassInputs, type GrassLayout, type GrassUniforms } from './grassField';
 import type { TerrainTextures } from './terrainTextures';
 
 /** Per-tier grass reach and density (spec G2.1 phase C.1, C.2, C.8). */
@@ -29,8 +29,8 @@ const MAX_BLADES_PER_CELL = 5000;
 const GUST_CYCLES_PER_MS = 1.1 / GUST_WAVELENGTH_M;
 /** Longest frame step (s) that advances the travelling gusts; a longer stall (tab switch) does not make them jump. */
 const MAX_GUST_STEP_S = 1;
-/** Cards start this share of the blade ring in and are fully in at its edge; the blades fade out over the last 30%. */
-const CARD_INNER_SHARE = 0.48;
+/** Cards overlap the dense-to-thin blade transition. */
+const CARD_INNER_SHARE = 0.20;
 
 /** Statistics of the last selection, for telemetry. */
 export interface GrassStats {
@@ -80,7 +80,7 @@ export class GrassLayer {
         height: data.height, heightDim: textures.height.image.width, vegetation: masks.vegetation,
         vegetationDim: textures.materialDim, vegetationStep: textures.materialStep,
       },
-      { nearM: settings.nearM, midM: settings.midM, cardInnerM: blades ? settings.nearM * CARD_INNER_SHARE : 0 },
+      { nearM: settings.nearM, midM: settings.midM, cardInnerM: blades ? settings.nearM * (CARD_INNER_SHARE - CARD_FADE_JITTER_SHARE / 2) : 0 },
     );
     this.bladesPerDenseCell = Math.min(MAX_BLADES_PER_CELL, Math.round(CELL_AREA * settings.bladesPerM2));
     this.bladesPerThinCell = Math.ceil(this.bladesPerDenseCell / THIN_BLADE_STRIDE);
@@ -94,14 +94,14 @@ export class GrassLayer {
       height: textures.height, normal: textures.normal, vegetation: textures.vegetation, wetness: textures.wetness,
       noise, wind, vegetationDim: textures.materialDim, vegetationStep: textures.materialStep,
     };
-    // Clump layout: dense blades per clump, a thin blade is every fourth dense blade, cards per clump (grassField.ts).
+    // Clump layout: dense blades per clump, a thin blade is every second dense blade, cards per clump (grassField.ts).
     const perClump = this.bladesPerDenseCell / CLUMPS_PER_CELL;
     const denseLayout: GrassLayout = { stride: 1, perClump };
     const thinLayout: GrassLayout = { stride: THIN_BLADE_STRIDE, perClump };
     const cardLayout: GrassLayout = { stride: 1, perClump: this.cardsPerCell / CLUMPS_PER_CELL };
     this.draws = [
       blades ? this.draw('dense', createBladeGeometry(this.bladesPerDenseCell, 2, this.cells.dense, DENSE_COMPANIONS), inputs, denseLayout, shadows, lite) : null,
-      blades ? this.draw('thin', createBladeGeometry(this.bladesPerThinCell, 2, this.cells.thin), inputs, thinLayout, shadows, lite) : null,
+      blades ? this.draw('thin', createBladeGeometry(this.bladesPerThinCell, 1, this.cells.thin), inputs, thinLayout, shadows, lite) : null,
       this.draw('card', createCardGeometry(this.cardsPerCell, this.cells.cards), inputs, cardLayout, shadows, lite),
     ];
     this.root.name = 'grass';
