@@ -3,7 +3,7 @@ import {
   Fn, attribute, cos, dot, float, max, mix, normalize, positionGeometry, positionWorld, pow, saturate, sin, smoothstep, step,
   transformNormalToView, varyingProperty, vec3,
 } from 'three/tsl';
-import { THIN_BLADE_STRIDE, grassField, type GrassField, type GrassInputs, type GrassLayout, type GrassUniforms } from './grassField';
+import { CARD_FADE_JITTER_SHARE, THIN_BLADE_STRIDE, grassField, type GrassField, type GrassInputs, type GrassLayout, type GrassUniforms } from './grassField';
 import { canopyShade, groundCover, meadowTint } from './grassPalette';
 
 /**
@@ -12,7 +12,7 @@ import { canopyShade, groundCover, meadowTint } from './grassPalette';
  * hemisphere light with the CSM shadows, no specular. The translucency of a backlit blade is added as emission.
  *
  *  - dense:  curved blades and two short companion leaves near the eye;
- *  - thin:   2-segment blades (every fourth dense blade) from half the ring to its edge;
+ *  - thin:   1-segment blades (every second dense blade) from half the ring to its edge;
  *  - card:   tufts of three blades, dropping in over the blade ring's last part and out at the mid limit.
  */
 export type GrassKind = 'dense' | 'thin' | 'card';
@@ -48,12 +48,12 @@ function buildVertex(kind: GrassKind, inp: GrassInputs, u: GrassUniforms, layout
     const d = f.dist;
     const yaw = f.rnd(9).mul(TWO_PI).add(companion ? companion.mul(2.4) : 0);
 
-    // Every fourth dense blade is also in the thin mesh. Fade only the extra blades as the cell approaches
+    // Every second dense blade is also in the thin mesh. Fade only the extra blades as the cell approaches
     // the CPU's halfway switch, keeping the same surviving roots and probability on either side.
     // Cards stand for grass and heath alike; blades only for grass (meadow density).
     let keep: Node<'float'> = f.veg.r.mul(f.densityMul);
+    const shared = positionGeometry.z.div(THIN_BLADE_STRIDE).fract().equal(0);
     if (kind === 'dense') {
-      const shared = positionGeometry.z.div(THIN_BLADE_STRIDE).fract().equal(0);
       const spread = f.rnd(5).sub(0.5).mul(near.mul(0.24));
       const extra = float(1).sub(smoothstep(near.mul(0.3), near.mul(0.48), d.add(spread)))
         .mul(float(1).sub(smoothstep(near.mul(0.42), near.mul(0.5), f.cellDist)));
@@ -62,8 +62,8 @@ function buildVertex(kind: GrassKind, inp: GrassInputs, u: GrassUniforms, layout
     } else if (kind === 'thin') {
       keep = keep.mul(float(1).sub(smoothstep(near.mul(0.7), near, d)));
     } else {
-      const fadeDistance = d.add(f.rnd(3).sub(0.5).mul(near.mul(0.18)));
-      const fade = smoothstep(inner, inner.add(near.mul(0.52).max(1)), fadeDistance)
+      const fadeDistance = d.add(f.rnd(3).sub(0.5).mul(near.mul(CARD_FADE_JITTER_SHARE)));
+      const fade = smoothstep(inner, inner.add(near.mul(0.20).max(1)), fadeDistance)
         .mul(float(1).sub(smoothstep(mid.mul(0.5), mid, max(d, fadeDistance))));
       keep = keep.add(f.veg.g.mul(0.8).mul(a.heath)).mul(0.85).mul(fade);
     }
@@ -73,11 +73,18 @@ function buildVertex(kind: GrassKind, inp: GrassInputs, u: GrassUniforms, layout
     const out = f.root;
     // Total bend: the rest lean of the clump plus the wind (fraction of the height the tip moves, quadratic along t).
     const bend = f.restBend.add(lean);
-    const leafHeight = companion ? companion.greaterThan(0).select(f.rnd(13).mul(0.38).add(0.45), 1) : float(1);
+    const leafHeight = companion ? companion.greaterThan(0).select(mix(f.rnd(13).mul(0.38).add(0.45), f.rnd(13).mul(0.25).add(0.3), a.hay), 1) : float(1);
     const hs = a.height.mul(alive).mul(leafHeight);
-    const rest = f.restDir.mul(f.restBend.mul(hs).mul(t).mul(t));
-    const windOff = f.windDir.mul(lean.mul(hs).mul(t).mul(t));
-    const lift = t.mul(hs).mul(float(1).sub(bend.mul(bend).mul(0.3)));
+    // Shared dense blades converge to the thin triangle's straight silhouette before the cell switches.
+    const straight = kind === 'dense' ? shared.select(smoothstep(near.mul(0.38), near.mul(0.5), f.cellDist), 0) : float(0);
+    const bendAlong = mix(t.mul(t), t, straight);
+    const rest = f.restDir.mul(f.restBend.mul(hs).mul(bendAlong));
+    const windOff = f.windDir.mul(lean.mul(hs).mul(bendAlong));
+    // The root stays inset for contact. Restore that buried length only for short pasture
+    // blades so their visible height still reflects the pasture archetype.
+    const inset = float(1).sub(f.terrainNormal.y).mul(0.25).add(0.03);
+    const aboveRoot = kind !== 'card' ? inset.mul(a.pasture).mul(alive) : float(0);
+    const lift = t.mul(hs.mul(float(1).sub(bend.mul(bend).mul(0.3))).add(aboveRoot));
 
     let px = out.x;
     let py = out.y;
@@ -98,14 +105,16 @@ function buildVertex(kind: GrassKind, inp: GrassInputs, u: GrassUniforms, layout
     } else {
       const right = vec3(cos(yaw), 0, sin(yaw));
       const fwd = vec3(sin(yaw).negate(), 0, cos(yaw));
-      // Tapered to a point; hay meadow seed heads thicken just under the tip; thin far blades are widened to about a pixel.
-      const taper = float(1).sub(t).pow(1.4).mul(0.92).add(0.08);
-      const seedBulge = a.hay.mul(step(f.rnd(11), 0.08)).mul(smoothstep(0.7, 0.8, t)).mul(float(1).sub(smoothstep(0.93, 1, t))).mul(1.6).add(1);
+      // Give the dense middle row the thin triangle's exact half-width before the handoff.
+      const remaining = float(1).sub(t);
+      const taper = mix(remaining.pow(1.4).mul(0.92).add(0.08), remaining, straight);
       const leafWidth = companion ? companion.greaterThan(0).select(1.35, 1) : float(1);
-      const widthM = max(a.width, d.mul(MIN_WIDTH_PER_M)).mul(taper).mul(seedBulge).mul(alive).mul(leafWidth);
-      px = out.x.add(right.x.mul(side).mul(widthM).mul(0.5)).add(rest.x).add(windOff.x);
+      // Pasture basal leaves spread gently from their rooted centre; longer hay stems remain upright.
+      const fan = companion ? companion.greaterThan(0).select(a.pasture.mul(0.06).mul(t), 0) : float(0);
+      const widthM = max(a.width, d.mul(MIN_WIDTH_PER_M)).mul(taper).mul(alive).mul(leafWidth);
+      px = out.x.add(right.x.mul(side).mul(widthM).mul(0.5)).add(rest.x).add(windOff.x).add(fwd.x.mul(fan));
       py = out.y.add(lift);
-      pz = out.z.add(right.z.mul(side).mul(widthM).mul(0.5)).add(rest.y).add(windOff.y);
+      pz = out.z.add(right.z.mul(side).mul(widthM).mul(0.5)).add(rest.y).add(windOff.y).add(fwd.z.mul(fan));
       // Rounded normal (phase G.4): tilted across the width towards the side, towards the blade's face on tall
       // blades, and anchored to the terrain normal at the root. Short pasture is lit like the ground.
       const towardsEye = fwd.x.mul(u.eye.x.sub(out.x)).add(fwd.z.mul(u.eye.z.sub(out.z)));

@@ -107,7 +107,7 @@ export function createTerrainMaterial(noise: DataTexture, lite = false, surface:
   const tipUv = vec2(pW.x.add(pW.z), pW.z.sub(pW.x)).div(GRASS_COVER_METRES * Math.SQRT2);
   const tipNoise = surface?.grassCover ? texture(surface.grassCover, tipUv).r.sub(0.55) : float(0);
   const grassDist = length(pW.xz.sub(eyeOffset.xz));
-  const tips = veg.r.mul(smoothstep(grassRange.mul(0.18), grassRange.mul(0.65).max(1), grassDist))
+  const tips = veg.r.mul(smoothstep(grassRange.mul(0.08), grassRange.mul(0.40).max(1), grassDist))
     .mul(grassRange.greaterThan(0).select(1, 0));
   const tipColour = meadowTint(veg.r, season.z).mul(mix(1, 1.08, tips));
   const grassDetail = float(1).add(tipNoise.mul(mix(1.55, 0.85, tips)).mul(veg.r));
