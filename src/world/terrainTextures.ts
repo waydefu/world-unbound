@@ -2,8 +2,10 @@ import { buildHeightPyramid } from './cdlodPyramid';
 import { CELL_SIZE, HEIGHT_QUANTUM, WORLD_MIN } from './constants';
 import { dequantize, sampleQuantized } from './heightField';
 import { AO_APRON, vertexAo } from './terrainAo';
-import { TERRAIN_SAMPLES, terrainGrid } from './terrainData';
+import { PAD_DIM, boxFiltered, buildPaddedLattice } from './terrainLattice';
+import { TERRAIN_SAMPLES } from './terrainData';
 import { classifyTerrain } from './terrainMaterialWeights';
+import { buildTerrainMasks, type TerrainMasks } from './terrainMasks';
 
 /**
  * GPU copies of the terrain (ADR-0003). The CPU lattice stays the authority; these are derived arrays,
@@ -39,6 +41,8 @@ export interface TerrainTextureData {
   pyramid: Float32Array;
   /** Milliseconds the build took, measured by whoever ran it. */
   ms: number;
+  /** Wind channel and (later) vegetation masks; absent in hand-made test data. */
+  masks?: TerrainMasks;
 }
 
 /**
@@ -51,23 +55,6 @@ export function buildHeightTexture(out: Float32Array = new Float32Array(HEIGHT_D
     for (let i = 0; i < HEIGHT_DIM; i++) out[row + i] = dequantize(sampleQuantized(i + ORIGIN, j + ORIGIN));
   }
   return out;
-}
-
-const PAD_DIM = HEIGHT_DIM + 2 * AO_APRON;
-
-/**
- * Quantised lattice with an AO_APRON border, so AO and normals can read neighbours without bounds checks.
- * Inside the baked square the rows are copied; outside it holds the open-water value `sampleQuantized` returns.
- */
-function buildPaddedLattice(): Int16Array {
-  const outside = sampleQuantized(-100000, -100000);
-  const grid = terrainGrid;
-  if (grid === null) throw new Error('terrain data is not installed (installTerrain was not called)');
-  const padded = new Int16Array(PAD_DIM * PAD_DIM).fill(outside);
-  for (let row = 0; row < TERRAIN_SAMPLES; row++) {
-    padded.set(grid.subarray(row * TERRAIN_SAMPLES, (row + 1) * TERRAIN_SAMPLES), (row + AO_APRON) * PAD_DIM + AO_APRON);
-  }
-  return padded;
 }
 
 const scratch = new Float32Array(3);
@@ -84,38 +71,6 @@ const scratch = new Float32Array(3);
  * untouched; only the normal fed to it changes (radius 0 reproduces the chunk vertex colours exactly).
  */
 export const CLASSIFY_SMOOTH_RADIUS = 2;
-
-/**
- * Separable box filter of the padded lattice in quantised units, with running sums. Texels closer than `radius`
- * to the padded border keep the raw value; the classification only reads texels at least AO_APRON (8) in, so
- * `radius` must stay below that.
- */
-function boxFiltered(padded: Int16Array, radius: number): Float32Array {
-  const out = new Float32Array(PAD_DIM * PAD_DIM);
-  const tmp = new Float32Array(PAD_DIM * PAD_DIM);
-  for (let k = 0; k < padded.length; k++) tmp[k] = padded[k];
-  out.set(tmp);
-  const inv = 1 / (2 * radius + 1);
-  const span = 2 * radius + 1;
-  for (let j = 0; j < PAD_DIM; j++) {
-    const row = j * PAD_DIM;
-    let sum = 0;
-    for (let i = 0; i < span; i++) sum += padded[row + i];
-    for (let i = radius; i < PAD_DIM - radius; i++) {
-      tmp[row + i] = sum * inv;
-      if (i + radius + 1 < PAD_DIM) sum += padded[row + i + radius + 1] - padded[row + i - radius];
-    }
-  }
-  for (let i = 0; i < PAD_DIM; i++) {
-    let sum = 0;
-    for (let j = 0; j < span; j++) sum += tmp[j * PAD_DIM + i];
-    for (let j = radius; j < PAD_DIM - radius; j++) {
-      out[j * PAD_DIM + i] = sum * inv;
-      if (j + radius + 1 < PAD_DIM) sum += tmp[(j + radius + 1) * PAD_DIM + i] - tmp[(j - radius) * PAD_DIM + i];
-    }
-  }
-  return out;
-}
 
 /**
  * Fills the material texture: for every texel the weights `classifyTerrain` gives from the central-difference
@@ -190,13 +145,17 @@ export function buildNormalTexture(step: MaterialStep, out?: Uint8Array, lattice
 export function buildTerrainTextures(step: MaterialStep): TerrainTextureData {
   const height = buildHeightTexture();
   const lattice = buildPaddedLattice();
+  const material = buildMaterialTexture(step, undefined, CLASSIFY_SMOOTH_RADIUS, lattice);
+  // The vegetation rule replaces the slope-only rock of the material bake (it rewrites sand, rock, stone in place).
+  const masks = buildTerrainMasks(step, material, lattice);
   return {
     height,
-    material: buildMaterialTexture(step, undefined, CLASSIFY_SMOOTH_RADIUS, lattice),
+    material,
     normal: buildNormalTexture(step, undefined, lattice),
     materialStep: step,
     pyramid: buildHeightPyramid(height, HEIGHT_DIM),
     ms: 0,
+    masks,
   };
 }
 

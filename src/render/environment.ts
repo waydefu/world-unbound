@@ -29,6 +29,10 @@ const MOON_TINT = new Color(0.62, 0.74, 1);
 const TINT = [MOON_TINT.r, MOON_TINT.g, MOON_TINT.b];
 /** Starlight and airglow floor so moonless nights are dark but not black (radiance units). */
 const NIGHT_FLOOR = 3e-7;
+/** Share of the sun's irradiance returned to a shaded surface as bounce from sunlit surroundings (0.25 albedo x ~0.4 lit). */
+const BOUNCE_SHARE = 0.1;
+/** Extra ambient on a clear day (x sun share): faces turned from the sun are lit by sunlit surroundings, not black. */
+const SHADE_FILL = 0.9;
 /** Share of the overcast zenith radiance added to the ambient light under full cloud. */
 const OVERCAST_LIFT = 1.2;
 /** Share of the overcast zenith radiance shown by the cloud deck under full cloud at night. */
@@ -101,13 +105,18 @@ export class Environment {
     // Under cloud the ground is lit by the whole deck: lift the floor by a share of the overcast zenith (not
     // only by the starlight floor) so terrain stays readable against the brighter sky. Exposure does not see it.
     const lift = (c: number): number => OVERCAST_LIFT * w.overcast * (9 / 7) * (eLum * w.dim + NIGHT_FLOOR * TINT[c]);
+    // Sunny days add the light shaded faces get from interreflection (sunlit slopes, water, sky scattered twice);
+    // overcast and night skies already are that diffuse light.
+    const fill = 1 + SHADE_FILL * w.sun * sunVisible;
     this.ambient.color.setRGB(
-      Math.PI * (overcastMix(0) + lift(0)) + night * MOON_TINT.r,
-      Math.PI * (overcastMix(1) + lift(1)) + night * MOON_TINT.g,
-      Math.PI * (overcastMix(2) + lift(2)) + night * MOON_TINT.b,
+      Math.PI * (overcastMix(0) * fill + lift(0)) + night * MOON_TINT.r,
+      Math.PI * (overcastMix(1) * fill + lift(1)) + night * MOON_TINT.g,
+      Math.PI * (overcastMix(2) * fill + lift(2)) + night * MOON_TINT.b,
     );
-    // Ground bounce: 0.35 x sky plus 10% of the sun's irradiance scattered by average (0.25) ground albedo.
-    const bounce = 0.1 * 0.25 * this.sunBase;
+    // Ground bounce: 0.35 x sky plus the sun's irradiance scattered by the sunlit ground and slopes around a point:
+    // albedo 0.25 x about 40% of the lower hemisphere sunlit (valleys, shaded faces see lit slopes opposite).
+    // 10% (the first guess) left shaded faces near black beside lit ones, which no sunlit valley wall looks like.
+    const bounce = BOUNCE_SHARE * this.sunBase;
     this.ambient.groundColor.setRGB(
       0.35 * this.ambient.color.r + bounce * t[0],
       0.35 * this.ambient.color.g + bounce * t[1],

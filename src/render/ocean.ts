@@ -1,6 +1,9 @@
-import { BufferAttribute, BufferGeometry, type DataTexture, DataUtils, Mesh, Vector3 } from 'three/webgpu';
+import {
+  BufferAttribute, BufferGeometry, ClampToEdgeWrapping, DataTexture, DataUtils, LinearFilter, Mesh, RedFormat, UnsignedByteType, Vector3,
+} from 'three/webgpu';
 import { waveSet, waveSlope } from '../env/ocean';
 import type { Weather } from '../env/weather';
+import { OPENNESS_DIM } from '../world/basinOpenness';
 import { COAST_DIM, SEAFLOOR_DIM } from '../world/seaFloor';
 import { FLOOR_OFFSET, createOceanMaterial, createOceanUniforms, createSeaFloorTexture } from './oceanMaterial';
 import type { SkyDome } from './sky';
@@ -11,6 +14,11 @@ const HALF_CELLS_LITE = 40;
 const FINE_SPACING = 1.5;
 const EXTENT = 3500;
 const DEEP_METRES = -40;
+/** Detail-layer drift per m/s of wind: 0.35 m/s at 3 m/s, the speed of the previous fixed +z drift. */
+const DRIFT_PER_MS = 0.35 / 3;
+const CHOP_BASE = 0.8;
+const CHOP_PER_MS = 0.05;
+const CHOP_MAX = 1.4;
 
 /** Offset of the t-th grid line: s(t) = 1.5 (r^t - 1) / (r - 1). */
 function lineOffset(t: number, ratio: number): number {
@@ -81,6 +89,13 @@ export class Ocean {
   private readonly coastData: Uint16Array | null;
   private readonly coastTexture: DataTexture | null;
   readonly hasCoast: boolean;
+  /** Basin openness (R8, 8 m cells): 255 = open everywhere until the worker's map arrives. */
+  private readonly opennessData = new Uint8Array(OPENNESS_DIM * OPENNESS_DIM).fill(255);
+  private readonly opennessTexture = new DataTexture(this.opennessData, OPENNESS_DIM, OPENNESS_DIM, RedFormat, UnsignedByteType);
+
+  private windX = 0;
+  private windZ = 0.35;
+  private lastTime = 0;
 
   /** Zenith radiance before exposure (scene units); setExposure folds the exposure in. */
   private readonly zenithBase = new Vector3(0.1, 0.15, 0.3);
@@ -90,13 +105,23 @@ export class Ocean {
     this.hasCoast = !lite;
     this.coastData = lite ? null : new Uint16Array(COAST_DIM * COAST_DIM).fill(DataUtils.toHalfFloat(DEEP_METRES - FLOOR_OFFSET));
     this.coastTexture = this.coastData ? createSeaFloorTexture(this.coastData, COAST_DIM) : null;
-    this.mesh = new Mesh(geometry, createOceanMaterial(sky, this.floorTexture, this.coastTexture ?? this.floorTexture, noise, this.uniforms, lite));
+    this.mesh = new Mesh(geometry, createOceanMaterial(
+      sky, this.floorTexture, this.coastTexture ?? this.floorTexture, noise, this.uniforms, lite, this.opennessTexture,
+    ));
     this.mesh.name = 'ocean';
     this.mesh.renderOrder = 1;
     this.mesh.frustumCulled = false;
     this.floorTexture.needsUpdate = true;
+    const o = this.opennessTexture;
+    o.magFilter = LinearFilter;
+    o.minFilter = LinearFilter;
+    o.wrapS = ClampToEdgeWrapping;
+    o.wrapT = ClampToEdgeWrapping;
+    o.generateMipmaps = false;
+    o.unpackAlignment = 1;
+    o.needsUpdate = true;
     this.gpuBytes = geometry.getAttribute('position').array.byteLength + (geometry.index?.array.byteLength ?? 0)
-      + this.floorData.byteLength + (this.coastData?.byteLength ?? 0);
+      + this.floorData.byteLength + (this.coastData?.byteLength ?? 0) + this.opennessData.byteLength;
     this.setWeather('clear');
   }
 
@@ -121,6 +146,15 @@ export class Ocean {
     const n = Math.min(heights.length, this.coastData.length);
     for (let i = 0; i < n; i++) this.coastData[i] = DataUtils.toHalfFloat(heights[i] - FLOOR_OFFSET);
     this.coastTexture.needsUpdate = true;
+  }
+
+  /**
+   * Publishes the basin openness map (bytes, OPENNESS_DIM² cells of 8 m, see world/basinOpenness.ts).
+   * @amortized once per session
+   */
+  setOpenness(data: Uint8Array): void {
+    this.opennessData.set(data.subarray(0, this.opennessData.length));
+    this.opennessTexture.needsUpdate = true;
   }
 
   /** @amortized weather changes only */
@@ -149,8 +183,25 @@ export class Ocean {
     this.uniforms.zenith.value.copy(this.zenithBase).multiplyScalar(exposure);
   }
 
+  /**
+   * Wind for the surface detail (G2.1): the drift of the detail layers follows the wind velocity (DRIFT_PER_MS of
+   * the wind speed, which is 0.35 m/s at the clear-weather 3 m/s the old +z drift was tuned for), and the detail
+   * normals get choppier with speed (CHOP_BASE at calm, +CHOP_PER_MS per m/s, capped). The Gerstner set is unchanged.
+   * @hot writes plain fields only
+   */
+  setWind(dirX: number, dirZ: number, speedMs: number): void {
+    this.windX = dirX * speedMs * DRIFT_PER_MS;
+    this.windZ = dirZ * speedMs * DRIFT_PER_MS;
+    const chop = CHOP_BASE + CHOP_PER_MS * speedMs;
+    this.uniforms.chop.value = chop < CHOP_MAX ? chop : CHOP_MAX;
+  }
+
   /** @hot uniform and transform writes only */
   update(eyeX: number, eyeY: number, eyeZ: number, timeSeconds: number): void {
+    // Integrate the drift: a long wait between frames (tab in the background) must not fling the layers.
+    const dt = timeSeconds - this.lastTime;
+    this.lastTime = timeSeconds;
+    if (dt > 0 && dt < 0.25) this.uniforms.drift.value.set(this.uniforms.drift.value.x + this.windX * dt, this.uniforms.drift.value.y + this.windZ * dt);
     const modX = eyeX - Math.floor(eyeX / FINE_SPACING) * FINE_SPACING;
     const modZ = eyeZ - Math.floor(eyeZ / FINE_SPACING) * FINE_SPACING;
     this.mesh.position.set(-modX, -eyeY, -modZ);

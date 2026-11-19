@@ -108,6 +108,8 @@ export class CdlodTerrain {
       normal: textures.normal,
       materialDim: textures.materialDim,
       materialStep: textures.materialStep,
+      vegetation: textures.vegetation,
+      wetness: textures.wetness,
     });
     this.material = this.terrainMaterial.material;
     this.material.positionNode = shaders.position;
@@ -159,6 +161,15 @@ export class CdlodTerrain {
 
   setWetness(wetness: number): void {
     this.terrainMaterial.setWetness(wetness);
+  }
+
+  setSeason(fresh: number, summer: number, straw: number): void {
+    this.terrainMaterial.setSeason(fresh, summer, straw);
+  }
+
+  /** Grass reach in metres (0 when there is no grass layer); see TerrainMaterial.setGrassRange. */
+  setGrassRange(midM: number): void {
+    this.terrainMaterial.setGrassRange(midM);
   }
 
   /**

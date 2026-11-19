@@ -1,9 +1,10 @@
-import { type DataTexture, FrontSide, MeshStandardNodeMaterial, type Node, Vector3 } from 'three/webgpu';
+import { type DataTexture, FrontSide, MeshPhysicalNodeMaterial, type Node, Vector3 } from 'three/webgpu';
 import {
   attribute, clamp, float, max, mix, normalize, normalWorldGeometry, positionView, positionWorld,
-  smoothstep, texture, transformNormalToView, uniform, vec2, vec3,
+  smoothstep, texture, transformNormalToView, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
 import { WORLD_MIN } from '../world/constants';
+import { canopyShade, groundCover } from './grassPalette';
 import { triplanarChannel, triplanarSlope } from './noiseSampling';
 
 /**
@@ -13,10 +14,17 @@ import { triplanarChannel, triplanarSlope } from './noiseSampling';
  * eye offset) so patterns stay fixed in the world as the root moves.
  */
 export interface TerrainMaterial {
-  readonly material: MeshStandardNodeMaterial;
+  readonly material: MeshPhysicalNodeMaterial;
   /** @hot writes an existing uniform only */
   setEyeOffset(x: number, y: number, z: number): void;
   setWetness(wetness: number): void;
+  /** Season weights (fresh, summer, straw) for the grass colour; see vegetationSeason in env/climate.ts. */
+  setSeason(fresh: number, summer: number, straw: number): void;
+  /**
+   * Distance (m) to which grass is drawn over the ground (0 = no grass layer). Out to there the ground colour is
+   * darkened where the meadow is dense: it stands for the shade between the blades, so the blades read as a sward.
+   */
+  setGrassRange(midM: number): void;
 }
 
 /**
@@ -30,22 +38,42 @@ export interface TerrainSurface {
   readonly materialStep: number;
   /** RGBA8 world-space normal (n * 0.5 + 0.5) on the same lattice as `material`, linear and mipmapped. */
   readonly normal: DataTexture;
+  /** RGBA8 meadow, heath, tree, bare on the same lattice, and the R8 wetness proxy. */
+  readonly vegetation: DataTexture;
+  readonly wetness: DataTexture;
 }
 
 const SEABED = vec3(0.105, 0.118, 0.098);
 const SAND = vec3(0.52, 0.45, 0.31);
-const GRASS_DRY = vec3(0.21, 0.24, 0.085);
-const GRASS_LUSH = vec3(0.075, 0.16, 0.045);
 const ROCK = vec3(0.2, 0.19, 0.175);
-const EARTH = vec3(0.19, 0.15, 0.105);
+/**
+ * The third material weight. The chunk path leaves it at 0 ("earth", reserved); in the CDLOD bake it flags
+ * man-made stone (breakwaters, piers, quay walls): weathered grey concrete and granite, lighter than the rock.
+ */
+const STONE = vec3(0.24, 0.245, 0.25);
+/** Share of the stone albedo lost on its darkest edge (steep flanks, the foot at the waterline). */
+const STONE_EDGE_DARKENING = 0.5;
 /** Metres per noise tile: macro patches, grain and micro-relief. */
 const MACRO_METRES = 37;
 const GRAIN_METRES = 5.3;
 const RELIEF_METRES = 1.25;
+/** Metres per tile of the fine grass-tip noise beyond the blade range. */
+const TIP_METRES = 1.7;
+/**
+ * Specular strength of the ground (scales F0 and F90 of the dielectric; 1 = the default 4 % at normal incidence, rising
+ * to 100 % at grazing). Soil, grass and rock are rough and diffuse: with the full Fresnel the low sun behind the ridges
+ * bleached every sun-facing slope to grey-white at grazing view angles (cam 2). Wet ground shows as darker albedo; its
+ * gloss stays low, since at grazing angles toward the sun even 0.3-0.55 roughness drew a silver streak across the field.
+ */
+const SPECULAR_DRY = 0.2;
+const SPECULAR_WET = 0.12;
+const WET_ROUGHNESS = 0.7;
 
 export function createTerrainMaterial(noise: DataTexture, lite = false, surface: TerrainSurface | null = null): TerrainMaterial {
   const eyeOffset = uniform(new Vector3());
   const wetness = uniform(0);
+  const season = uniform(new Vector3(1, 0, 0));
+  const grassRange = uniform(0);
 
   const pW = positionWorld.add(eyeOffset);
   // Texel centres sit on lattice points: uv = (index + 0.5) / dim, index = (x - WORLD_MIN) / (2 m x step).
@@ -63,8 +91,21 @@ export function createTerrainMaterial(noise: DataTexture, lite = false, surface:
   // Patch noise (B channel, 0..1) mapped to -1..1; world-fixed, triplanar on steep ground.
   const macro = triplanarChannel(noise, pW, nGeo, MACRO_METRES, 'b').mul(2).sub(1);
 
-  const grassCol = mix(GRASS_DRY, GRASS_LUSH, smoothstep(-0.6, 0.6, macro).mul(0.6).add(0.2));
-  let base = grassCol.mul(grass).add(SAND.mul(w.x)).add(ROCK.mul(w.y)).add(EARTH.mul(w.z));
+  // Vegetation (CDLOD only): heath above the treeline, forest tint, wetter and lusher hollows, seasonal colour.
+  const veg: Node<'vec4'> = surface && surfaceUv ? texture(surface.vegetation, surfaceUv) : vec4(1, 0, 0, 0);
+  const wet01: Node<'float'> = surface && surfaceUv ? texture(surface.wetness, surfaceUv).r : float(0);
+  // Shade between the blades inside the grass range: full at the eye, gone at the range edge (no visible ring).
+  // Beyond the blades the ground carries the sward to the horizon (phase G.7): the blades' tip colour and a fine
+  // grass-tip noise (1.7 m tiles), faded in from the middle of the blade range so the cards and the terrain meet without a ring.
+  const tipNoise = texture(noise, vec2(pW.x, pW.z).div(TIP_METRES)).a.sub(0.5);
+  const tips = veg.r.mul(smoothstep(grassRange.mul(0.35), grassRange.mul(0.8).max(1), dist)).mul(grassRange.greaterThan(0).select(1, 0));
+  const tipColour = mix(vec3(1, 1, 1), vec3(1.14, 1.16, 0.9), tips).mul(float(1).add(tipNoise.mul(0.3).mul(tips)));
+  const grassCol = groundCover(macro, wet01, veg, season).mul(canopyShade(veg.r, dist, grassRange)).mul(lite ? float(1) : tipColour);
+  // Stone quays and breakwaters read as stone, not as a flat tan band: darker on the steep flank and at the foot,
+  // where the wall meets the water.
+  const stoneEdge = max(float(1).sub(nGeo.y).mul(4), float(1).sub(smoothstep(0.2, 1.3, y))).min(1);
+  const stoneCol = STONE.mul(float(1).sub(stoneEdge.mul(STONE_EDGE_DARKENING)));
+  let base = grassCol.mul(grass).add(SAND.mul(w.x)).add(ROCK.mul(w.y)).add(stoneCol.mul(w.z));
   base = mix(base, SEABED, float(1).sub(smoothstep(-2.2, -0.2, y)));
   if (!lite) {
     const grain = triplanarChannel(noise, pW, nGeo, GRAIN_METRES, 'a').mul(2).sub(1);
@@ -75,14 +116,16 @@ export function createTerrainMaterial(noise: DataTexture, lite = false, surface:
   const shore = float(1).sub(smoothstep(0.2, 1.4, y));
   const wet = max(shore, wetness.mul(float(1).sub(w.y.mul(0.5))));
   const albedo = base.mul(mix(1, 0.55, wet));
-  const roughness = mix(rough, 0.3, wet);
+  // Wet ground gets a gentler sheen than a water film would (roughness 0.3 turned the low sun into a silver streak).
+  const roughness = mix(rough, WET_ROUGHNESS, wet);
 
 
-  const material = new MeshStandardNodeMaterial({ metalness: 0, side: FrontSide });
+  const material = new MeshPhysicalNodeMaterial({ metalness: 0, side: FrontSide });
   material.vertexColors = false;
   material.name = 'terrain';
   material.colorNode = albedo;
   material.roughnessNode = roughness;
+  material.specularIntensityNode = mix(SPECULAR_DRY, SPECULAR_WET, wet);
   if (!lite) {
     // Micro-relief: one slope fetch (the texture stores the gradient), no finite differences.
     const g = triplanarSlope(noise, pW, nGeo, RELIEF_METRES);
@@ -103,6 +146,12 @@ export function createTerrainMaterial(noise: DataTexture, lite = false, surface:
     },
     setWetness(value: number): void {
       wetness.value = value;
+    },
+    setSeason(fresh: number, summer: number, straw: number): void {
+      season.value.set(fresh, summer, straw);
+    },
+    setGrassRange(midM: number): void {
+      grassRange.value = midM;
     },
   };
 }

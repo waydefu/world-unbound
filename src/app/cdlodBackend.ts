@@ -4,7 +4,7 @@ import type { SlidingRate } from '../perf/slidingRate';
 import type { FrustumSource } from '../render/chunkStats';
 import { CdlodTerrain } from '../render/cdlodTerrain';
 import { cascadeCameras, type CascadeCamera } from '../render/shadows';
-import { createTerrainTextures } from '../render/terrainTextures';
+import { createTerrainTextures, type TerrainTextures } from '../render/terrainTextures';
 import { LEVELS } from '../world/cdlodPyramid';
 import type { MaterialStep, TerrainTextureData } from '../world/terrainTextures';
 import type { ResolvedCamera } from './cameras';
@@ -26,6 +26,11 @@ export class CdlodBackend implements TerrainBackend {
   private terrain: CdlodTerrain | null = null;
   private readonly textures: Promise<TerrainTextureData>;
   private texturesMs = 0;
+  private masksMs = 0;
+  /** The baked data the vegetation layer reads on the CPU (null before `prepare`). */
+  data: TerrainTextureData | null = null;
+  gpu: TerrainTextures | null = null;
+  private season = [1, 0, 0];
   private updates = 0;
   private wetness = 0;
   private sun: DirectionalLight | null = null;
@@ -64,12 +69,17 @@ export class CdlodBackend implements TerrainBackend {
   async prepare(): Promise<void> {
     const data = await this.textures;
     const textures = createTerrainTextures(data);
+    this.data = data;
+    this.gpu = textures;
     this.texturesMs = data.ms;
+    this.masksMs = data.masks?.ms ?? 0;
     const { memory } = this;
-    memory.add(MemoryPartition.Gpu, textures.heightBytes + textures.materialBytes + textures.normalBytes);
-    // three.js keeps the CPU arrays so a device loss can re-upload.
-    memory.add(MemoryPartition.CpuRetained, data.height.byteLength + data.material.byteLength + data.normal.byteLength + data.pyramid.byteLength);
-    this.uploads.add(performance.now(), textures.uploadBytes + textures.normalUploadBytes);
+    memory.add(MemoryPartition.Gpu, textures.heightBytes + textures.materialBytes + textures.normalBytes + textures.vegetationBytes);
+    // three.js keeps the CPU arrays so a device loss can re-upload. The wind channel stays too (wind texture refresh).
+    const masks = data.masks;
+    memory.add(MemoryPartition.CpuRetained, data.height.byteLength + data.material.byteLength + data.normal.byteLength + data.pyramid.byteLength
+      + (masks ? masks.vegetation.byteLength + masks.wetness.byteLength + masks.windChannel.byteLength + masks.openness.byteLength : 0));
+    this.uploads.add(performance.now(), textures.uploadBytes + textures.normalUploadBytes + textures.vegetationUploadBytes);
     const terrain = new CdlodTerrain({
       textures,
       pyramid: data.pyramid,
@@ -82,6 +92,7 @@ export class CdlodBackend implements TerrainBackend {
     terrain.account(memory);
     this.root.add(terrain.root);
     terrain.setWetness(this.wetness);
+    terrain.setSeason(this.season[0], this.season[1], this.season[2]);
     this.terrain = terrain;
   }
 
@@ -114,6 +125,17 @@ export class CdlodBackend implements TerrainBackend {
     this.wetness = wetness;
   }
 
+  /** Season weights of the grass colour (fresh, summer, straw). */
+  setSeason(fresh: number, summer: number, straw: number): void {
+    this.season = [fresh, summer, straw];
+    this.terrain?.setSeason(fresh, summer, straw);
+  }
+
+  /** Grass reach in metres (0 = none): the ground is shaded between the blades out to there. */
+  setGrassRange(midM: number): void {
+    this.terrain?.setGrassRange(midM);
+  }
+
   setBundled(): void {}
 
   seaFloorReady(): void {}
@@ -123,6 +145,7 @@ export class CdlodBackend implements TerrainBackend {
     const sel = this.terrain?.selector;
     state.terrainRender = 'cdlod';
     state.terrainTexturesMs = this.texturesMs;
+    state.terrainMasksMs = this.masksMs;
     state.terrainMode = this.client.mode;
     state.terrainWorkerLoadMs = this.client.workerLoadMs;
     if (!sel || !this.terrain) return;

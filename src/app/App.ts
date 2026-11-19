@@ -12,7 +12,8 @@ import { createRenderer, warmUp, whenDeviceLost, type RendererHandle } from '../
 import { Hud, downloadJson } from '../ui/hud';
 import { CAMERAS, resolveCamera, type ResolvedCamera } from './cameras';
 import { GpuTimer } from './gpuTimer';
-import { Observer, initialObserved } from './observability';
+import { Observer } from './observability';
+import { createAppState } from './appState';
 import { formatHud } from './hudText';
 import type { DebugParams } from './params';
 import { pixelRatioForBudget, type QualityTier } from './quality';
@@ -22,6 +23,7 @@ import { CdlodBackend } from './cdlodBackend';
 import { ChunkBackend } from './chunkBackend';
 import { loadAndInstallTerrain } from './terrainAssets';
 import type { TerrainBackend } from './terrainBackend';
+import { VegetationBackend } from './vegetationBackend';
 
 const LOW_FREQUENCY_MS = 500;
 const WARMUP_TIMEOUT_MS = 20000;
@@ -49,6 +51,7 @@ export class App {
   private readonly environment: Environment;
   private readonly clock: EnvironmentClock;
   private readonly terrain: TerrainBackend;
+  private readonly vegetation: VegetationBackend;
   private readonly hud: Hud;
   private readonly eye: ResolvedCamera = { x: 0, y: 0, z: 0, targetX: 0, targetY: 0, targetZ: 0, fovDeg: 55 };
   private readonly bufferSize = new Vector2();
@@ -78,6 +81,10 @@ export class App {
     this.terrain = params.terrain === 'chunks'
       ? new ChunkBackend(this.memory, noise.texture, this.environment.ocean.floorTexture, tier, this.observer.uploads)
       : new CdlodBackend(this.memory, noise.texture, tier, this.observer.uploads, params.shadows ? tier.shadows.cascades : 0);
+    this.vegetation = new VegetationBackend({
+      ocean: this.environment.ocean, sun: this.environment.sun, terrain: this.terrain, tier, memory: this.memory,
+      uploads: this.observer.uploads, noise: noise.texture, grass: params.grass, shadows: params.shadows,
+    });
     this.observer.setMeshes(this.environment.sky.mesh, this.environment.ocean.mesh, this.terrain.farMesh);
     this.terrain.attachSun(this.environment.sun);
     this.scene.add(this.terrain.root);
@@ -85,18 +92,7 @@ export class App {
       setCamera: (index) => this.setCamera(index),
       exportReport: () => downloadJson(`world-unbound-telemetry-${Date.now()}.json`, this.report()),
     }, params.hud, CAMERAS.map((c) => c.name));
-    this.state = {
-      backend: 'none', fallbackReason: null, quality: tier.name, recoveredFromCrash: options.recoveredFromCrash,
-      deviceLostCount: 0, cameraIndex: 0, cameraName: '', cssWidth: 0, cssHeight: 0,
-      devicePixelRatio: 1, basePixelRatio: 1, bufferWidth: 0, bufferHeight: 0,
-      refreshHz: 60, refreshMeasured: false, warmupMs: 0, firstFrameMs: 0, worldReadyMs: 0, terrainLoadMs: 0, terrainWorkerLoadMs: 0,
-      materialVariants: 2, variantBudget: VARIANT_BUDGET[tier.name], drawCalls: 0, bundledDraws: 0, triangles: 0,
-      chunksLoaded: 0, chunksInFlight: 0, staleResults: 0, lodBias: 0, terrainMode: 'worker',
-      hour: params.hour, day: params.day, season: '', weather: params.weather, sunAltitudeDeg: 0,
-      moonIllumination: 0, exposure: 1, atmosphereLutMs: this.clock.lutMs, backgroundSuspends: 0,
-      gpuPassSumP50Ms: null, gpuPassSumP95Ms: null, gpuSamples: null, gpuPassesPerFrame: null,
-      ...initialObserved(),
-    };
+    this.state = createAppState(tier, params, options.recoveredFromCrash, this.clock.lutMs, VARIANT_BUDGET[tier.name]);
   }
 
   static async create(options: AppOptions): Promise<App> {
@@ -125,6 +121,7 @@ export class App {
     });
     // CDLOD: the worker has been building the terrain textures since construction; they are needed before warm-up.
     await this.terrain.prepare();
+    this.vegetation.prepare();
     this.placeWorld(0);
     this.attachRenderer();
     try {
@@ -245,6 +242,7 @@ export class App {
     this.terrain.setWetness(WEATHER_WETNESS[weather]);
     this.state.day = params.day;
     this.clock.configure(params.day, this.state.hour, weather, Math.max(2, this.eye.y));
+    this.vegetation.configure(params.day, this.state.hour, weather);
     this.state.season = this.clock.season;
     this.state.sunAltitudeDeg = this.environment.sunAltitudeDeg;
     this.state.moonIllumination = this.clock.celestial.moonIllumination;
@@ -290,6 +288,7 @@ export class App {
     this.stats.push(interval, this.dyn.scale);
     if (this.dyn.update(interval)) this.applyRenderScale();
     this.terrain.update(now, this.eye, this.camera);
+    this.vegetation.update(now, this.eye, this.camera);
     this.placeWorld(now / 1000);
     this.environment.setExposure(this.clock.update(interval));
     this.handle.renderer.render(this.scene, this.camera);
@@ -317,6 +316,7 @@ export class App {
     state.gpuPassSumP95Ms = this.gpuTimer.p95();
     state.gpuPassesPerFrame = this.gpuTimer.passesPerFrame();
     state.gpuSamples = this.gpuTimer.samples;
+    this.vegetation.sample(state);
     this.observer.sample(this.state, now, terrain, this.camera, this.environment.sun, this.handle.renderer);
     if (!this.ready && terrain.settled) {
       this.ready = true;
