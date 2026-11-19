@@ -157,7 +157,8 @@ export function createOceanMaterial(
     Discard(sea.lessThan(-0.5));
 
     // Detail normal: sum of the decoded slopes, scaled by weather and faded out with distance.
-    const amp = slope.mul(1.5).add(0.05).mul(chop).mul(smoothstep(620, 80, dist)).mul(mix(1, 0.38, calm));
+    const distanceDetail = mix(0.2, 1, smoothstep(800, 80, dist));
+    const amp = slope.mul(1.5).add(0.05).mul(chop).mul(distanceDetail).mul(mix(1, 0.38, calm));
     const detail = slopeA.add(slopeB.mul(0.6)).mul(amp);
     const Ng = normalize(vNormal);
     const N = normalize(Ng.sub(vec3(detail.x, 0, detail.y))).toVar();
@@ -202,7 +203,10 @@ export function createOceanMaterial(
     // Thin broken band: ~0.6-1.8 m of horizontal distance from the waterline, ragged by the noise alpha channel.
     const shoreDist = depth.div(shoreSlope);
     const reach = lite ? float(1.2) : grain.mul(1.2).add(0.6);
-    const shore = smoothstep(1, 0, shoreDist.div(reach)).mul(breakup).mul(0.6).mul(exposed);
+    // The derivative can increase away from the waterline where the synthetic seabed starts to drop.
+    // Limit foam by depth as well as estimated shore distance so it stays attached to land.
+    const shallowFoam = float(1).sub(smoothstep(0.3, 0.85, depth));
+    const shore = smoothstep(1, 0, shoreDist.div(reach)).mul(shallowFoam).mul(breakup).mul(0.6).mul(exposed);
     // Enclosed basins stay calm: no shore or crest foam.
     const foam = (lite ? min(shore, 1) : min(shore.add(smoothstep(0.8, 1, crest).mul(0.4).mul(weather.z)), 1)).mul(exposed);
     const sunIrradianceTerm = sunE.mul(max(sunDir.y, 0).div(Math.PI));

@@ -53,8 +53,9 @@ function buildVertex(kind: GrassKind, inp: GrassInputs, u: GrassUniforms, layout
     let keep: Node<'float'> = f.veg.r.mul(f.densityMul);
     if (kind === 'dense') {
       const shared = positionGeometry.z.div(THIN_BLADE_STRIDE).fract().equal(0);
-      const distance = max(d, f.cellDist);
-      const extra = float(1).sub(smoothstep(near.mul(0.3), near.mul(0.48), distance));
+      const spread = f.rnd(5).sub(0.5).mul(near.mul(0.12));
+      const extra = float(1).sub(smoothstep(near.mul(0.3), near.mul(0.48), d.add(spread)))
+        .mul(float(1).sub(smoothstep(near.mul(0.42), near.mul(0.5), f.cellDist)));
       keep = keep.mul(shared.select(1, extra));
     } else if (kind === 'thin') {
       keep = keep.mul(float(1).sub(smoothstep(near.mul(0.7), near, d)));
