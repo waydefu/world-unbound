@@ -16,7 +16,8 @@
     "audit": "node scripts/audit.mjs",
     "audit:visual": "node scripts/audit-visual.mjs",
     "check": "npm run lint && npm run typecheck && npm test && npm run build && npm run audit && npm run audit:visual -- --skip-build",
-    "lint": "biome lint --error-on-warnings"
+    "lint": "biome lint --error-on-warnings",
+    "check:quiet": "node tools/check-quiet.mjs"
   },
   "dependencies": {
     "three": "0.187.0"

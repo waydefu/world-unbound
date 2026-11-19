@@ -3,6 +3,8 @@
  * the app; uses flat translucent backgrounds (no backdrop-filter) to keep
  * mobile compositing cheap.
  */
+import { fullscreenSupported, toggleFullscreen, watchFullscreen } from './fullscreen';
+
 /** Terrain attribution required by the CC BY 4.0 licence of the Kartverket data; always on screen. */
 export const TERRAIN_CREDIT = 'Terrain © Kartverket (CC BY 4.0), modified';
 
@@ -30,6 +32,12 @@ export class Hud {
       bar.append(b);
     });
     bar.append(button('JSON', () => actions.exportReport()));
+    if (fullscreenSupported()) {
+      const full = button('⛶', () => toggleFullscreen());
+      full.setAttribute('aria-label', 'Fullscreen');
+      watchFullscreen(full);
+      bar.append(full);
+    }
 
     this.panel = document.createElement('pre');
     this.panel.className = 'hud-panel';
