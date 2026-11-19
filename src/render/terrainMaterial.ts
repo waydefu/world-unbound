@@ -109,7 +109,7 @@ export function createTerrainMaterial(noise: DataTexture, lite = false, surface:
   const tips = veg.r.mul(smoothstep(grassRange.mul(0.18), grassRange.mul(0.65).max(1), grassDist))
     .mul(grassRange.greaterThan(0).select(1, 0));
   const tipColour = mix(vec3(1, 1, 1), vec3(1.08, 1.1, 0.94), tips);
-  const grassDetail = float(1).add(tipNoise.mul(mix(0.54, 0.3, tips)).mul(veg.r));
+  const grassDetail = float(1).add(tipNoise.mul(mix(0.82, 0.35, tips)).mul(veg.r));
   const grassCol = groundCover(macro, wet01, veg, season).mul(canopyShade(veg.r, grassDist, grassRange))
     .mul(surface && !lite ? tipColour.mul(grassDetail) : float(1));
   // Stone quays and breakwaters read as stone, not as a flat tan band: darker on the steep flank and at the foot,
@@ -148,7 +148,8 @@ export function createTerrainMaterial(noise: DataTexture, lite = false, surface:
   } else if (surface) {
     material.normalNode = transformNormalToView(nGeo);
   }
-  material.aoNode = w.w;
+  const rockOcclusion = mix(w.w, w.w.max(0.55), rock.mul(detail));
+  material.aoNode = surface ? rockOcclusion : w.w;
 
   return {
     material,

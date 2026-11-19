@@ -83,8 +83,8 @@ type F = Node<'float'>;
  *   heath     - heather, crowberry: short dark purple-brown cards only, no blades (above the treeline, thin soil).
  */
 const PASTURE = { height: 0.085, width: 0.016, radius: 0.6, stiffness: 0.6, bend: 0.08 }; // unverified
-const HAY = { height: 0.45, width: 0.03, radius: 0.8, stiffness: 1, bend: 0.25 }; // unverified
-const TUSSOCK = { height: 0.6, width: 0.02, radius: 0.36, stiffness: 0.8, bend: 0.5 }; // unverified
+const HAY = { height: 0.43, width: 0.022, radius: 0.8, stiffness: 1, bend: 0.32 }; // unverified
+const TUSSOCK = { height: 0.57, width: 0.017, radius: 0.36, stiffness: 0.8, bend: 0.55 }; // unverified
 const HEATH = { height: 0.11, width: 0.03, radius: 0.5, stiffness: 0.5, bend: 0.1 }; // unverified
 
 /** Per-blade species look. Weights are 0 or 1 per clump (heath beats the rest). */
@@ -210,7 +210,7 @@ export function grassField(inp: GrassInputs, u: GrassUniforms, layout: GrassLayo
 
   // Height: archetype mid-range x clump (0.6-1.4) x blade (+-30 %) x patch, lower at the clump's edge.
   const height = sel(PASTURE.height, HAY.height, TUSSOCK.height, HEATH.height)
-    .mul(clumpH).mul(rnd(4).mul(0.6).add(0.7)).mul(patch.mul(0.3).add(0.85)).mul(edge);
+    .mul(clumpH).mul(rnd(4).mul(0.9).add(0.55)).mul(patch.mul(0.3).add(0.85)).mul(edge);
   const archetype: Archetype = {
     height,
     width: sel(PASTURE.width, HAY.width, TUSSOCK.width, HEATH.width).mul(rnd(12).mul(0.5).add(0.75)),

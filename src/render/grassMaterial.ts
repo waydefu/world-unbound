@@ -30,7 +30,7 @@ const TWO_PI = 2 * Math.PI;
 /** Random-stream salts so blades and cards sharing a cell do not repeat each other. */
 const SALT = { dense: 0, thin: 0, card: 7919 } as const;
 /** Smallest blade width as a fraction of the distance (about one pixel at 720p and 60 degrees): no sub-pixel shimmer. */
-const MIN_WIDTH_PER_M = 0.0013;
+const MIN_WIDTH_PER_M = 0.00095;
 
 function buildVertex(kind: GrassKind, inp: GrassInputs, u: GrassUniforms, layout: GrassLayout) {
   const vColour = varyingProperty('vec3', `grassColour_${kind}`);
@@ -59,8 +59,9 @@ function buildVertex(kind: GrassKind, inp: GrassInputs, u: GrassUniforms, layout
     } else if (kind === 'thin') {
       keep = keep.mul(float(1).sub(smoothstep(near.mul(0.7), near, d)));
     } else {
-      const fadeDistance = d.add(f.rnd(3).sub(0.5).mul(near.mul(0.12)));
-      const fade = smoothstep(inner, inner.add(near.mul(0.4).max(1)), d).mul(float(1).sub(smoothstep(mid.mul(0.55), mid, max(d, fadeDistance))));
+      const fadeDistance = d.add(f.rnd(3).sub(0.5).mul(near.mul(0.18)));
+      const fade = smoothstep(inner, inner.add(near.mul(0.52).max(1)), fadeDistance)
+        .mul(float(1).sub(smoothstep(mid.mul(0.5), mid, max(d, fadeDistance))));
       keep = keep.add(f.veg.g.mul(0.8).mul(a.heath)).mul(0.85).mul(fade);
     }
     // Heath has no blades: its meadow density is already ~0 there, cards carry it.
@@ -94,7 +95,7 @@ function buildVertex(kind: GrassKind, inp: GrassInputs, u: GrassUniforms, layout
       const right = vec3(cos(yaw), 0, sin(yaw));
       const fwd = vec3(sin(yaw).negate(), 0, cos(yaw));
       // Tapered to a point; hay meadow seed heads thicken just under the tip; thin far blades are widened to about a pixel.
-      const taper = float(1).sub(t.mul(0.9));
+      const taper = float(1).sub(t).pow(1.4).mul(0.92).add(0.08);
       const seedBulge = a.hay.mul(step(f.rnd(11), 0.08)).mul(smoothstep(0.7, 0.8, t)).mul(float(1).sub(smoothstep(0.93, 1, t))).mul(1.6).add(1);
       const widthM = max(a.width, d.mul(MIN_WIDTH_PER_M)).mul(taper).mul(seedBulge).mul(alive);
       px = out.x.add(right.x.mul(side).mul(widthM).mul(0.5)).add(rest.x).add(windOff.x);

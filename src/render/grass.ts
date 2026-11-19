@@ -29,7 +29,7 @@ const GUST_CYCLES_PER_MS = 1.1 / GUST_WAVELENGTH_M;
 /** Longest frame step (s) that advances the travelling gusts; a longer stall (tab switch) does not make them jump. */
 const MAX_GUST_STEP_S = 1;
 /** Cards start this share of the blade ring in and are fully in at its edge; the blades fade out over the last 30%. */
-const CARD_INNER_SHARE = 0.6;
+const CARD_INNER_SHARE = 0.48;
 
 /** Statistics of the last selection, for telemetry. */
 export interface GrassStats {

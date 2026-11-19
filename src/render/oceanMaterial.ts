@@ -157,7 +157,7 @@ export function createOceanMaterial(
     Discard(sea.lessThan(-0.5));
 
     // Detail normal: sum of the decoded slopes, scaled by weather and faded out with distance.
-    const amp = slope.mul(1.5).add(0.05).mul(chop).mul(smoothstep(400, 60, dist)).mul(mix(1, 0.55, calm));
+    const amp = slope.mul(1.5).add(0.05).mul(chop).mul(smoothstep(620, 80, dist)).mul(mix(1, 0.38, calm));
     const detail = slopeA.add(slopeB.mul(0.6)).mul(amp);
     const Ng = normalize(vNormal);
     const N = normalize(Ng.sub(vec3(detail.x, 0, detail.y))).toVar();
@@ -188,8 +188,8 @@ export function createOceanMaterial(
     // take a dark green-grey instead.
     const shallow = mix(SHALLOW, SHALLOW_SAND, smoothstep(1.5, 0, depth));
     const narrow = smoothstep(0.25, 0.7, shoreSlope);
-    const patchy = mix(0.55, 1, smoothstep(-0.35, 0.35, slopeA.y));
-    const tint = depth.negate().div(mix(2.2, 1, narrow)).exp().mul(patchy).mul(exposed);
+    const patchy = mix(0.45, 1, smoothstep(0.2, 0.75, lite ? slopeA.y.mul(0.5).add(0.5) : grain));
+    const tint = depth.negate().div(mix(2.2, 0.8, narrow)).exp().mul(patchy).mul(exposed.mul(exposed));
     const body = mix(mix(DEEP, BASIN, calm), shallow, tint).mul(bodyLight).toVar();
     // Backlit crests: sun shining through the wave when looking towards it.
     const crest = clamp(vWaveY.div(weather.y), 0, 1);
@@ -202,7 +202,7 @@ export function createOceanMaterial(
     // Thin broken band: ~0.6-1.8 m of horizontal distance from the waterline, ragged by the noise alpha channel.
     const shoreDist = depth.div(shoreSlope);
     const reach = lite ? float(1.2) : grain.mul(1.2).add(0.6);
-    const shore = smoothstep(1, 0, shoreDist.div(reach)).mul(breakup).mul(0.6);
+    const shore = smoothstep(1, 0, shoreDist.div(reach)).mul(breakup).mul(0.6).mul(exposed);
     // Enclosed basins stay calm: no shore or crest foam.
     const foam = (lite ? min(shore, 1) : min(shore.add(smoothstep(0.8, 1, crest).mul(0.4).mul(weather.z)), 1)).mul(exposed);
     const sunIrradianceTerm = sunE.mul(max(sunDir.y, 0).div(Math.PI));
