@@ -125,25 +125,25 @@ describe('grass geometry and tiers', () => {
     expect(Math.max(...Array.from(near.geometry.index?.array ?? []))).toBe(69);
   });
 
-  it('tiers match the spec: blades per m2 low 8 / med 16 / high 28 near, cards only on low out to 60 m', () => {
+  it('tiers match the spec: blades per m2 low 0 / med 40 / high 70 near (phase G density), cards only on low out to 60 m', () => {
     expect(QUALITY.low.grass.nearM).toBe(0);
     expect(QUALITY.low.grass.midM).toBe(60);
-    expect(QUALITY.med.grass).toMatchObject({ nearM: 40, midM: 100, bladesPerM2: 16 });
-    expect(QUALITY.high.grass).toMatchObject({ nearM: 60, midM: 150, bladesPerM2: 28 });
+    expect(QUALITY.med.grass).toMatchObject({ nearM: 40, midM: 100, bladesPerM2: 40 });
+    expect(QUALITY.high.grass).toMatchObject({ nearM: 60, midM: 150, bladesPerM2: 70 });
   });
 
   it('phase F density: the boosted blade count per cell still fits 16-bit indices at every tier, cards keep their ring order', () => {
     const cell = CELL_M * CELL_M;
     for (const tier of [QUALITY.low, QUALITY.med, QUALITY.high]) {
       const g = tier.grass;
-      const blades = Math.min(5000, Math.round(cell * g.bladesPerM2 * g.bladeBoost));
+      const blades = Math.min(5000, Math.round(cell * g.bladesPerM2));
       expect(blades * 7).toBeLessThanOrEqual(65535);
       expect(Math.min(7000, Math.round(cell * g.cardsPerM2)) * 9).toBeLessThanOrEqual(65535);
       expect(g.midM).toBeGreaterThan(g.nearM);
     }
     // Blades per m2 at the eye: more than the base figure on med and high (the first density read as sparse).
-    expect(QUALITY.med.grass.bladesPerM2 * QUALITY.med.grass.bladeBoost).toBeGreaterThan(16);
-    expect(QUALITY.high.grass.bladesPerM2 * QUALITY.high.grass.bladeBoost).toBeGreaterThan(28);
+    expect(QUALITY.med.grass.bladesPerM2).toBeGreaterThan(16);
+    expect(QUALITY.high.grass.bladesPerM2).toBeGreaterThan(28);
   });
 
   it('?grass=0 turns the grass off, on by default', () => {

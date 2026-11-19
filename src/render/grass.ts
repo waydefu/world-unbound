@@ -17,8 +17,6 @@ export interface GrassSettings {
   readonly midM: number;
   /** Blades per m2 where the meadow density is 1. */
   readonly bladesPerM2: number;
-  /** Multiplier on `bladesPerM2` for the sward the eye stands in (G2.1 phase F: the first density read as sparse). */
-  readonly bladeBoost: number;
   /** Cards per m2 where the meadow density is 1. */
   readonly cardsPerM2: number;
 }
@@ -83,7 +81,7 @@ export class GrassLayer {
       },
       { nearM: settings.nearM, midM: settings.midM, cardInnerM: blades ? settings.nearM * CARD_INNER_SHARE : 0 },
     );
-    this.bladesPerDenseCell = Math.min(MAX_BLADES_PER_CELL, Math.round(CELL_AREA * settings.bladesPerM2 * settings.bladeBoost));
+    this.bladesPerDenseCell = Math.min(MAX_BLADES_PER_CELL, Math.round(CELL_AREA * settings.bladesPerM2));
     this.bladesPerThinCell = Math.round(this.bladesPerDenseCell / 4);
     this.cardsPerCell = Math.min(7000, Math.round(CELL_AREA * settings.cardsPerM2));
     this.uniforms = {
