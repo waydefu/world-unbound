@@ -75,7 +75,7 @@ function buildVertex(kind: GrassKind, inp: GrassInputs, u: GrassUniforms, layout
     const bend = f.restBend.add(lean);
     const leafHeight = companion ? companion.greaterThan(0).select(mix(f.rnd(13).mul(0.38).add(0.45), f.rnd(13).mul(0.25).add(0.3), a.hay), 1) : float(1);
     const hs = a.height.mul(alive).mul(leafHeight);
-    // Shared dense blades converge to the thin quad's straight interpolation before the cell switches.
+    // Shared dense blades converge to the thin triangle's straight silhouette before the cell switches.
     const straight = kind === 'dense' ? shared.select(smoothstep(near.mul(0.38), near.mul(0.5), f.cellDist), 0) : float(0);
     const bendAlong = mix(t.mul(t), t, straight);
     const rest = f.restDir.mul(f.restBend.mul(hs).mul(bendAlong));
@@ -105,13 +105,13 @@ function buildVertex(kind: GrassKind, inp: GrassInputs, u: GrassUniforms, layout
     } else {
       const right = vec3(cos(yaw), 0, sin(yaw));
       const fwd = vec3(sin(yaw).negate(), 0, cos(yaw));
-      // Tapered to a point; hay meadow seed heads thicken just under the tip; thin far blades are widened to about a pixel.
-      const taper = mix(float(1).sub(t).pow(1.4), float(1).sub(t), straight).mul(0.92).add(0.08);
-      const seedBulge = a.hay.mul(step(f.rnd(11), 0.08)).mul(smoothstep(0.7, 0.8, t)).mul(float(1).sub(smoothstep(0.93, 1, t))).mul(1.6).add(1);
+      // Give the dense middle row the thin triangle's exact half-width before the handoff.
+      const remaining = float(1).sub(t);
+      const taper = mix(remaining.pow(1.4).mul(0.92).add(0.08), remaining, straight);
       const leafWidth = companion ? companion.greaterThan(0).select(1.35, 1) : float(1);
       // Pasture basal leaves spread gently from their rooted centre; longer hay stems remain upright.
       const fan = companion ? companion.greaterThan(0).select(a.pasture.mul(0.06).mul(t), 0) : float(0);
-      const widthM = max(a.width, d.mul(MIN_WIDTH_PER_M)).mul(taper).mul(seedBulge).mul(alive).mul(leafWidth);
+      const widthM = max(a.width, d.mul(MIN_WIDTH_PER_M)).mul(taper).mul(alive).mul(leafWidth);
       px = out.x.add(right.x.mul(side).mul(widthM).mul(0.5)).add(rest.x).add(windOff.x).add(fwd.x.mul(fan));
       py = out.y.add(lift);
       pz = out.z.add(right.z.mul(side).mul(widthM).mul(0.5)).add(rest.y).add(windOff.y).add(fwd.z.mul(fan));

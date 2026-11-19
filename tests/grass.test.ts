@@ -134,13 +134,16 @@ describe('grass cells', () => {
 });
 
 describe('grass geometry and tiers', () => {
-  it('blades: 3 segments are 7 vertices and 5 triangles, 1 segment is a 4-vertex quad; cards are 3 triangles', () => {
+  it('blades: 3 segments are 7 vertices and 5 triangles, 1 segment has the same pointed tip; cards are 3 triangles', () => {
     const near = createBladeGeometry(10, 3, new Float32Array(8));
     expect(near.trianglesPerInstance).toBe(50);
     expect(near.geometry.getAttribute('position').count).toBe(70);
     const far = createBladeGeometry(10, 1, new Float32Array(8));
-    expect(far.trianglesPerInstance).toBe(20);
-    expect(far.geometry.getAttribute('position').count).toBe(40);
+    expect(far.trianglesPerInstance).toBe(10);
+    const farPosition = far.geometry.getAttribute('position');
+    expect(farPosition.count).toBe(30);
+    expect([farPosition.getX(2), farPosition.getY(2), farPosition.getZ(2)]).toEqual([0, 1, 0]);
+    expect(Array.from(far.geometry.index?.array.slice(0, 3) ?? [])).toEqual([0, 1, 2]);
     const card = createCardGeometry(5, new Float32Array(8));
     expect(card.trianglesPerInstance).toBe(15);
     expect(card.geometry.getAttribute('part').count).toBe(45);

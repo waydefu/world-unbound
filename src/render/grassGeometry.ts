@@ -29,23 +29,21 @@ function finish(geometry: InstancedBufferGeometry, position: Float32Array, index
 }
 
 /**
- * Blades with `segments` quads: rows of two vertices at t = k / segments, and, for more than one segment, a tip
- * vertex at t = 1 (2 x segments - 1 triangles, 2 x segments + 1 vertices); one segment is a quad with a narrow top
- * (2 triangles, 4 vertices).
+ * Blades have rows of two vertices at t = k / segments, followed by a single tip at t = 1.
+ * One segment forms a triangle. Additional segments add a quad below the tip.
  */
 export function createBladeGeometry(blades: number, segments: number, cellList: Float32Array, companions = 0): GrassGeometry {
-  const rows = segments > 1 ? segments : 2;
-  const primaryVertices = segments > 1 ? 2 * segments + 1 : 4;
+  const primaryVertices = 2 * segments + 1;
   const perBlade = primaryVertices + companions * 3;
-  const trisPerBlade = (segments > 1 ? 2 * segments - 1 : 2) + companions;
+  const trisPerBlade = 2 * segments - 1 + companions;
   const position = new Float32Array(blades * perBlade * 3);
   const part = companions > 0 ? new Float32Array(blades * perBlade) : undefined;
   const index = new Uint16Array(blades * trisPerBlade * 3);
   let k = 0;
   for (let b = 0; b < blades; b++) {
     const v0 = b * perBlade;
-    for (let r = 0; r < rows; r++) {
-      const t = segments > 1 ? r / segments : r;
+    for (let r = 0; r < segments; r++) {
+      const t = r / segments;
       for (let s = 0; s < 2; s++) {
         const o = (v0 + r * 2 + s) * 3;
         position[o] = s === 0 ? -1 : 1;
@@ -53,21 +51,15 @@ export function createBladeGeometry(blades: number, segments: number, cellList: 
         position[o + 2] = b;
       }
     }
-    if (segments > 1) {
-      const o = (v0 + 2 * segments) * 3;
-      position[o] = 0;
-      position[o + 1] = 1;
-      position[o + 2] = b;
-    }
-    for (let r = 0; r < rows - 1; r++) {
+    const tip = v0 + 2 * segments;
+    position[tip * 3 + 1] = 1;
+    position[tip * 3 + 2] = b;
+    for (let r = 0; r < segments - 1; r++) {
       const a = v0 + r * 2;
       index[k++] = a; index[k++] = a + 1; index[k++] = a + 2;
       index[k++] = a + 1; index[k++] = a + 3; index[k++] = a + 2;
     }
-    if (segments > 1) {
-      const a = v0 + 2 * (segments - 1);
-      index[k++] = a; index[k++] = a + 1; index[k++] = v0 + 2 * segments;
-    }
+    index[k++] = tip - 2; index[k++] = tip - 1; index[k++] = tip;
     for (let leaf = 0; leaf < companions; leaf++) {
       const v = v0 + primaryVertices + leaf * 3;
       for (let s = 0; s < 3; s++) {
