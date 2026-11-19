@@ -131,7 +131,7 @@ export interface GrassField {
  * Builds the shared graph. `salt` separates the random streams of blades and cards that share a cell.
  * Must be called inside an Fn (it creates variables).
  */
-export function grassField(inp: GrassInputs, u: GrassUniforms, layout: GrassLayout, salt: number): GrassField {
+export function grassField(inp: GrassInputs, u: GrassUniforms, layout: GrassLayout, salt: number, companion: F | null): GrassField {
   const cell = attribute('grassCell', 'vec4');
   const idx = positionGeometry.z.mul(layout.stride);
   const cellU = cell.x.sub(WORLD_MIN).div(CELL_M).toUint().mul(uint(512)).add(cell.y.sub(WORLD_MIN).div(CELL_M).toUint());
@@ -176,8 +176,14 @@ export function grassField(inp: GrassInputs, u: GrassUniforms, layout: GrassLayo
   const angle = rnd(0).mul(TWO_PI);
   const rad = sqrt(rnd(1)).mul(radius).mul(1.25);
   const dispersed = rnd(2).lessThan(mix(0.72, 0.2, isTussock));
-  const x = dispersed.select(cell.x.add(rnd(0).mul(CELL_M)), cx.add(cos(angle).mul(rad)));
-  const z = dispersed.select(cell.y.add(rnd(1).mul(CELL_M)), cz.add(sin(angle).mul(rad)));
+  let x = dispersed.select(cell.x.add(rnd(0).mul(CELL_M)), cx.add(cos(angle).mul(rad)));
+  let z = dispersed.select(cell.y.add(rnd(1).mul(CELL_M)), cz.add(sin(angle).mul(rad)));
+  if (companion) {
+    const direction = angle.add(companion.mul(2.4));
+    const offset = companion.mul(rnd(12).mul(0.045).add(0.055));
+    x = x.add(cos(direction).mul(offset));
+    z = z.add(sin(direction).mul(offset));
+  }
   const edge = float(1).sub(rad.div(radius).mul(0.25));
 
   const uv = surfaceUv(x, z);

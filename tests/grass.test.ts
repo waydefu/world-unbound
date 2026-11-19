@@ -132,6 +132,18 @@ describe('grass geometry and tiers', () => {
     expect(QUALITY.high.grass).toMatchObject({ nearM: 60, midM: 150, bladesPerM2: 70 });
   });
 
+  it('fits two companion leaves per dense placement in the original triangle budget and index range', () => {
+    const placements = Math.round(CELL_M ** 2 * QUALITY.high.grass.bladesPerM2);
+    const { geometry, trianglesPerInstance } = createBladeGeometry(placements, 2, new Float32Array(4), 2);
+    const position = geometry.getAttribute('position');
+    const part = geometry.getAttribute('part');
+    expect(trianglesPerInstance).toBe(placements * 5);
+    expect(position.count).toBe(placements * 11);
+    expect(geometry.index?.array.at(-1)).toBe(position.count - 1);
+    expect([part.getX(4), part.getX(5), part.getX(8)]).toEqual([0, 1, 2]);
+    expect(position.getZ(position.count - 1)).toBe(placements - 1);
+  });
+
   it('phase F density: the boosted blade count per cell still fits 16-bit indices at every tier, cards keep their ring order', () => {
     const cell = CELL_M * CELL_M;
     for (const tier of [QUALITY.low, QUALITY.med, QUALITY.high]) {

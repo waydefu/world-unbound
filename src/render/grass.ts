@@ -22,7 +22,8 @@ export interface GrassSettings {
 }
 
 const CELL_AREA = CELL_M * CELL_M;
-/** 16-bit indices: 7 vertices per dense blade. */
+const DENSE_COMPANIONS = 2;
+/** 16-bit indices: 11 vertices per dense placement (5 primary plus two three-vertex companions). */
 const MAX_BLADES_PER_CELL = 5000;
 /** Gust phase advances this many cycles per m/s of wind speed per second (gust fronts move with the wind). */
 const GUST_CYCLES_PER_MS = 1.1 / GUST_WAVELENGTH_M;
@@ -99,7 +100,7 @@ export class GrassLayer {
     const thinLayout: GrassLayout = { stride: THIN_BLADE_STRIDE, perClump };
     const cardLayout: GrassLayout = { stride: 1, perClump: this.cardsPerCell / CLUMPS_PER_CELL };
     this.draws = [
-      blades ? this.draw('dense', createBladeGeometry(this.bladesPerDenseCell, 3, this.cells.dense), inputs, denseLayout, shadows, lite) : null,
+      blades ? this.draw('dense', createBladeGeometry(this.bladesPerDenseCell, 2, this.cells.dense, DENSE_COMPANIONS), inputs, denseLayout, shadows, lite) : null,
       blades ? this.draw('thin', createBladeGeometry(this.bladesPerThinCell, 2, this.cells.thin), inputs, thinLayout, shadows, lite) : null,
       this.draw('card', createCardGeometry(this.cardsPerCell, this.cells.cards), inputs, cardLayout, shadows, lite),
     ];
@@ -165,9 +166,11 @@ export class GrassLayer {
       publish(this.draws[1], cells.thinCount);
       publish(this.draws[2], cells.cardCount);
       stats.cells = cells.denseCount + cells.thinCount + cells.cardCount;
-      stats.blades = cells.denseCount * this.bladesPerDenseCell + cells.thinCount * this.bladesPerThinCell;
+      stats.blades = cells.denseCount * this.bladesPerDenseCell * (1 + DENSE_COMPANIONS) + cells.thinCount * this.bladesPerThinCell;
       stats.cards = cells.cardCount * this.cardsPerCell;
-      stats.triangles = cells.denseCount * this.bladesPerDenseCell * 5 + cells.thinCount * this.bladesPerThinCell * 3 + stats.cards * 3;
+      stats.triangles = cells.denseCount * (this.draws[0]?.parts.trianglesPerInstance ?? 0)
+        + cells.thinCount * (this.draws[1]?.parts.trianglesPerInstance ?? 0)
+        + cells.cardCount * (this.draws[2]?.parts.trianglesPerInstance ?? 0);
     }
     uniforms.eye.value.set(ex, ey, ez);
     uniforms.time.value = nowSeconds;

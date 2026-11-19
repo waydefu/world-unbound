@@ -4,14 +4,14 @@ import {
   transformNormalToView, varyingProperty, vec3,
 } from 'three/tsl';
 import { THIN_BLADE_STRIDE, grassField, type GrassField, type GrassInputs, type GrassLayout, type GrassUniforms } from './grassField';
-import { canopyShade, groundCover } from './grassPalette';
+import { canopyShade, groundCover, meadowTint } from './grassPalette';
 
 /**
  * Grass materials (spec G2.1 phases C and G): three Lambert node materials whose vertex stage builds every blade (or
  * card) from (cell, index) with `grassField`. Lambert because blades are thin and many: diffuse sun and
  * hemisphere light with the CSM shadows, no specular. The translucency of a backlit blade is added as emission.
  *
- *  - dense:  3-segment curved blades near the eye; blades drop out by their hash with distance;
+ *  - dense:  curved blades and two short companion leaves near the eye;
  *  - thin:   2-segment blades (every fourth dense blade) from half the ring to its edge;
  *  - card:   tufts of three blades, dropping in over the blade ring's last part and out at the mid limit.
  */
@@ -32,12 +32,13 @@ const SALT = { dense: 0, thin: 0, card: 7919 } as const;
 /** Smallest blade width as a fraction of the distance (about one pixel at 720p and 60 degrees): no sub-pixel shimmer. */
 const MIN_WIDTH_PER_M = 0.00095;
 
-function buildVertex(kind: GrassKind, inp: GrassInputs, u: GrassUniforms, layout: GrassLayout) {
+function buildVertex(kind: GrassKind, inp: GrassInputs, u: GrassUniforms, layout: GrassLayout, lite: boolean) {
   const vColour = varyingProperty('vec3', `grassColour_${kind}`);
   const vNormal = varyingProperty('vec3', `grassNormal_${kind}`);
   const vHeight = varyingProperty('float', `grassHeight_${kind}`);
   const position = Fn(() => {
-    const f: GrassField = grassField(inp, u, layout, SALT[kind]);
+    const companion = kind === 'dense' ? attribute('part', 'float') : null;
+    const f: GrassField = grassField(inp, u, layout, SALT[kind], companion);
     const near = u.rings.x;
     const mid = u.rings.y;
     const inner = u.rings.z;
@@ -45,7 +46,7 @@ function buildVertex(kind: GrassKind, inp: GrassInputs, u: GrassUniforms, layout
     const t = positionGeometry.y;
     const a = f.archetype;
     const d = f.dist;
-    const yaw = f.rnd(9).mul(TWO_PI);
+    const yaw = f.rnd(9).mul(TWO_PI).add(companion ? companion.mul(2.4) : 0);
 
     // Every fourth dense blade is also in the thin mesh. Fade only the extra blades as the cell approaches
     // the CPU's halfway switch, keeping the same surviving roots and probability on either side.
@@ -57,6 +58,7 @@ function buildVertex(kind: GrassKind, inp: GrassInputs, u: GrassUniforms, layout
       const extra = float(1).sub(smoothstep(near.mul(0.3), near.mul(0.48), d.add(spread)))
         .mul(float(1).sub(smoothstep(near.mul(0.42), near.mul(0.5), f.cellDist)));
       keep = keep.mul(shared.select(1, extra));
+      if (companion) keep = keep.mul(companion.greaterThan(0).select(extra, 1));
     } else if (kind === 'thin') {
       keep = keep.mul(float(1).sub(smoothstep(near.mul(0.7), near, d)));
     } else {
@@ -71,7 +73,8 @@ function buildVertex(kind: GrassKind, inp: GrassInputs, u: GrassUniforms, layout
     const out = f.root;
     // Total bend: the rest lean of the clump plus the wind (fraction of the height the tip moves, quadratic along t).
     const bend = f.restBend.add(lean);
-    const hs = a.height.mul(alive);
+    const leafHeight = companion ? companion.greaterThan(0).select(f.rnd(13).mul(0.38).add(0.45), 1) : float(1);
+    const hs = a.height.mul(alive).mul(leafHeight);
     const rest = f.restDir.mul(f.restBend.mul(hs).mul(t).mul(t));
     const windOff = f.windDir.mul(lean.mul(hs).mul(t).mul(t));
     const lift = t.mul(hs).mul(float(1).sub(bend.mul(bend).mul(0.3)));
@@ -98,7 +101,8 @@ function buildVertex(kind: GrassKind, inp: GrassInputs, u: GrassUniforms, layout
       // Tapered to a point; hay meadow seed heads thicken just under the tip; thin far blades are widened to about a pixel.
       const taper = float(1).sub(t).pow(1.4).mul(0.92).add(0.08);
       const seedBulge = a.hay.mul(step(f.rnd(11), 0.08)).mul(smoothstep(0.7, 0.8, t)).mul(float(1).sub(smoothstep(0.93, 1, t))).mul(1.6).add(1);
-      const widthM = max(a.width, d.mul(MIN_WIDTH_PER_M)).mul(taper).mul(seedBulge).mul(alive);
+      const leafWidth = companion ? companion.greaterThan(0).select(1.35, 1) : float(1);
+      const widthM = max(a.width, d.mul(MIN_WIDTH_PER_M)).mul(taper).mul(seedBulge).mul(alive).mul(leafWidth);
       px = out.x.add(right.x.mul(side).mul(widthM).mul(0.5)).add(rest.x).add(windOff.x);
       py = out.y.add(lift);
       pz = out.z.add(right.z.mul(side).mul(widthM).mul(0.5)).add(rest.y).add(windOff.y);
@@ -114,6 +118,7 @@ function buildVertex(kind: GrassKind, inp: GrassInputs, u: GrassUniforms, layout
     // clump and blade a little different. No blade is darker than the ground under it.
     const wetDark = mix(1, 0.55, max(float(1).sub(smoothstep(0.2, 1.4, out.y)), u.wetness));
     let ground = groundCover(f.macro, f.wet, f.veg, u.season).mul(canopyShade(f.veg.r, d, mid)).mul(wetDark);
+    if (!lite) ground = ground.mul(meadowTint(f.veg.r, u.season.z));
     ground = mix(ground, ground.mul(SILVER), a.tussock.mul(0.7));
     ground = mix(ground, HEATHER.mul(float(1).add(u.season.y)).mul(wetDark), a.heath);
     const tipLift = mix(vec3(1, 1, 1), vec3(1.14, 1.16, 0.9), smoothstep(0.1, 1, t));
@@ -137,7 +142,7 @@ function buildVertex(kind: GrassKind, inp: GrassInputs, u: GrassUniforms, layout
 
 /** Builds the material of one grass class. `lite` skips the translucency term (low tier). */
 export function createGrassMaterial(kind: GrassKind, inp: GrassInputs, u: GrassUniforms, layout: GrassLayout, lite: boolean): MeshLambertNodeMaterial {
-  const { position, vColour, vNormal, vHeight } = buildVertex(kind, inp, u, layout);
+  const { position, vColour, vNormal, vHeight } = buildVertex(kind, inp, u, layout, lite);
   const material = new MeshLambertNodeMaterial({ side: DoubleSide });
   material.name = `grass-${kind}`;
   material.positionNode = position();

@@ -33,11 +33,13 @@ function finish(geometry: InstancedBufferGeometry, position: Float32Array, index
  * vertex at t = 1 (2 x segments - 1 triangles, 2 x segments + 1 vertices); one segment is a quad with a narrow top
  * (2 triangles, 4 vertices).
  */
-export function createBladeGeometry(blades: number, segments: number, cellList: Float32Array): GrassGeometry {
+export function createBladeGeometry(blades: number, segments: number, cellList: Float32Array, companions = 0): GrassGeometry {
   const rows = segments > 1 ? segments : 2;
-  const perBlade = segments > 1 ? 2 * segments + 1 : 4;
-  const trisPerBlade = segments > 1 ? 2 * segments - 1 : 2;
+  const primaryVertices = segments > 1 ? 2 * segments + 1 : 4;
+  const perBlade = primaryVertices + companions * 3;
+  const trisPerBlade = (segments > 1 ? 2 * segments - 1 : 2) + companions;
   const position = new Float32Array(blades * perBlade * 3);
+  const part = companions > 0 ? new Float32Array(blades * perBlade) : undefined;
   const index = new Uint16Array(blades * trisPerBlade * 3);
   let k = 0;
   for (let b = 0; b < blades; b++) {
@@ -66,8 +68,19 @@ export function createBladeGeometry(blades: number, segments: number, cellList: 
       const a = v0 + 2 * (segments - 1);
       index[k++] = a; index[k++] = a + 1; index[k++] = v0 + 2 * segments;
     }
+    for (let leaf = 0; leaf < companions; leaf++) {
+      const v = v0 + primaryVertices + leaf * 3;
+      for (let s = 0; s < 3; s++) {
+        const o = (v + s) * 3;
+        position[o] = s === 0 ? -1 : s === 1 ? 1 : 0;
+        position[o + 1] = s === 2 ? 1 : 0;
+        position[o + 2] = b;
+        if (part) part[v + s] = leaf + 1;
+        index[k++] = v + s;
+      }
+    }
   }
-  return finish(new InstancedBufferGeometry(), position, index, cellList);
+  return finish(new InstancedBufferGeometry(), position, index, cellList, part);
 }
 
 /** Cards: tufts of three one-triangle blades (9 vertices, 3 triangles per card), `part` 0..2 per blade. */

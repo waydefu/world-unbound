@@ -4,7 +4,8 @@ import {
   smoothstep, texture, transformNormalToView, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
 import { WORLD_MIN } from '../world/constants';
-import { canopyShade, groundCover } from './grassPalette';
+import { GRASS_COVER_METRES } from '../world/grassCover';
+import { canopyShade, groundCover, meadowTint } from './grassPalette';
 import { triplanarChannel, triplanarSlope } from './noiseSampling';
 
 /**
@@ -41,6 +42,7 @@ export interface TerrainSurface {
   /** RGBA8 meadow, heath, tree, bare on the same lattice, and the R8 wetness proxy. */
   readonly vegetation: DataTexture;
   readonly wetness: DataTexture;
+  readonly grassCover: DataTexture | null;
 }
 
 const SEABED = vec3(0.105, 0.118, 0.098);
@@ -58,8 +60,6 @@ const STONE_EDGE_DARKENING = 0.27;
 const MACRO_METRES = 37;
 const GRAIN_METRES = 5.3;
 const RELIEF_METRES = 1.25;
-/** Metres per tile of the fine grass-tip noise beyond the blade range. */
-const TIP_METRES = 1.7;
 /**
  * Specular strength of the ground (scales F0 and F90 of the dielectric; 1 = the default 4 % at normal incidence, rising
  * to 100 % at grazing). Soil, grass and rock are rough and diffuse: with the full Fresnel the low sun behind the ridges
@@ -102,14 +102,15 @@ export function createTerrainMaterial(noise: DataTexture, lite = false, surface:
   const veg: Node<'vec4'> = surface && surfaceUv ? texture(surface.vegetation, surfaceUv) : vec4(1, 0, 0, 0);
   const wet01: Node<'float'> = surface && surfaceUv ? texture(surface.wetness, surfaceUv).r : float(0);
   // Shade between the blades inside the grass range: full at the eye, gone at the range edge (no visible ring).
-  // Beyond the blades the ground carries the sward to the horizon (phase G.7): the blades' tip colour and a fine
-  // grass-tip noise (1.7 m tiles), faded in from the middle of the blade range so the cards and the terrain meet without a ring.
-  const tipNoise = texture(noise, vec2(pW.x, pW.z).div(TIP_METRES)).a.sub(0.5);
+  // Overlapping leaf shapes replace the smooth ground between sparse geometry. Mips average them into the
+  // distant grass colour. Rotate the sample away from the terrain grid while preserving its scale.
+  const tipUv = vec2(pW.x.add(pW.z), pW.z.sub(pW.x)).div(GRASS_COVER_METRES * Math.SQRT2);
+  const tipNoise = surface?.grassCover ? texture(surface.grassCover, tipUv).r.sub(0.55) : float(0);
   const grassDist = length(pW.xz.sub(eyeOffset.xz));
   const tips = veg.r.mul(smoothstep(grassRange.mul(0.18), grassRange.mul(0.65).max(1), grassDist))
     .mul(grassRange.greaterThan(0).select(1, 0));
-  const tipColour = mix(vec3(1, 1, 1), vec3(1.08, 1.1, 0.94), tips);
-  const grassDetail = float(1).add(tipNoise.mul(mix(0.82, 0.35, tips)).mul(veg.r));
+  const tipColour = meadowTint(veg.r, season.z).mul(mix(1, 1.08, tips));
+  const grassDetail = float(1).add(tipNoise.mul(mix(1.55, 0.85, tips)).mul(veg.r));
   const grassCol = groundCover(macro, wet01, veg, season).mul(canopyShade(veg.r, grassDist, grassRange))
     .mul(surface && !lite ? tipColour.mul(grassDetail) : float(1));
   // Stone quays and breakwaters read as stone, not as a flat tan band: darker on the steep flank and at the foot,
