@@ -135,6 +135,18 @@ describe('man-made stone', () => {
     }
   });
 
+  it('keeps a harbour pier covered across its deck on both material grids', () => {
+    for (const step of [1, 2]) {
+      const dim = maskDim(N, step);
+      const material = new Uint8Array(dim * dim * 4);
+      buildVegetation(strip(8), PAD, APRON, step, material, ORIGIN);
+      for (let x = 30; x < 38; x += step) {
+        const offset = ((32 / step) * dim + x / step) * 4;
+        expect(material[offset + 2]).toBe(255);
+      }
+    }
+  });
+
   it('does not flag a wide island or a one-sided shore, but flags the sheer quay edge', () => {
     const island = lattice((x) => (x >= 20 && x < 50 ? 2 : -6));
     const flags = new Uint8Array(N * N);

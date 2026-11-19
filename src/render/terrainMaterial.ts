@@ -1,6 +1,6 @@
 import { type DataTexture, FrontSide, MeshPhysicalNodeMaterial, type Node, Vector3 } from 'three/webgpu';
 import {
-  attribute, clamp, float, max, mix, normalize, normalWorldGeometry, positionView, positionWorld,
+  attribute, clamp, float, length, max, mix, normalize, normalWorldGeometry, positionView, positionWorld,
   smoothstep, texture, transformNormalToView, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
 import { WORLD_MIN } from '../world/constants';
@@ -45,14 +45,15 @@ export interface TerrainSurface {
 
 const SEABED = vec3(0.105, 0.118, 0.098);
 const SAND = vec3(0.52, 0.45, 0.31);
-const ROCK = vec3(0.2, 0.19, 0.175);
+const ROCK = vec3(0.155, 0.165, 0.175);
+const CHUNK_ROCK = vec3(0.2, 0.19, 0.175);
 /**
  * The third material weight. The chunk path leaves it at 0 ("earth", reserved); in the CDLOD bake it flags
  * man-made stone (breakwaters, piers, quay walls): weathered grey concrete and granite, lighter than the rock.
  */
-const STONE = vec3(0.24, 0.245, 0.25);
+const STONE = vec3(0.24, 0.25, 0.265);
 /** Share of the stone albedo lost on its darkest edge (steep flanks, the foot at the waterline). */
-const STONE_EDGE_DARKENING = 0.5;
+const STONE_EDGE_DARKENING = 0.27;
 /** Metres per noise tile: macro patches, grain and micro-relief. */
 const MACRO_METRES = 37;
 const GRAIN_METRES = 5.3;
@@ -81,7 +82,6 @@ export function createTerrainMaterial(noise: DataTexture, lite = false, surface:
     ? vec2(pW.x, pW.z).sub(WORLD_MIN).div(2 * surface.materialStep).add(0.5).div(surface.materialDim)
     : null;
   const w: Node<'vec4'> = surface && surfaceUv ? texture(surface.material, surfaceUv) : attribute('color', 'vec4');
-  const grass = clamp(float(1).sub(w.x).sub(w.y).sub(w.z), 0, 1);
   const y = pW.y;
   const dist = positionView.length();
   const detail = smoothstep(120, 30, dist);
@@ -90,6 +90,13 @@ export function createTerrainMaterial(noise: DataTexture, lite = false, surface:
   const nGeo = surface && surfaceUv ? normalize(texture(surface.normal, surfaceUv).xyz.mul(2).sub(1)) : normalWorldGeometry;
   // Patch noise (B channel, 0..1) mapped to -1..1; world-fixed, triplanar on steep ground.
   const macro = triplanarChannel(noise, pW, nGeo, MACRO_METRES, 'b').mul(2).sub(1);
+  const grain = lite ? macro : triplanarChannel(noise, pW, nGeo, GRAIN_METRES, 'a').mul(2).sub(1);
+  // Break up mixed rock/vegetation at the edge while preserving fully bare cliffs and fully vegetated slopes.
+  const available = float(1).sub(w.x).sub(w.z).max(0);
+  const rockShare = clamp(w.y.div(available.max(1e-3)), 0, 1);
+  const mixedEdge = rockShare.mul(float(1).sub(rockShare));
+  const rock = surface ? clamp(rockShare.add(grain.mul(mixedEdge).mul(1.8)), 0, 1).mul(available) : w.y;
+  const grass = available.sub(rock).max(0);
 
   // Vegetation (CDLOD only): heath above the treeline, forest tint, wetter and lusher hollows, seasonal colour.
   const veg: Node<'vec4'> = surface && surfaceUv ? texture(surface.vegetation, surfaceUv) : vec4(1, 0, 0, 0);
@@ -98,23 +105,28 @@ export function createTerrainMaterial(noise: DataTexture, lite = false, surface:
   // Beyond the blades the ground carries the sward to the horizon (phase G.7): the blades' tip colour and a fine
   // grass-tip noise (1.7 m tiles), faded in from the middle of the blade range so the cards and the terrain meet without a ring.
   const tipNoise = texture(noise, vec2(pW.x, pW.z).div(TIP_METRES)).a.sub(0.5);
-  const tips = veg.r.mul(smoothstep(grassRange.mul(0.35), grassRange.mul(0.8).max(1), dist)).mul(grassRange.greaterThan(0).select(1, 0));
-  const tipColour = mix(vec3(1, 1, 1), vec3(1.14, 1.16, 0.9), tips).mul(float(1).add(tipNoise.mul(0.3).mul(tips)));
-  const grassCol = groundCover(macro, wet01, veg, season).mul(canopyShade(veg.r, dist, grassRange)).mul(lite ? float(1) : tipColour);
+  const grassDist = length(pW.xz.sub(eyeOffset.xz));
+  const tips = veg.r.mul(smoothstep(grassRange.mul(0.18), grassRange.mul(0.65).max(1), grassDist))
+    .mul(grassRange.greaterThan(0).select(1, 0));
+  const tipColour = mix(vec3(1, 1, 1), vec3(1.08, 1.1, 0.94), tips);
+  const grassDetail = float(1).add(tipNoise.mul(mix(0.54, 0.3, tips)).mul(veg.r));
+  const grassCol = groundCover(macro, wet01, veg, season).mul(canopyShade(veg.r, grassDist, grassRange))
+    .mul(surface && !lite ? tipColour.mul(grassDetail) : float(1));
   // Stone quays and breakwaters read as stone, not as a flat tan band: darker on the steep flank and at the foot,
   // where the wall meets the water.
   const stoneEdge = max(float(1).sub(nGeo.y).mul(4), float(1).sub(smoothstep(0.2, 1.3, y))).min(1);
-  const stoneCol = STONE.mul(float(1).sub(stoneEdge.mul(STONE_EDGE_DARKENING)));
-  let base = grassCol.mul(grass).add(SAND.mul(w.x)).add(ROCK.mul(w.y)).add(stoneCol.mul(w.z));
+  const stoneCol = STONE.mul(float(1).sub(stoneEdge.mul(STONE_EDGE_DARKENING))).mul(float(1).add(grain.mul(0.26)));
+  const rockCol = surface ? ROCK.mul(float(1).add(grain.mul(0.28).add(macro.mul(0.12)))) : CHUNK_ROCK;
+  let base = grassCol.mul(grass).add(SAND.mul(w.x)).add(rockCol.mul(rock)).add(stoneCol.mul(w.z));
   base = mix(base, SEABED, float(1).sub(smoothstep(-2.2, -0.2, y)));
   if (!lite) {
-    const grain = triplanarChannel(noise, pW, nGeo, GRAIN_METRES, 'a').mul(2).sub(1);
-    base = base.mul(float(1).add(grain.mul(0.14).mul(mix(0.4, 1, detail))));
+    const grainWeight = surface ? grass.add(w.x) : float(1);
+    base = base.mul(float(1).add(grain.mul(0.14).mul(mix(0.4, 1, detail)).mul(grainWeight)));
   }
 
-  const rough = grass.mul(0.88).add(w.x.mul(0.92)).add(w.y.mul(0.72)).add(w.z.mul(0.9));
+  const rough = grass.mul(0.88).add(w.x.mul(0.92)).add(rock.mul(surface ? 0.8 : 0.72)).add(w.z.mul(0.9));
   const shore = float(1).sub(smoothstep(0.2, 1.4, y));
-  const wet = max(shore, wetness.mul(float(1).sub(w.y.mul(0.5))));
+  const wet = max(shore.mul(float(1).sub(w.z.mul(0.45))), wetness.mul(float(1).sub(rock.mul(0.5))));
   const albedo = base.mul(mix(1, 0.55, wet));
   // Wet ground gets a gentler sheen than a water film would (roughness 0.3 turned the low sun into a silver streak).
   const roughness = mix(rough, WET_ROUGHNESS, wet);
@@ -129,7 +141,7 @@ export function createTerrainMaterial(noise: DataTexture, lite = false, surface:
   if (!lite) {
     // Micro-relief: one slope fetch (the texture stores the gradient), no finite differences.
     const g = triplanarSlope(noise, pW, nGeo, RELIEF_METRES);
-    const strength = grass.mul(0.3).add(w.x.mul(0.15)).add(w.y.mul(0.6)).add(w.z.mul(0.25))
+    const strength = grass.mul(surface ? 0.38 : 0.3).add(w.x.mul(0.15)).add(rock.mul(0.6)).add(w.z.mul(0.34))
       .mul(detail).mul(mix(1, 0.4, wet));
     const nW = normalize(nGeo.sub(g.mul(strength)));
     material.normalNode = transformNormalToView(nW);
