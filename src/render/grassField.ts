@@ -175,7 +175,7 @@ export function grassField(inp: GrassInputs, u: GrassUniforms, layout: GrassLayo
   // Mix irregular clumps with dispersed blades so contiguous uncovered strips cannot form between clumps.
   const angle = rnd(0).mul(TWO_PI);
   const rad = sqrt(rnd(1)).mul(radius).mul(1.25);
-  const dispersed = rnd(2).lessThan(mix(0.4, 0.15, isTussock));
+  const dispersed = rnd(2).lessThan(mix(0.72, 0.2, isTussock));
   const x = dispersed.select(cell.x.add(rnd(0).mul(CELL_M)), cx.add(cos(angle).mul(rad)));
   const z = dispersed.select(cell.y.add(rnd(1).mul(CELL_M)), cz.add(sin(angle).mul(rad)));
   const edge = float(1).sub(rad.div(radius).mul(0.25));
@@ -204,7 +204,7 @@ export function grassField(inp: GrassInputs, u: GrassUniforms, layout: GrassLayo
 
   // Patch noise (alpha channel, ~17 m): tall and short, thick and thin, dry and lush areas.
   const patch = texture(inp.noise, vec2(x, z).div(PATCH_M)).level(LOD0).a;
-  const densityMul = mix(0.85, 1.3, cr(6)).mul(mix(0.75, 1.15, patch));
+  const densityMul = mix(0.92, 1.16, cr(6)).mul(mix(0.85, 1.12, patch));
   const hue = clumpHue.mul(0.8).add(rnd(14).sub(0.5).mul(0.3));
   const variation = vec3(hue.mul(0.26).add(1), hue.mul(0.04).add(1), float(1).sub(hue.mul(0.26))).mul(rnd(15).mul(0.16).add(0.92));
 
@@ -244,7 +244,7 @@ export function grassField(inp: GrassInputs, u: GrassUniforms, layout: GrassLayo
     const sp = clamp(speed.div(FULL_LEAN_MS), 0, 1.4);
     // Steady lean (calm 0.1, storm 0.7), travelling gusts (a few cm of tip motion in calm, a lot in a storm) and
     // per-blade flutter whose amplitude and pitch rise with the wind.
-    const steady = pow(sp, float(1.3)).mul(0.7);
+    const steady = pow(sp, float(1.3)).mul(mix(0.36, 0.7, smoothstep(0.25, 1, sp)));
     const gusts = mix(0.16, 0.32, clamp(sp, 0, 1)).mul(u.wind.w.mul(0.45).add(0.55)).mul(front.mul(0.75).add(ripple.mul(0.25)));
     const flutter = sin(u.time.mul(rnd(6).mul(6).add(6)).mul(sp.mul(2.2).add(0.6)).add(rnd(7).mul(TWO_PI))).mul(sp.mul(0.1).add(0.01));
     return steady.add(gusts).add(flutter).mul(stiffness);

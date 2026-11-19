@@ -53,7 +53,7 @@ function buildVertex(kind: GrassKind, inp: GrassInputs, u: GrassUniforms, layout
     let keep: Node<'float'> = f.veg.r.mul(f.densityMul);
     if (kind === 'dense') {
       const shared = positionGeometry.z.div(THIN_BLADE_STRIDE).fract().equal(0);
-      const spread = f.rnd(5).sub(0.5).mul(near.mul(0.12));
+      const spread = f.rnd(5).sub(0.5).mul(near.mul(0.24));
       const extra = float(1).sub(smoothstep(near.mul(0.3), near.mul(0.48), d.add(spread)))
         .mul(float(1).sub(smoothstep(near.mul(0.42), near.mul(0.5), f.cellDist)));
       keep = keep.mul(shared.select(1, extra));
@@ -86,7 +86,7 @@ function buildVertex(kind: GrassKind, inp: GrassInputs, u: GrassUniforms, layout
       const outX = cos(psi);
       const outZ = sin(psi);
       const tuft = f.rnd(10).mul(0.5).add(0.6);
-      const width = max(a.width, d.mul(MIN_WIDTH_PER_M)).mul(3.4).mul(float(1).sub(t.mul(0.9))).mul(alive);
+      const width = max(a.width, d.mul(MIN_WIDTH_PER_M)).mul(2.6).mul(float(1).sub(t.mul(0.9))).mul(alive);
       const reach = float(0.07).mul(alive).add(t.mul(hs).mul(0.3));
       px = out.x.add(outX.mul(reach)).add(outZ.negate().mul(side).mul(width).mul(0.5)).add(rest.x.mul(tuft)).add(windOff.x.mul(tuft));
       py = out.y.add(lift.mul(tuft));
