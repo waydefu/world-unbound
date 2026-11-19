@@ -33,7 +33,7 @@ export const QUALITY: Record<QualityName, QualityTier> = {
     memoryBudgetMiB: BUDGET_BALANCED,
     antialias: false,
     shadows: { cascades: 2, mapSize: 1024, maxFar: 600 },
-    grass: { nearM: 0, midM: 60, bladesPerM2: 0, bladeBoost: 1, cardsPerM2: 4 },
+    grass: { nearM: 0, midM: 60, bladesPerM2: 0, bladeBoost: 1, cardsPerM2: 2 },
   },
   med: {
     name: 'med',
