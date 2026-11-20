@@ -28,13 +28,20 @@ export function grassCanopy(
   const dy = dFdy(uv);
   const sightXZ = sight.xz;
   const brushed = dot(dir, sightXZ).mul(bend);
+  const crowns = grassCrownField(noise, xz, macro);
+  const lowFibre = crowns.a.sub(0.5).mul(0.65).add(crowns.b.sub(0.5).mul(0.35));
+  // Keep a little relief after the millimetre-wide leaves have averaged out in the mip chain.
+  const transfer = smoothstep(6, 23, dist);
+  const crownShade = lowFibre.mul(mix(0.18, 0.39, transfer)).add(macro.mul(0.060));
+  const relief = crowns.rg.mul(2).sub(1).mul(mix(0.055, 0.15, transfer));
   if (lowCost) {
     const lowerUv = uv.sub(offset.mul(0.018)).mul(0.54);
     const leaf = texture(tile, lowerUv).grad(dx.mul(0.54), dy.mul(0.54));
     const fibre = leaf.ba.mul(2).sub(1);
     const fibreShade = dot(fibre, sight.xz).mul(0.12).add(leaf.r.sub(0.73).mul(0.72));
-    const tone = float(1).add(fibreShade).add(macro.mul(0.065)).add(brushed.mul(0.09)).add(gust.sub(0.28).mul(0.08)).clamp(0.84, 1.14);
-    const lean = dir.mul(bend).mul(0.045).add(fibre.mul(0.035));
+    const betweenLeaves = smoothstep(0.36, 0.75, leaf.g).sub(0.65).mul(0.12);
+    const tone = float(1).add(fibreShade).add(crownShade).add(betweenLeaves).add(brushed.mul(0.09)).add(gust.sub(0.28).mul(0.08)).clamp(0.81, 1.17);
+    const lean = dir.mul(bend).mul(0.045).add(fibre.mul(0.035)).sub(relief);
     return { tone, lean: vec3(lean.x, 0, lean.y) };
   }
   // The lower layer represents groups of blades. Its wider footprint keeps the same fibre pattern legible
@@ -46,15 +53,9 @@ export function grassCanopy(
   const leaf = mix(lower, upper, upperVisibility);
   const fibre = leaf.ba.mul(2).sub(1);
   const fibreShade = dot(fibre, sightXZ).mul(0.16).add(leaf.r.sub(0.73).mul(0.60));
-  const crowns = grassCrownField(noise, xz, macro);
-  const lowFibre = crowns.a.sub(0.5).mul(0.65).add(crowns.b.sub(0.5).mul(0.35));
-  // Keep the patch relief visible as the individual blades become subpixel or the tuft meshes fade.
-  const transfer = smoothstep(6, 23, dist);
-  const crownShade = lowFibre.mul(mix(0.15, 0.38, transfer)).add(macro.mul(0.060));
-  const betweenLeaves = smoothstep(0.37, 0.76, leaf.g).sub(0.65).mul(0.095);
+  const betweenLeaves = smoothstep(0.37, 0.76, leaf.g).sub(0.65).mul(0.14);
   const tone = float(1).add(fibreShade).add(crownShade).add(betweenLeaves)
     .add(brushed.mul(0.12)).add(gust.sub(0.28).mul(0.12)).clamp(0.79, 1.19);
-  const relief = crowns.rg.mul(2).sub(1).mul(mix(0.055, 0.17, transfer));
   const lean = dir.mul(bend).mul(0.065).add(fibre.mul(0.050)).sub(relief);
   return { tone, lean: vec3(lean.x, 0, lean.y) };
 }

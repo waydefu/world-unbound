@@ -29,8 +29,8 @@ const MOON_TINT = new Color(0.62, 0.74, 1);
 const TINT = [MOON_TINT.r, MOON_TINT.g, MOON_TINT.b];
 /** Starlight and airglow floor so moonless nights are dark but not black (radiance units). */
 const NIGHT_FLOOR = 3e-7;
-/** Share of the sun's irradiance returned to a shaded surface as bounce from sunlit surroundings (0.25 albedo x ~0.4 lit). */
-const BOUNCE_SHARE = 0.1;
+/** Share of the sun's irradiance returned to a shaded surface as bounce from sunlit surroundings. */
+const BOUNCE_SHARE = 0.12;
 /** Extra ambient on a clear day (x sun share): faces turned from the sun are lit by sunlit surroundings, not black. */
 const SHADE_FILL = 0.9;
 /** Share of the overcast zenith radiance added to the ambient light under full cloud. */
@@ -122,8 +122,8 @@ export class Environment {
     const bounce = BOUNCE_SHARE * this.sunBase;
     this.ambient.groundColor.setRGB(
       0.35 * this.ambient.color.r + bounce * t[0],
-      0.35 * this.ambient.color.g + bounce * t[1],
-      0.35 * this.ambient.color.b + bounce * t[2],
+      0.35 * this.ambient.color.g + bounce * t[1] * 0.98,
+      0.35 * this.ambient.color.b + bounce * t[2] * 0.92,
     );
 
     // Cloud deck: CIE standard overcast sky with the same irradiance, E = 7 pi Lz / 9,

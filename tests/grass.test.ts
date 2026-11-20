@@ -9,7 +9,7 @@ import { frustumPlanes } from '../src/world/cdlod';
 import { WORLD_MIN } from '../src/world/constants';
 import { SWARD_COVER_DIM } from '../src/world/grassCover';
 import { createGrassCoverTexture } from '../src/render/noiseTextures';
-import { decodeFullSod } from '../src/render/fullSod';
+import { decodeFullSod, decodeSodPatch } from '../src/render/fullSod';
 import { CELL_M, GrassCells, MAX_CARD_CELLS, MAX_DENSE_CELLS, MAX_THIN_CELLS, WORLD_CELLS } from '../src/world/grassCells';
 import { HEIGHT_DIM, buildTerrainTextures, materialDim } from '../src/world/terrainTextures';
 import { createTerrainTextures } from '../src/render/terrainTextures';
@@ -323,5 +323,20 @@ describe('measured-density grass prototype', () => {
     expect(eye.x).toBeCloseTo(start.x);
     expect(eye.y).toBeCloseTo(start.y);
     expect(eye.z).toBeCloseTo(start.z);
+  });
+
+  it('retains every leaf root and arch inside the native quarter-metre crop', async () => {
+    const archive = readFileSync(fileURLToPath(new URL('../assets/grass/sod-patch.bin', import.meta.url)));
+    const stream = new Blob([archive.slice().buffer]).stream().pipeThrough(new DecompressionStream('gzip'));
+    const { geometry, leaves, triangles } = decodeSodPatch(await new Response(stream).arrayBuffer());
+    expect(leaves).toBe(5_010);
+    expect(triangles).toBe(110_220);
+    const position = geometry.getAttribute('position');
+    for (let leaf = 0; leaf < leaves; leaf++) {
+      const root = leaf * 19 + 1;
+      if (Math.abs(position.getX(root)) > 0.125 || Math.abs(position.getZ(root)) > 0.125) throw new Error('Leaf root outside native crop');
+    }
+    expect(geometry.boundingSphere?.radius).toBeGreaterThan(0.125 * Math.SQRT2);
+    geometry.dispose();
   });
 });

@@ -104,6 +104,8 @@ export interface AppState {
   grassBlades: number;
   grassCards: number;
   grassTris: number;
+  grassSodTiles: number;
+  grassSodTris: number;
   grassMs: number;
   windUpdates: number;
 }
@@ -197,7 +199,7 @@ export function buildReport(
       shadowCasterNodes: state.terrainRender === 'cdlod' ? state.shadowCasterNodes : null,
       grass: {
         enabled: state.grassEnabled, cells: state.grassCells, blades: state.grassBlades, cards: state.grassCards,
-        triangles: state.grassTris, ms: round(state.grassMs, 3),
+        triangles: state.grassTris, sodTiles: state.grassSodTiles, sodTriangles: state.grassSodTris, ms: round(state.grassMs, 3),
       },
       wind: { texels: 64, bytes: 64 * 64 * 8, refreshes: state.windUpdates },
       drawCalls: state.drawCalls,

@@ -31,6 +31,8 @@ export function attachSunShadows(sun: DirectionalLight, settings: ShadowSettings
   // keeps grazing light free of acne without detaching contact shadows.
   shadow.bias = -0.0004;
   shadow.normalBias = 0.6;
+  shadow.intensity = 0.9;
+  shadow.radius = 1.25;
   const csm = new CSMShadowNode(sun, {
     cascades: settings.cascades,
     maxFar: settings.maxFar,

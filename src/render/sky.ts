@@ -92,9 +92,13 @@ export class SkyDome {
     // Texel centres: row/column i sits at i / (n - 1) in the table's own parameterisation.
     const uv = vec2(u.mul((SV_W - 1) / SV_W).add(0.5 / SV_W), v.mul((SV_H - 1) / SV_H).add(0.5 / SV_H));
     const sky = texture(table, uv).rgb.mul(radianceScale);
+    const day = smoothstep(0.08, 0.44, sunDir.y);
+    const blue = smoothstep(0.025, 0.38, d.y).mul(day);
+    const neutral = dot(sky, vec3(0.2126, 0.7152, 0.0722));
+    const daylightAir = mix(sky, vec3(neutral), blue.mul(0.12)).mul(blue.mul(0.055).add(1));
     // CIE overcast: L = Lz (1 + 2 sin(elevation)) / 3, flat below the horizon.
     const cloud = overcastZenith.mul(d.y.max(0).mul(2).add(1).div(3));
-    return mix(sky, cloud, overcast);
+    return mix(daylightAir, cloud, overcast);
   });
 
   /**

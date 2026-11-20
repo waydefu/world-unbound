@@ -10,6 +10,7 @@ import type { SlidingRate } from '../perf/slidingRate';
 import { GrassLayer } from '../render/grass';
 import { loadFullSod } from '../render/fullSod';
 import { GUST_WAVELENGTH_M } from '../render/grassWind';
+import { GroundSod } from '../render/groundSod';
 import type { Ocean } from '../render/ocean';
 import { WIND_BYTES, WindTexture } from '../render/windTexture';
 import { WORLD_SEED } from '../world/constants';
@@ -22,11 +23,11 @@ import type { TerrainBackend } from './terrainBackend';
 /** Climate and grass fields of AppState before the first tick. */
 export function initialVegetationState(): Pick<
   AppState, 'windDirDeg' | 'windSpeedMs' | 'temperatureC' | 'season01' | 'grassEnabled' | 'grassCells' | 'grassBlades'
-  | 'grassCards' | 'grassTris' | 'grassMs' | 'windUpdates'
+  | 'grassCards' | 'grassTris' | 'grassMs' | 'grassSodTiles' | 'grassSodTris' | 'windUpdates'
 > {
   return {
     windDirDeg: 0, windSpeedMs: 0, temperatureC: 0, season01: 0, grassEnabled: false, grassCells: 0, grassBlades: 0,
-    grassCards: 0, grassTris: 0, grassMs: 0, windUpdates: 0,
+    grassCards: 0, grassTris: 0, grassMs: 0, grassSodTiles: 0, grassSodTris: 0, windUpdates: 0,
   };
 }
 
@@ -54,6 +55,7 @@ export class VegetationBackend {
   readonly climate: ClimateState = createClimateState();
   private grass: GrassLayer | null = null;
   private fullSod: { leaves: number; triangles: number } | null = null;
+  private groundSod: GroundSod | null = null;
   private wind: WindTexture | null = null;
   private day = 0;
   private hour = 12;
@@ -74,6 +76,7 @@ export class VegetationBackend {
     const w = vegetationSeason(normaliseDay(day + hour / 24) / DAYS_PER_YEAR, this.seasonWeights);
     this.options.terrain.setSeason(w[0], w[1], w[2]);
     this.grass?.setSeason(w[0], w[1], w[2]);
+    this.groundSod?.setSeason(w[0], w[1], w[2]);
     this.grass?.setWetness(WEATHER_WETNESS[weather]);
   }
 
@@ -101,9 +104,9 @@ export class VegetationBackend {
     }
     const wind = terrain.carpetWind ?? new WindTexture(terrain.data.masks.windChannel);
     const sward = this.options.sward === true;
-    // Spend more placements in the foreground. Cards and baked coverage fill the shorter blade ring.
+    // The master leaf stream handles the foreground. Keep this layer for scattered tall species.
     const settings = sward && tier.name !== 'low'
-      ? { ...tier.grass, nearM: 11, midM: 12, bladesPerM2: tier.name === 'med' ? 14 : 19 }
+      ? { ...tier.grass, nearM: 0, midM: 12, bladesPerM2: 0 }
       : tier.grass;
     // Low sward uses the filtered terrain canopy alone: legacy 60 m cards are the source of the peppered arc.
     const canopyOnly = sward && tier.name === 'low';
@@ -118,6 +121,14 @@ export class VegetationBackend {
       grass.setSeason(this.seasonWeights[0], this.seasonWeights[1], this.seasonWeights[2]);
       grass.setWetness(WEATHER_WETNESS[this.weather]);
       terrain.root.add(grass.root);
+    }
+    if (sward && !canopyOnly && terrain.carpetWind) {
+      this.groundSod = await GroundSod.load(terrain.data, tier.name === 'high', terrain.carpetMotion, this.options.shadows);
+      this.groundSod.setSeason(this.seasonWeights[0], this.seasonWeights[1], this.seasonWeights[2]);
+      terrain.root.add(this.groundSod.sparse.mesh, this.groundSod.dense.mesh);
+      memory.add(MemoryPartition.Gpu, this.groundSod.bytes);
+      memory.add(MemoryPartition.CpuRetained, this.groundSod.bytes);
+      uploads.add(performance.now(), this.groundSod.bytes);
     }
     memory.add(MemoryPartition.Gpu, WIND_BYTES);
     memory.add(MemoryPartition.CpuRetained, WIND_BYTES);
@@ -163,6 +174,7 @@ export class VegetationBackend {
     const inv = 1 / Math.max(1e-6, Math.sqrt(p.x * p.x + p.y * p.y + p.z * p.z));
     grass.setSun(p.x * inv, p.y * inv, p.z * inv, sun.color.r * sun.intensity, sun.color.g * sun.intensity, sun.color.b * sun.intensity);
     grass.update(eye.x, eye.y, eye.z, camera, nowMs / 1000, dt);
+    this.groundSod?.update(eye.x, eye.y, eye.z, camera);
   }
 
   /** Temperature at an altitude (m) for the current climate. */
@@ -183,12 +195,18 @@ export class VegetationBackend {
       state.grassCells = 1;
       state.grassBlades = this.fullSod.leaves;
       state.grassTris = this.fullSod.triangles;
+      state.grassSodTiles = 1;
+      state.grassSodTris = this.fullSod.triangles;
     }
     if (grass === null) return;
-    state.grassCells = grass.stats.cells;
-    state.grassBlades = grass.stats.blades;
+    const sod = this.groundSod;
+    const sodTiles = sod ? sod.sparse.mesh.count + sod.dense.mesh.count : 0;
+    state.grassSodTiles = sodTiles;
+    state.grassSodTris = sod ? sod.sparse.mesh.count * sod.sparse.triangles + sod.dense.mesh.count * sod.dense.triangles : 0;
+    state.grassCells = grass.stats.cells + sodTiles;
+    state.grassBlades = grass.stats.blades + state.grassSodTris / 22;
     state.grassCards = grass.stats.cards;
-    state.grassTris = grass.stats.triangles;
+    state.grassTris = grass.stats.triangles + state.grassSodTris;
     state.grassMs = grass.stats.ms;
   }
 }

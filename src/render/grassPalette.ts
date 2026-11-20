@@ -48,7 +48,7 @@ export function grassCarpetWeight(meadow: Node<'float'>): Node<'float'> {
 }
 
 export function grassCarpetColour(season: Node<'vec3'>): Node<'vec3'> {
-  return seasonal(vec3(0.105, 0.229, 0.028), season);
+  return seasonal(vec3(0.084, 0.192, 0.035), season);
 }
 
 /** World-fixed crown relief shared by the drawn tufts and ground between them.

@@ -40,6 +40,36 @@ def triangles(rows):
     return np.asarray(faces, dtype=np.int32)
 
 
+def y_up(vectors):
+    converted = vectors.reshape(-1, 3)[:, [0, 2, 1]].astype("<f4")
+    converted[:, 2] *= -1
+    return converted
+
+
+def write_leaf_attributes(zipped, points, normals, colours):
+    # Group the bytes of each XYZ/RGB lane for gzip, with no loss of float precision.
+    for attribute in (y_up(points), y_up(normals), colours[:, :, :3].astype("<f4")):
+        bytes_by_lane = np.ascontiguousarray(attribute).view(np.uint8).reshape(-1, 12).T
+        zipped.write(bytes_by_lane.tobytes())
+
+
+def export_patch(path):
+    mesh, points, colours = read_blades()
+    # Crop roots, not leaf edges. Overhanging tips survive so neighbouring squares overlap.
+    root = points[:, 1, :2]
+    selected = np.all((root >= -.125) & (root < .125), axis=1)
+    normals = np.empty(points.size, dtype=np.float32)
+    mesh.vertex_normals.foreach_get("vector", normals)
+    count = int(selected.sum())
+    template = triangles(6).astype("<u4").reshape(-1)
+    with path.open("wb") as target:
+        with gzip.GzipFile(filename="", mode="wb", fileobj=target, compresslevel=6, mtime=0) as zipped:
+            zipped.write(struct.pack("<4s3I", b"SODP", count, 19, template.size))
+            zipped.write(template.tobytes())
+            write_leaf_attributes(zipped, points[selected], normals.reshape(points.shape)[selected], colours[selected])
+    print("patch leaves", count, "triangles", count * template.size // 3, "gzip bytes", path.stat().st_size)
+
+
 def export_full(path):
     import bpy
 
@@ -61,20 +91,12 @@ def export_full(path):
     soil_indices = np.empty(len(soil.loop_triangles) * 3, dtype=np.int32)
     soil.loop_triangles.foreach_get("vertices", soil_indices)
 
-    def y_up(vectors):
-        converted = vectors.reshape(-1, 3)[:, [0, 2, 1]].astype("<f4")
-        converted[:, 2] *= -1
-        return converted
-
     with path.open("wb") as target:
         with gzip.GzipFile(filename="", mode="wb", fileobj=target, compresslevel=6, mtime=0) as zipped:
             zipped.write(struct.pack("<4s5I", b"SOD1", leaf_count, vertices_per_leaf, template.size,
                                      len(soil.vertices), soil_indices.size))
             zipped.write(template.tobytes())
-            # Group the bytes of each XYZ/RGB lane for gzip, with no loss of float precision.
-            for attribute in (y_up(points), y_up(normals), colours[:, :, :3].astype("<f4")):
-                bytes_by_lane = np.ascontiguousarray(attribute).view(np.uint8).reshape(-1, 12).T
-                zipped.write(bytes_by_lane.tobytes())
+            write_leaf_attributes(zipped, points, normals, colours)
             zipped.write(y_up(soil_points).tobytes(order="C"))
             zipped.write(soil_indices.astype("<u4").tobytes())
     print("full mesh", leaf_count, len(mesh.vertices), len(mesh.polygons), "gzip bytes", path.stat().st_size)
@@ -175,8 +197,10 @@ if __name__ == "__main__":
             extract(Path(path))
         elif mode == "full":
             export_full(Path(path))
+        elif mode == "patch":
+            export_patch(Path(path))
         else:
-            raise ValueError("Expected extract or full")
+            raise ValueError("Expected extract, full or patch")
     else:
         source, dest = map(Path, sys.argv[1:])
         with np.load(source) as data:

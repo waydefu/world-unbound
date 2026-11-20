@@ -80,7 +80,7 @@ export class GrassLayer {
     const { textures, data, noise, wind, settings, shadows, lite } = options;
     const sward = options.sward === true && !lite;
     this.specimen = sward;
-    this.tuft = sward ? createFescueTuftTexture() : null;
+    this.tuft = sward && settings.nearM > 0 ? createFescueTuftTexture() : null;
     this.tuftUploadBytes = this.tuft?.image.data?.byteLength ?? 0;
     const cellM = sward ? SPECIMEN_CELL_M : CELL_M;
     const area = cellM * cellM;
@@ -120,8 +120,8 @@ export class GrassLayer {
     const thinLayout: GrassLayout = { stride: THIN_BLADE_STRIDE, perClump };
     const cardLayout: GrassLayout = { stride: 1, perClump: this.cardsPerCell / CLUMPS_PER_CELL };
     this.draws = sward ? [
-      this.draw('dense', createSpecimenGeometry('dense', this.bladesPerDenseCell, this.cells.dense), inputs, denseLayout, shadows, lite),
-      this.draw('thin', createFescueTuftGeometry(this.cells.thin), inputs, { stride: 1, perClump: TUFT_GRID ** 2, grid: TUFT_GRID }, shadows, lite),
+      blades ? this.draw('dense', createSpecimenGeometry('dense', this.bladesPerDenseCell, this.cells.dense), inputs, denseLayout, shadows, lite) : null,
+      blades ? this.draw('thin', createFescueTuftGeometry(this.cells.thin), inputs, { stride: 1, perClump: TUFT_GRID ** 2, grid: TUFT_GRID }, shadows, lite) : null,
       this.draw('card', createSpecimenGeometry('card', this.cardsPerCell, this.cells.cards), inputs, { stride: 1, perClump: 1 }, shadows, lite),
     ] : [
       blades ? this.draw('dense', createBladeGeometry(this.bladesPerDenseCell, 2, this.cells.dense, DENSE_COMPANIONS), inputs, denseLayout, shadows, lite) : null,

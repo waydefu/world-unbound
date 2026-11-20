@@ -8,6 +8,7 @@ import { GRASS_COVER_METRES } from '../world/grassCover';
 import { grassCanopy, type GrassCanopyWind } from './grassCanopy';
 import { canopyShade, grassCarpetColour, grassCarpetWeight, groundCover, meadowTint } from './grassPalette';
 import { triplanarChannel, triplanarSlope } from './noiseSampling';
+import { soilColour } from './soilPalette';
 
 /**
  * Procedural PBR terrain material (G1.3). The chunk colour attribute carries
@@ -117,8 +118,13 @@ export function createTerrainMaterial(noise: DataTexture, lite = false, surface:
     .mul(surface && !lite ? tipColour.mul(grassDetail) : float(1));
   const carpet = surface?.carpet && surface.grassCover
     ? grassCanopy(surface.grassCover, noise, surface.carpet, pW.xz, grassDist, nGeo, macro, lite) : null;
-  const carpetWeight = carpet ? grassCarpetWeight(veg.r) : float(0);
-  const grassCol = carpet ? mix(baseGrass, grassCarpetColour(season).mul(carpet.tone), carpetWeight) : baseGrass;
+  const carpetWeight = carpet ? grassCarpetWeight(veg.r.add(veg.g).min(1)) : float(0);
+  const organic = smoothstep(0.12, 0.48, veg.a).mul(float(1).sub(smoothstep(0.39, 0.80, rockShare)))
+    .mul(smoothstep(0.5, 2.8, y)).mul(0.67);
+  const soilWet = max(wetness, wet01.mul(0.72));
+  const earth = soilColour(grain.mul(0.23).add(macro.mul(0.21)).add(0.5), soilWet);
+  const grassBed = carpet ? mix(baseGrass, grassCarpetColour(season).mul(carpet.tone), carpetWeight) : baseGrass;
+  const grassCol = surface ? mix(grassBed, earth, organic) : grassBed;
   // Stone quays and breakwaters read as stone, not as a flat tan band: darker on the steep flank and at the foot,
   // where the wall meets the water.
   const stoneEdge = max(float(1).sub(nGeo.y).mul(4), float(1).sub(smoothstep(0.2, 1.3, y))).min(1);
@@ -154,7 +160,8 @@ export function createTerrainMaterial(noise: DataTexture, lite = false, surface:
     const nW = normalize(carpet ? ground.add(carpet.lean.mul(carpetWeight).mul(grass)) : ground);
     material.normalNode = transformNormalToView(nW);
   } else if (surface) {
-    material.normalNode = transformNormalToView(nGeo);
+    const nW = carpet ? normalize(nGeo.add(carpet.lean.mul(carpetWeight).mul(grass))) : nGeo;
+    material.normalNode = transformNormalToView(nW);
   }
   const rockOcclusion = mix(w.w, w.w.max(0.55), rock.mul(detail));
   material.aoNode = surface ? rockOcclusion : w.w;
