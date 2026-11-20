@@ -9,6 +9,7 @@ const args=process.argv.slice(2);
 const [cmd,term]=args;
 const get=opt=>{const i=args.indexOf(opt);return i<0?null:args[i+1];};
 const json=args.includes('--json');
+const startedAt=process.hrtime.bigint();
 const number=(opt,fallback,cap=100000)=>{const raw=get(opt);if(raw===null)return fallback;const n=Number(raw);
   if(!Number.isSafeInteger(n)||n<0||n>cap)throw Error(`Invalid ${opt}: expected 0..${cap}`);return n;};
 const print=obj=>{
@@ -36,6 +37,7 @@ try{
   if(cmd==='calls')result=calls(p,term,{file,line:number('--line',0),limit,
     inOffset:number('--in-offset',offset),outOffset:number('--out-offset',offset)});
   if(cmd==='impact')result=impact(p,term.replaceAll('\\','/'),{limit,offset});
+  if(args.includes('--profile')) result.metrics={wallMs:Number((Number(process.hrtime.bigint()-startedAt)/1e6).toFixed(2)),maxRssKiB:process.resourceUsage().maxRSS};
   print(result);
   if(result.status==='ambiguous')process.exitCode=2;
   else if(result.status==='not-found'||result.status==='unsupported')process.exitCode=1;

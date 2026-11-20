@@ -72,7 +72,8 @@ Where everything is. Read the protected [AGENTS.md](../AGENTS.md) before acting;
 | `tests/` | Vitest suites: `world`, `streaming`, `perf` (incl. params/quality), `env` |
 | `scripts/audit.mjs` | Static audit: module layers, purity, `@hot`/`@amortized`, size budgets |
 | `scripts/audit-visual.mjs` | Headless render sweep of six cameras, resilience and spike smoke |
-| `tools/agent-index.mjs` | On-demand TS symbol signatures, resolved call sites, and static import/test impact (read-only) |
+| `tools/agent-index.mjs` | On-demand AST symbols, native TS call hierarchy and static import/test impact with bounded pagination |
+| `tools/agent-benchmark.mjs` | Offline CLI wall time, peak RSS and output-byte proxy (NOT model Token usage) |
 | `tools/handoff-check.mjs` | Offline links, snapshot-age and recorded-main-SHA drift check; advisory unless `--strict` |
 | `.github/workflows/` | CI (`ci.yml`), Pages deploy, label sync (protected) |
 | `.github/scripts/` | Governance validators and their tests (protected) |

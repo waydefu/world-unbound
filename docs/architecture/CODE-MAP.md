@@ -25,6 +25,6 @@ node tools/agent-index.mjs impact src/world/grassCells.ts --limit 8
 rg -n -C 3 -F 'GrassCells' src/render tests
 ```
 
-The tool computes its AST and type information **on demand** from tracked TypeScript files and the existing installed `typescript` dependency. `calls` reports static resolvable call sites, not a complete runtime call graph. `impact` follows relative static import/export edges and may omit side-effect code, type-only implicit dependencies, generated assets and runtime imports. Inspect the target code and run the relevant tests before changing it.
+Navigation is on demand: `find` uses cheap TypeScript AST, while `calls` uses the official TypeScript Language Service call hierarchy and separate caller/callee limits. `impact` identifies static direct or transitive imports and flags limited unknown dynamic edges. None of them proves every runtime reference, Worker, Shader/TSL, asset or data-contract consumer; review entrypoints and relevant tests before editing.
 
 For Agent reliability and token-efficiency goals, use the reproducible [benchmark protocol](../process/index-benchmark.md). Re-check or update this map when file responsibilities move; never add unsupported function-level facts.
