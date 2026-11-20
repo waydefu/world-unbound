@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Grass specimen renderer check</title>
+<style>
+body{font:15px system-ui,sans-serif;margin:18px;background:#e3e7df;color:#24372a}
+canvas{display:block;max-width:100%;height:auto}
+pre{white-space:pre-wrap}
+</style>
+<h1>Grass specimen renderer check</h1>
+<p><a href="?backend=webgpu">WebGPU</a> · <a href="?backend=webgl2">WebGL2</a></p>
+<pre id="report" role="status">Loading the three meshes…</pre>
+<script type="module">
+import {
+  AmbientLight, Box3, DirectionalLight, DoubleSide, MeshLambertNodeMaterial, OrthographicCamera, Scene, Vector3, WebGPURenderer
+} from 'three/webgpu';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+const forceWebGL = new URLSearchParams(location.search).get('backend') === 'webgl2';
+const renderer = new WebGPURenderer({forceWebGL,antialias:true});
+renderer.setSize(540,620);
+document.body.append(renderer.domElement);
+await renderer.init();
+const loader = new GLTFLoader();
+const world = new Scene();
+renderer.setClearColor(0xe3e7df, 1);
+world.add(new AmbientLight(0xffffff, 1.9));
+const light = new DirectionalLight(0xfff5db, 2);
+light.position.set(-2, 3, 3);
+world.add(light);
+
+const stats = [];
+for (const key of ['A','B','C']) {
+  const { scene: sample } = await loader.loadAsync(new URL(key+'.glb',location.href).href);
+  let meshes = 0;
+  let sourceTriangles = 0;
+  const sources = new Map();
+  sample.traverse(node=>{
+    if (!node.isMesh) return;
+    meshes++;
+    sourceTriangles += (node.geometry.index?.count ?? node.geometry.getAttribute('position').count) / 3;
+    const data = node.material;
+    if (!sources.has(data)) sources.set(data,new MeshLambertNodeMaterial({color:data.color,side:DoubleSide}));
+    node.material = sources.get(data);
+  });
+  const bounds = new Box3().setFromObject(sample);
+  const size = bounds.getSize(new Vector3());
+  const center = bounds.getCenter(new Vector3());
+  const viewH = size.y * 0.66;
+  const viewW = viewH * 540 / 620;
+  const camera = new OrthographicCamera(-viewW,viewW,viewH,-viewH,0.01,10);
+  camera.position.copy(center).add(new Vector3(0.5,0.09,1));
+  camera.lookAt(center);
+  world.add(sample);
+  renderer.render(world,camera);
+  stats.push({key,meshes,materials:sources.size,height:size.y,sourceTriangles,triangles:renderer.info.render.triangles,draws:renderer.info.render.drawCalls});
+  world.remove(sample);
+}
+window.result = {backend:renderer.backend.isWebGPUBackend?'webgpu':'webgl2',stats};
+document.getElementById('report').textContent = JSON.stringify(window.result, null, 2);
+</script>
+</html>
