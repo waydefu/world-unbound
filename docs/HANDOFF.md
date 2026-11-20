@@ -2,6 +2,17 @@
 
 Snapshot: 2026-11-20, after merged grass baseline PR #32 (`0b064b2`). Read [AGENTS.md](../AGENTS.md) first (binding), then this handoff, then [INDEX.md](INDEX.md). For tools, environment and token-efficient discovery, see [process/agent-workflow.md](process/agent-workflow.md). Confirm open Issues and latest `main` before planning; this snapshot is not an authority for future state.
 
+Base main: 0b064b2e8404b81e9c6fec72426db1983bd512e9
+
+## 30-second resume (verify GitHub state before acting)
+
+- **Accepted baseline:** PRs #28–#32 merged at this snapshot; do not redo their grass/wind implementation.
+- **Next scoped task:** [Issue #33](https://github.com/waydefu/world-unbound/issues/33) — grass contact, overlapping blades, and thin-tip lighting. No implementation approval is implied here.
+- **Evidence:** prior phone/CDLOD gate passed; **latest grass WebGPU p95 and 10-minute thermal gate are not yet verified**. Headless SwiftShader is not device proof.
+- **Trust boundary:** `AGENTS.md` and owner approval govern every edit; next agent checks fresh `main`, Issues, PRs and Actions.
+- **Quick checks:** `node tools/handoff-check.mjs` (advisory, offline), `node tools/agent-index.mjs find GrassCells`, and [code routing map](architecture/CODE-MAP.md).
+- **Handoff rule:** when a PR changes current status, update this dated snapshot and base SHA; do not mark unverified work complete. Full history follows.
+
 ## Where the project is
 
 - **Live build:** https://waydefu.github.io/world-unbound/ (deployed from `main` by `pages.yml`; check the Actions run, a red unit test skips the deploy); spike page at `/world-unbound/spike/engines.html`.

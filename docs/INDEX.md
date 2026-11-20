@@ -11,6 +11,8 @@ Where everything is. Read the protected [AGENTS.md](../AGENTS.md) before acting;
 | [README.md](../README.md) | Status, how to run, roadmap |
 | [README.zh-TW.md](../README.zh-TW.md) | 繁體中文版 README（狀態、執行方式、路線圖） |
 | [architecture/README.md](architecture/README.md) | Module layers (enforced), frame and data flow, units |
+| [architecture/CODE-MAP.md](architecture/CODE-MAP.md) | Short task-to-code-and-tests routing map, on-demand TypeScript symbol and call queries |
+| [process/index-benchmark.md](process/index-benchmark.md) | Reproducible task set and evidence rubric for Agent search and token efficiency |
 
 ## Decisions and plans
 
@@ -70,6 +72,8 @@ Where everything is. Read the protected [AGENTS.md](../AGENTS.md) before acting;
 | `tests/` | Vitest suites: `world`, `streaming`, `perf` (incl. params/quality), `env` |
 | `scripts/audit.mjs` | Static audit: module layers, purity, `@hot`/`@amortized`, size budgets |
 | `scripts/audit-visual.mjs` | Headless render sweep of six cameras, resilience and spike smoke |
+| `tools/agent-index.mjs` | On-demand TS symbol signatures, resolved call sites, and static import/test impact (read-only) |
+| `tools/handoff-check.mjs` | Offline links, snapshot-age and recorded-main-SHA drift check; advisory unless `--strict` |
 | `.github/workflows/` | CI (`ci.yml`), Pages deploy, label sync (protected) |
 | `.github/scripts/` | Governance validators and their tests (protected) |
 

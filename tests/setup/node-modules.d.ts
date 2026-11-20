@@ -1,5 +1,5 @@
 // The repository has no @types/node (no new dependencies). These are the only Node
-// APIs the tests use: reading the committed terrain files and inflating them.
+// APIs the tests use: reading committed fixtures, inflating data, and CLI smoke checks.
 declare module 'node:fs' {
   export function readFileSync(path: string): Uint8Array;
   export function readFileSync(path: string, encoding: 'utf8'): string;
@@ -17,4 +17,10 @@ declare module 'node:crypto' {
 }
 declare module 'node:zlib' {
   export function inflateRawSync(data: Uint8Array): Uint8Array;
+}
+
+declare module 'node:child_process' {
+  export function spawnSync(command: string, args: string[], options?: {
+    encoding?: 'utf8'; timeout?: number;
+  }): { status: number | null; stdout: string; stderr: string };
 }
