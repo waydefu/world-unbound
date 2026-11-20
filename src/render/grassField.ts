@@ -107,6 +107,8 @@ export interface GrassField {
   /** Root position: x, terrain height, z (absolute world). */
   root: Node<'vec3'>;
   rootInset: F;
+  /** Gradient in metres per metre of the terrain triangle at the root. */
+  rootSlope: Node<'vec2'>;
   /** Unit terrain normal, world axes. */
   terrainNormal: Node<'vec3'>;
   /** Meadow, heath, tree, bare at the root; wetness; macro noise -1..1. */
@@ -213,7 +215,9 @@ export function grassField(inp: GrassInputs, u: GrassUniforms, layout: GrassLayo
   const h11 = load(ix.add(1), iz.add(1));
   const lower = h00.add(h10.sub(h00).mul(fx)).add(h01.sub(h00).mul(fz));
   const upper = h11.add(h01.sub(h11).mul(float(1).sub(fx))).add(h10.sub(h11).mul(float(1).sub(fz)));
-  const y = fx.add(fz).lessThanEqual(1).select(lower, upper);
+  const lowerTriangle = fx.add(fz).lessThanEqual(1);
+  const y = lowerTriangle.select(lower, upper);
+  const rootSlope = lowerTriangle.select(vec2(h10.sub(h00), h01.sub(h00)), vec2(h11.sub(h01), h11.sub(h10))).mul(0.5);
   // Roots sit a little below the surface (more on slopes, where the bilinear height and the mesh differ most).
   const rootInset = float(1).sub(nrm.y).mul(0.25).add(inp.sward ? float(0.014) : float(0.03));
   const root = vec3(x, y.sub(rootInset), z);
@@ -260,5 +264,5 @@ export function grassField(inp: GrassInputs, u: GrassUniforms, layout: GrassLayo
     return steady.add(gusts).add(flutter).mul(stiffness);
   };
 
-  return { rnd, root, rootInset, terrainNormal: nrm, veg, wet, macro, dist, cellDist, archetype, restDir, restBend, windDir, lean, densityMul, variation };
+  return { rnd, root, rootInset, rootSlope, terrainNormal: nrm, veg, wet, macro, dist, cellDist, archetype, restDir, restBend, windDir, lean, densityMul, variation };
 }

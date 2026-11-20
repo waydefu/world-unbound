@@ -61,10 +61,10 @@ def bake_side(points, colours, output):
     from PIL import Image, ImageChops, ImageDraw
 
     width, height, samples = 512, 256, 3
-    # Project a 27 cm strip through a 2.8 cm depth of the real master, at metre scale.
+    # One crown deep: the intersecting runtime cards supply the depth of the sward.
     span, rise = .27, .12
     root = points[:, 1]
-    inside = (np.abs(root[:, 0]) < span / 2) & (np.abs(root[:, 1]) < .014)
+    inside = (np.abs(root[:, 0]) < span / 2) & (np.abs(root[:, 1]) < .0055)
     geo = points[inside][:, triangles(6)].reshape(-1, 3, 3)
     green = colours[inside][:, triangles(6), 1].reshape(-1, 3).mean(axis=1)
     shade = np.rint(67 + green * 466).clip(133, 247).astype(np.uint8)
@@ -84,7 +84,7 @@ def bake_side(points, colours, output):
     alpha = alpha.resize((width, height), Image.Resampling.LANCZOS)
     light = light.resize((width, height), Image.Resampling.LANCZOS)
     feather = Image.new("L", (width, 1))
-    feather.putdata([round(255 * min(1, min(x+.5,width-x-.5)/(width*.08))**.75) for x in range(width)])
+    feather.putdata([round(255 * min(1, min(x+.5,width-x-.5)/(width*.19))**.75) for x in range(width)])
     alpha = ImageChops.multiply(alpha, feather.resize((width, height)))
     output.write_bytes(Image.merge("LA", (alpha, light)).transpose(Image.Transpose.FLIP_TOP_BOTTOM).tobytes())
     print("side projected blades", int(inside.sum()))
