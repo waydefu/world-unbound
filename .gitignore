@@ -5,3 +5,33 @@ artifacts/
 __pycache__/
 *.pyc
 out/
+# Local diagnostics and generated reports (not public source fixtures)
+*.log
+coverage/
+playwright-report/
+test-results/
+world-unbound-telemetry-*.json
+*.jsonl
+
+# Local databases, credentials, and agent sessions
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+.env
+.env.*
+!.env.example
+.codex/
+.gemini/
+**/.codex/
+**/.gemini/
+.claude/settings.local.json
+*.pem
+*.key
+
+# Editor and OS files
+.DS_Store
+Thumbs.db

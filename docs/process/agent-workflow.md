@@ -32,13 +32,31 @@ Output goes to `out/` (git-ignored). The page exposes `window.__wu.ready()` and 
 
 - Node and npm (versions per `package.json` / CI); Chromium for Playwright (`npx playwright install chromium` if the environment has none). Headless rendering is WebGL2 on SwiftShader: slow, and WebGPU-specific results (render bundles, timestamps, vertex texture fetch performance) need the phone.
 - Network: npm registry; `waydefu.github.io` to confirm deploys; Kartverket hosts only when re-baking terrain or fetching bathymetry.
-- Optional search tools: `rg`, `fd`, `ast-grep`, `jq` — read only what you need instead of whole files and logs.
+- Optional search tools: `rg`, `fd`, `ast-grep`, `jq` — first locate with `git ls-files` or `fd -t f`. Prefer the built-in **on-demand, read-only** TypeScript navigator below for functions, callers and static test impact; it uses the project's existing TypeScript dependency, **not** a server, cache, MCP or new dependency. A static graph is incomplete for runtime dynamic imports, callbacks and reflective calls.
+
+## Task-first symbol and call discovery
+
+```bash
+git ls-files 'src/render/*grass*'                            # paths only
+node tools/agent-index.mjs find GrassCells --limit 5          # signatures and file:line:column
+node tools/agent-index.mjs calls select --file src/world/grassCells.ts --limit 8
+node tools/agent-index.mjs impact src/world/grassCells.ts --limit 8
+node tools/agent-index.mjs find 'GrassCells' --json --limit 5 # machine-readable, bounded
+rg -n -C 3 -F 'GrassCells' src/render tests                    # inspect relevant context only
+node tools/handoff-check.mjs                                  # local links, dated base SHA, drift warnings
+```
+
+`find` parses tracked TypeScript declarations **without a type-checking Program**, ranking exact symbols before fuzzy matches. `calls` uses the native TypeScript Language Service call hierarchy: incoming and outgoing callers have independent counts, offsets and 8-result defaults (each capped at 20). `impact` walks static relative imports and re-exports to candidate tests. Results state their provenance and incompleteness. Same-named symbols across files require `--file` (same-file overloads resolve to their implementation unless `--line` is specified). Pass `--in-offset` / `--out-offset` to page directions independently. `--profile --json` optionally reports own-process elapsed milliseconds and peak RSS (KiB where supported). This is not full runtime control flow.
+
+Handoff check is **advisory by default**: broken, escaping or malformed local links are errors; older snapshots, relevant changes, unknown history and missing remote-tracking refs are warnings. It reads local `origin/main` when present, otherwise local `main` (never confuses `merge-base` with the observed head). Agent-tooling/docs-only changes are reported as an informational `advanced-agent-tooling` state; changed game-runtime/spec/governance/tests (other than Agent-only fixtures) require review. `--strict` fails on errors and warnings; `--links-only` verifies links only. `--base-sha` overrides the **observed main** with a full 40-character SHA available locally. None of these modes makes network requests: confirm live GitHub PR/Issue status separately. Use `node tools/agent-benchmark.mjs --runs 3 --json` for offline CLI performance—not actual LLM Tokens.
 
 ## Saving tokens
 
-- Prefer `npm run check:quiet` over raw tool output; read failing tails only.
+- Prefer `npm run check:quiet` over raw tool output; read failing tails only. At the start of each new session, check the `main` HEAD and open Issues before trusting `HANDOFF.md`, and avoid repeating files already located by another subagent. Use `--limit 5` for the first navigation pass, then expand only the selected result. Do not silently truncate diagnostic failures.
 - **RTK** (Rust Token Killer, `rtk-ai/rtk`, tag `v1.2.0` exists) filters command output for agents (measured here: a 96 KB `git diff` became 32 KB; `git log --stat` unchanged). Install the official `rtk` package (prebuilt release, or `cargo install --git https://github.com/rtk-ai/rtk --tag v1.2.0 --locked rtk`); crates.io's `rtk` is a different project (Rust Type Kit). It supports Codex hooks. Verify with `rtk --version` / `rtk gain`, and make sure it does not hide failure details of the visual audit.
 - Parallel research fan-outs: use a small, cheap model; one implementation step at a time with a stronger one.
+- **Measure, do not assume savings:** use [index benchmark](index-benchmark.md) with independent Agent sessions and balanced AB/BA order. Log task success, query count, provider-reported usage (including cache tokens when exposed), latency and exact SHA. CLI output bytes are only a proxy, never an LLM Token saving.
+- **Keep the snapshot fresh:** a feature PR that changes milestone/PR status must update `HANDOFF.md` with the verified base SHA, remaining gates and next issue. The offline checker detects local drift but does not poll GitHub or rewrite docs.
 
 ## What is Claude-specific (ignore or replace)
 

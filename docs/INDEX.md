@@ -1,6 +1,6 @@
 # Repository index
 
-Where everything is. Start with [HANDOFF.md](HANDOFF.md) to pick up the work.
+Where everything is. Read the protected [AGENTS.md](../AGENTS.md) before acting; then [HANDOFF.md](HANDOFF.md). The latest grass baseline is merged PR #32; follow-up light work is [Issue #33](https://github.com/waydefu/world-unbound/issues/33). Check current GitHub state instead of assuming this index is always current.
 
 ## Read first
 
@@ -11,6 +11,8 @@ Where everything is. Start with [HANDOFF.md](HANDOFF.md) to pick up the work.
 | [README.md](../README.md) | Status, how to run, roadmap |
 | [README.zh-TW.md](../README.zh-TW.md) | 繁體中文版 README（狀態、執行方式、路線圖） |
 | [architecture/README.md](architecture/README.md) | Module layers (enforced), frame and data flow, units |
+| [architecture/CODE-MAP.md](architecture/CODE-MAP.md) | Short task-to-code-and-tests routing map, on-demand TypeScript symbol and call queries |
+| [process/index-benchmark.md](process/index-benchmark.md) | Reproducible task set and evidence rubric for Agent search and token efficiency |
 
 ## Decisions and plans
 
@@ -32,6 +34,7 @@ Where everything is. Start with [HANDOFF.md](HANDOFF.md) to pick up the work.
 | [process/subagents.md](process/subagents.md) | Which subagent and model for which job; parallel fan-outs use Haiku |
 | [research/environment-systems.md](research/environment-systems.md) | Environment systems research overview (fields, weather, sky, water, ecology, surface, audio) and proposed order |
 | [research/grass-specimens.md](research/grass-specimens.md) | Hellesylt grass ecology and three isolated blind-review specimens |
+| [research/grass-carpet.md](research/grass-carpet.md) | Accepted grass carpet baseline, comparisons and reproduction notes (#32) |
 
 ## Governance and security
 
@@ -69,6 +72,9 @@ Where everything is. Start with [HANDOFF.md](HANDOFF.md) to pick up the work.
 | `tests/` | Vitest suites: `world`, `streaming`, `perf` (incl. params/quality), `env` |
 | `scripts/audit.mjs` | Static audit: module layers, purity, `@hot`/`@amortized`, size budgets |
 | `scripts/audit-visual.mjs` | Headless render sweep of six cameras, resilience and spike smoke |
+| `tools/agent-index.mjs` | On-demand AST symbols, native TS call hierarchy and static import/test impact with bounded pagination |
+| `tools/agent-benchmark.mjs` | Offline CLI wall time, peak RSS and output-byte proxy (NOT model Token usage) |
+| `tools/handoff-check.mjs` | Offline links, snapshot-age and recorded-main-SHA drift check; advisory unless `--strict` |
 | `.github/workflows/` | CI (`ci.yml`), Pages deploy, label sync (protected) |
 | `.github/scripts/` | Governance validators and their tests (protected) |
 
@@ -82,7 +88,7 @@ Where everything is. Start with [HANDOFF.md](HANDOFF.md) to pick up the work.
 | --- | --- | --- |
 | 0 | coast-low | Beach and waterline at eye height |
 | 1 | architecture-detail | Town plateau close-up (no buildings yet) |
-| 2 | vegetation-near | Grass slopes (no vegetation yet) |
+| 2 | vegetation-near | Grass slopes and the current grass carpet baseline |
 | 3 | backlit-dusk-water | Low sun over water, 19.6 h |
 | 4 | rain-night | Rain at 22.5 h |
 | 5 | town-harbour-overview | Default; harbour from 170 m |
