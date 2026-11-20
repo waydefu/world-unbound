@@ -16,6 +16,18 @@ import type { AppState } from './report';
 import type { TerrainBackend } from './terrainBackend';
 import { TerrainClient } from './terrainClient';
 
+const sodAtlases = import.meta.glob<string>('../../assets/grass/sod-top.bin', {
+  query: '?url&no-inline', import: 'default', eager: true,
+});
+
+async function loadSodAtlas(): Promise<Uint8Array> {
+  const url = sodAtlases['../../assets/grass/sod-top.bin'];
+  if (!url) throw new Error('Missing grass canopy atlas');
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Grass canopy atlas: HTTP ${response.status}`);
+  return new Uint8Array(await response.arrayBuffer());
+}
+
 /**
  * GPU height texture + CDLOD (ADR-0003, the default). The worker builds the textures while the renderer starts;
  * `prepare()` waits for them, then the terrain exists and every frame only selects nodes. The streamer, the chunk
@@ -73,7 +85,7 @@ export class CdlodBackend implements TerrainBackend {
    * @amortized once at start-up
    */
   async prepare(): Promise<void> {
-    const data = await this.textures;
+    const [data, sod] = await Promise.all([this.textures, this.sward ? loadSodAtlas() : null]);
     const textures = createTerrainTextures(data);
     this.data = data;
     this.gpu = textures;
@@ -87,8 +99,8 @@ export class CdlodBackend implements TerrainBackend {
       + (masks ? masks.vegetation.byteLength + masks.wetness.byteLength + masks.windChannel.byteLength + masks.openness.byteLength : 0));
     this.uploads.add(performance.now(), textures.uploadBytes + textures.normalUploadBytes + textures.vegetationUploadBytes);
     const lite = this.tier.name === 'low';
-    const grassCover = lite ? null : createGrassCoverTexture(this.sward);
-    if (this.sward && !lite && masks) this.carpetWind = new WindTexture(masks.windChannel);
+    const grassCover = lite && !sod ? null : createGrassCoverTexture(sod);
+    if (this.sward && masks) this.carpetWind = new WindTexture(masks.windChannel);
     if (grassCover) {
       memory.add(MemoryPartition.Gpu, grassCover.gpuBytes);
       memory.add(MemoryPartition.CpuRetained, grassCover.uploadBytes);

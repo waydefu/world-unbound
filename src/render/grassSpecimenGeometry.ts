@@ -1,8 +1,7 @@
-import { BufferAttribute, BufferGeometry, DataTexture, LinearFilter, LinearMipmapLinearFilter, RGFormat } from 'three/webgpu';
-import { FESCUE_COLOURS, FESCUE_LEAVES, fescueProfile } from '../world/fescue';
+import { BufferAttribute, DataTexture, LinearFilter, LinearMipmapLinearFilter, RGFormat } from 'three/webgpu';
 import { finishGrassGeometry } from './grassGeometry';
 
-const packs = import.meta.glob<string>('../../assets/grass/*.bin', {
+const packs = import.meta.glob<string>('../../assets/grass/{specimens-ac,sod-near,sod-side}.bin', {
   eager: true, import: 'default', query: '?url&inline',
 });
 
@@ -13,62 +12,11 @@ interface Specimen {
   index: ArrayLike<number>;
 }
 
-/** Re-tessellate the approved curves. Both LODs retain all seven outlines, centres and root offsets. */
-function fescue(): Specimen {
-  const position: number[] = [];
-  const colour: number[] = [];
-  const index: number[] = [];
-  const rows = [0, 0.19, 0.4, 0.61, 0.81];
-  const section = 3;
-  for (const [leafIndex, leaf] of FESCUE_LEAVES.entries()) {
-    const [degrees, , , , , fold] = leaf;
-    const angle = degrees * Math.PI / 180;
-    const fx = Math.cos(angle);
-    const fz = -Math.sin(angle);
-    const x0 = fx * 0.00055;
-    const z0 = fz * 0.00055;
-    const y0 = (leafIndex % 3) * 0.00085;
-    const start = position.length / 3;
-    const leafColour = FESCUE_COLOURS[leafIndex % FESCUE_COLOURS.length];
-    for (const [row, t] of rows.entries()) {
-      const [reach, y, half] = fescueProfile(leaf, t);
-      const roll = (12 + 32 * t) * Math.PI / 180;
-      const across = Math.cos(roll) * half;
-      const dy = Math.sin(roll) * half;
-      const x = x0 + fx * reach;
-      const z = z0 + fz * reach;
-      position.push(x - fz * across, y0 + y - dy, z + fx * across);
-      position.push(x, y0 + y + half * fold, z);
-      position.push(x + fz * across, y0 + y + dy, z - fx * across);
-      for (let column = 0; column < section; column++) colour.push(...leafColour);
-      if (row === 0) continue;
-      const bottom = start + (row - 1) * section;
-      for (let column = 0; column < section - 1; column++) {
-        const a = bottom + column;
-        const b = a + section;
-        index.push(a, b, b + 1, a, b + 1, a + 1);
-      }
-    }
-    const tip = position.length / 3;
-    const [reach, y] = fescueProfile(leaf, 1);
-    position.push(x0 + fx * reach, y0 + y, z0 + fz * reach);
-    colour.push(...leafColour);
-    for (let column = 0; column < section - 1; column++) {
-      const a = tip - section + column;
-      index.push(a, tip, a + 1);
-    }
-  }
-  const geometry = new BufferGeometry();
-  geometry.setAttribute('position', new BufferAttribute(new Float32Array(position), 3));
-  geometry.setIndex(index);
-  geometry.computeVertexNormals();
-  return { position, normal: geometry.attributes.normal.array, colour, index };
-}
+export const SOD_NEAR_LEAVES = 7;
 
-/** Positions, vertex normals and linear material colours are copied from the approved A and C GLBs. */
-function floweringSpecimens(): Specimen[] {
-  const specimenPack = packs['../../assets/grass/specimens-ac.bin'];
-  const bytes = decodePack(specimenPack);
+/** Native position, normal and colour packs from the original source meshes. */
+function specimens(path: string): Specimen[] {
+  const bytes = decodeGrassPack(packs[path]);
   const view = new DataView(bytes.buffer);
   let offset = 0;
   const specimens: Specimen[] = [];
@@ -92,7 +40,7 @@ function floweringSpecimens(): Specimen[] {
   return specimens;
 }
 
-function decodePack(dataUrl: string): Uint8Array {
+function decodeGrassPack(dataUrl: string): Uint8Array {
   const binary = atob(dataUrl.slice(dataUrl.indexOf(',') + 1));
   return Uint8Array.from(binary, value => value.charCodeAt(0));
 }
@@ -102,9 +50,9 @@ const TUFT_WIDTH = 0.27;
 const TUFT_HEIGHT = 0.12;
 
 export function createFescueTuftTexture(): DataTexture {
-  const bytes = decodePack(packs['../../assets/grass/fescue-tuft.bin']);
+  const bytes = decodeGrassPack(packs['../../assets/grass/sod-side.bin']);
   const tile = new DataTexture(bytes, 512, 256, RGFormat);
-  tile.name = 'approved-fescue-tuft';
+  tile.name = 'fescue-sod-side';
   tile.minFilter = LinearMipmapLinearFilter;
   tile.magFilter = LinearFilter;
   tile.generateMipmaps = true;
@@ -139,7 +87,7 @@ export function createFescueTuftGeometry(cells: Float32Array) {
 
 /** One cell's templates, instanced over world roots by the existing grass streamer. */
 export function createSpecimenGeometry(kind: 'dense' | 'card', shoots: number, cells: Float32Array) {
-  const templates = kind === 'card' ? floweringSpecimens() : [fescue()];
+  const templates = specimens(kind === 'card' ? '../../assets/grass/specimens-ac.bin' : '../../assets/grass/sod-near.bin');
   const positions: number[] = [];
   const normals: number[] = [];
   const colours: number[] = [];

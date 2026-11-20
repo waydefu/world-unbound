@@ -116,7 +116,7 @@ export function createTerrainMaterial(noise: DataTexture, lite = false, surface:
   const baseGrass = groundCover(macro, wet01, veg, season).mul(canopyShade(veg.r, grassDist, grassRange))
     .mul(surface && !lite ? tipColour.mul(grassDetail) : float(1));
   const carpet = surface?.carpet && surface.grassCover
-    ? grassCanopy(surface.grassCover, noise, surface.carpet, pW.xz, grassDist, nGeo, macro) : null;
+    ? grassCanopy(surface.grassCover, noise, surface.carpet, pW.xz, grassDist, nGeo, macro, lite) : null;
   const carpetWeight = carpet ? grassCarpetWeight(veg.r) : float(0);
   const grassCol = carpet ? mix(baseGrass, grassCarpetColour(season).mul(carpet.tone), carpetWeight) : baseGrass;
   // Stone quays and breakwaters read as stone, not as a flat tan band: darker on the steep flank and at the foot,

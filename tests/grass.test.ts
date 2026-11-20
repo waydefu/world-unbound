@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { Matrix4, PerspectiveCamera } from 'three/webgpu';
 import { CAMERAS, GrassTestWalk, resolveCamera, type ResolvedCamera } from '../src/app/cameras';
@@ -5,7 +7,8 @@ import { QUALITY } from '../src/app/quality';
 import { parseParams } from '../src/app/params';
 import { frustumPlanes } from '../src/world/cdlod';
 import { WORLD_MIN } from '../src/world/constants';
-import { buildSwardCover, SWARD_COVER_DIM } from '../src/world/grassCover';
+import { SWARD_COVER_DIM } from '../src/world/grassCover';
+import { createGrassCoverTexture } from '../src/render/noiseTextures';
 import { CELL_M, GrassCells, MAX_CARD_CELLS, MAX_DENSE_CELLS, MAX_THIN_CELLS, WORLD_CELLS } from '../src/world/grassCells';
 import { HEIGHT_DIM, buildTerrainTextures, materialDim } from '../src/world/terrainTextures';
 import { createTerrainTextures } from '../src/render/terrainTextures';
@@ -241,13 +244,14 @@ describe('grass layer on the Hellesylt terrain', () => {
 });
 
 describe('measured-density grass prototype', () => {
-  it('keeps the approved fescue leaf arcs in the detailed mesh and uses leaf cutouts for the carpet', () => {
+  it('preserves real-size leaf arcs from the approved sod master at the existing mesh budget', () => {
     const dense = createSpecimenGeometry('dense', 1, new Float32Array(4));
     expect(dense.trianglesPerInstance).toBe(126);
     const high = dense.geometry.attributes.position;
-    // Leaf 2 drops from its crest to a tip only 18 mm above its root.
-    expect(high.getY(25)).toBeGreaterThan(high.getY(31) + 0.025);
-    expect(high.getY(31)).toBeCloseTo(0.01885, 5);
+    // The first sampled leaf arches 34 mm above its restrained tip.
+    const crest = Math.max(...Array.from({ length: 15 }, (_, index) => high.getY(index)));
+    expect(crest).toBeGreaterThan(high.getY(15) + 0.03);
+    expect(high.getY(15)).toBeCloseTo(0.036, 3);
     const tuft = createFescueTuftGeometry(new Float32Array(4));
     expect(tuft.trianglesPerInstance).toBe(TUFT_GRID ** 2 * 4);
     const texture = createFescueTuftTexture();
@@ -259,19 +263,24 @@ describe('measured-density grass prototype', () => {
     expect(flower.geometry.attributes.position.count).toBe(506 + 869);
   });
 
-  it('bakes a deterministic fibre map with at least 99% grass canopy coverage', () => {
-    const cover = buildSwardCover();
+  it('loads the deterministic sod bake with at least 99% grass canopy coverage', () => {
+    const sod = readFileSync(fileURLToPath(new URL('../assets/grass/sod-top.bin', import.meta.url)));
+    const { texture, uploadBytes } = createGrassCoverTexture(sod);
+    const cover = texture.image.data as Uint8Array;
     expect(cover).toHaveLength(SWARD_COVER_DIM ** 2 * 4);
-    expect(cover).toEqual(buildSwardCover());
+    expect(uploadBytes).toBe(cover.byteLength);
+    expect(texture.generateMipmaps).toBe(true);
     const texels = SWARD_COVER_DIM ** 2;
     const covered = cover.filter((height, i) => i % 4 === 1 && height > 0).length;
     expect(covered / texels).toBeGreaterThanOrEqual(0.99);
     expect(covered).toBeLessThan(texels);
     expect(cover.some((height, i) => i % 4 === 1 && height >= 180)).toBe(true);
+    texture.dispose();
   });
 
-  it('opts in from the URL and repeats the same 8.4 m test path', () => {
-    expect(parseParams('?cam=2')).toMatchObject({ sward: false, walk: false });
+  it('loads sod by default, accepts the old path as a fallback, and repeats the same 8.4 m test path', () => {
+    expect(parseParams('?cam=2')).toMatchObject({ sward: true, walk: false });
+    expect(parseParams('?cam=2&sward=0')).toMatchObject({ sward: false });
     expect(parseParams('?cam=2&sward=1&walk=1')).toMatchObject({ sward: true, walk: true });
     const spec = CAMERAS[2];
     const eye: ResolvedCamera = { x: 0, y: 0, z: 0, targetX: 0, targetY: 0, targetZ: 0, fovDeg: 60 };

@@ -8,6 +8,7 @@ import { WEATHER_WETNESS, type Weather } from '../env/weather';
 import { MemoryPartition, type MemoryRegistry } from '../perf/memoryRegistry';
 import type { SlidingRate } from '../perf/slidingRate';
 import { GrassLayer } from '../render/grass';
+import { GUST_WAVELENGTH_M } from '../render/grassWind';
 import type { Ocean } from '../render/ocean';
 import { WIND_BYTES, WindTexture } from '../render/windTexture';
 import { WORLD_SEED } from '../world/constants';
@@ -57,6 +58,7 @@ export class VegetationBackend {
   private startMs = -1;
   private lastMs = 0;
   private readonly seasonWeights = new Float32Array(3);
+  private canopyGustPhase = 0;
 
   constructor(private readonly options: VegetationOptions) {}
 
@@ -90,18 +92,22 @@ export class VegetationBackend {
     const settings = sward && tier.name !== 'low'
       ? { ...tier.grass, nearM: 11, midM: 12, bladesPerM2: tier.name === 'med' ? 14 : 19 }
       : tier.grass;
-    const grass = new GrassLayer({
+    // Low sward uses the filtered terrain canopy alone: legacy 60 m cards are the source of the peppered arc.
+    const canopyOnly = sward && tier.name === 'low';
+    const grass = canopyOnly ? null : new GrassLayer({
       textures: terrain.gpu, data: terrain.data, noise, wind: wind.texture, settings,
       motion: terrain.carpetWind ? terrain.carpetMotion : undefined,
       shadows: this.options.shadows && tier.name !== 'low', lite: tier.name === 'low', sward,
     });
-    grass.account(memory);
-    if (grass.tuftUploadBytes) uploads.add(performance.now(), grass.tuftUploadBytes);
+    if (grass) {
+      grass.account(memory);
+      if (grass.tuftUploadBytes) uploads.add(performance.now(), grass.tuftUploadBytes);
+      grass.setSeason(this.seasonWeights[0], this.seasonWeights[1], this.seasonWeights[2]);
+      grass.setWetness(WEATHER_WETNESS[this.weather]);
+      terrain.root.add(grass.root);
+    }
     memory.add(MemoryPartition.Gpu, WIND_BYTES);
     memory.add(MemoryPartition.CpuRetained, WIND_BYTES);
-    grass.setSeason(this.seasonWeights[0], this.seasonWeights[1], this.seasonWeights[2]);
-    grass.setWetness(WEATHER_WETNESS[this.weather]);
-    terrain.root.add(grass.root);
     terrain.setGrassRange(settings.midM);
     this.wind = wind;
     this.grass = grass;
@@ -128,8 +134,17 @@ export class VegetationBackend {
     this.lastMs = nowMs;
     const grass = this.grass;
     const wind = this.wind;
-    if (grass === null || wind === null) return;
+    if (wind === null) return;
     if (wind.update(nowMs, eye.x, eye.z, climate)) uploads.add(nowMs, WIND_BYTES);
+    if (grass === null) {
+      if (this.options.sward === true && this.options.tier.name === 'low' && this.options.terrain instanceof CdlodBackend) {
+        const motion = this.options.terrain.carpetMotion;
+        motion.wind.value.set(dirX, dirZ, climate.windSpeedMs, climate.gust01);
+        if (dt > 0 && dt < 1) this.canopyGustPhase += dt * climate.windSpeedMs * 1.1 / GUST_WAVELENGTH_M;
+        motion.gustPhase.value = this.canopyGustPhase;
+      }
+      return;
+    }
     grass.setWind(dirX, dirZ, climate.windSpeedMs, climate.gust01);
     const p = sun.position;
     const inv = 1 / Math.max(1e-6, Math.sqrt(p.x * p.x + p.y * p.y + p.z * p.z));
@@ -149,7 +164,7 @@ export class VegetationBackend {
     state.temperatureC = this.climate.temperatureC;
     state.season01 = this.climate.season01;
     const grass = this.grass;
-    state.grassEnabled = grass !== null;
+    state.grassEnabled = this.wind !== null;
     state.windUpdates = this.wind?.updates ?? 0;
     if (grass === null) return;
     state.grassCells = grass.stats.cells;

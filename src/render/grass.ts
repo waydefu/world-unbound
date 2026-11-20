@@ -4,12 +4,11 @@ import { MemoryPartition, type MemoryRegistry } from '../perf/memoryRegistry';
 import { frustumPlanes } from '../world/cdlod';
 import { CELL_M, SPECIMEN_CELL_M, GrassCells } from '../world/grassCells';
 import type { TerrainTextureData } from '../world/terrainTextures';
-import { FESCUE_LEAVES } from '../world/fescue';
 import { type GrassGeometry, createBladeGeometry, createCardGeometry } from './grassGeometry';
 import { createGrassMaterial, type GrassKind } from './grassMaterial';
 import { CARD_FADE_JITTER_SHARE, CLUMPS_PER_CELL, THIN_BLADE_STRIDE, type GrassInputs, type GrassLayout, type GrassUniforms } from './grassField';
 import { createGrassWind, GUST_WAVELENGTH_M, type GrassWindUniforms } from './grassWind';
-import { createFescueTuftGeometry, createFescueTuftTexture, createSpecimenGeometry, TUFT_GRID } from './grassSpecimenGeometry';
+import { createFescueTuftGeometry, createFescueTuftTexture, createSpecimenGeometry, SOD_NEAR_LEAVES, TUFT_GRID } from './grassSpecimenGeometry';
 import { createSpecimenMaterial } from './grassSpecimenMaterial';
 import type { TerrainTextures } from './terrainTextures';
 
@@ -195,7 +194,7 @@ export class GrassLayer {
       publish(this.draws[2], cells.cardCount);
       stats.cells = cells.denseCount + cells.thinCount + cells.cardCount;
       const shoots = cells.denseCount * this.bladesPerDenseCell + cells.thinCount * this.bladesPerThinCell;
-      stats.blades = this.specimen ? shoots * FESCUE_LEAVES.length : shoots + cells.denseCount * this.bladesPerDenseCell * DENSE_COMPANIONS;
+      stats.blades = this.specimen ? shoots * SOD_NEAR_LEAVES : shoots + cells.denseCount * this.bladesPerDenseCell * DENSE_COMPANIONS;
       stats.cards = this.specimen ? cells.thinCount * TUFT_GRID ** 2 : cells.cardCount * this.cardsPerCell;
       stats.triangles = cells.denseCount * (this.draws[0]?.parts.trianglesPerInstance ?? 0)
         + cells.thinCount * (this.draws[1]?.parts.trianglesPerInstance ?? 0)
