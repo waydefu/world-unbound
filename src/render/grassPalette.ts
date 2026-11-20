@@ -42,6 +42,11 @@ export function groundCover(
   return mix(ground, ground.mul(FOREST_MUL), veg.b);
 }
 
+/** Match the fresh-green canopy between the ground texture and the visible blades. */
+export function meadowTint(meadow: Node<'float'>, straw: Node<'float'>): Node<'vec3'> {
+  return mix(vec3(1, 1, 1), vec3(0.64, 1.28, 0.83), meadow.mul(float(1).sub(straw)));
+}
+
 /** Darkening of the ground between blades where the meadow is dense (fraction of the albedo). */
 export const CANOPY_SHADE = 0.22;
 

@@ -29,6 +29,10 @@ export interface DebugParams {
   terrain: 'cdlod' | 'chunks';
   /** Grass; ?grass=0 turns it off for A/B comparisons (CDLOD only). */
   grass: boolean;
+  /** Opt into the measured-density grass prototype on med/high CDLOD. */
+  sward: boolean;
+  /** Repeat the eye-height grass test path on camera 1 or 2. */
+  walk: boolean;
 }
 
 export const CAMERA_COUNT = 6;
@@ -65,5 +69,7 @@ export function parseParams(search: string): DebugParams {
     hud: p.get('hud') !== '0',
     terrain: p.get('terrain') === 'chunks' ? 'chunks' : 'cdlod',
     grass: p.get('grass') !== '0',
+    sward: p.get('sward') === '1',
+    walk: p.get('walk') === '1',
   };
 }

@@ -64,6 +64,8 @@ function instancedPatch(
 }
 
 export interface CdlodOptions {
+  readonly grassCover: DataTexture | null;
+  readonly sward: boolean;
   readonly textures: TerrainTextures;
   readonly pyramid: Float32Array;
   readonly noise: DataTexture;
@@ -100,7 +102,7 @@ export class CdlodTerrain {
   readonly bufferBytes: number;
 
   constructor(options: CdlodOptions) {
-    const { textures, pyramid, noise, lod0Distance, shadowFar, lite } = options;
+    const { textures, pyramid, noise, lod0Distance, shadowFar, lite, grassCover } = options;
     this.selector = new CdlodSelector(pyramid, lod0Distance, shadowFar);
     const shaders = createCdlodShaders(textures.height, this.eye, uniform(lod0Distance));
     this.terrainMaterial = createTerrainMaterial(noise, lite, {
@@ -110,6 +112,8 @@ export class CdlodTerrain {
       materialStep: textures.materialStep,
       vegetation: textures.vegetation,
       wetness: textures.wetness,
+      grassCover,
+      sward: options.sward,
     });
     this.material = this.terrainMaterial.material;
     this.material.positionNode = shaders.position;

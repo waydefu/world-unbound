@@ -5,15 +5,15 @@ import { quantize } from './heightField';
  * Man-made stone detection on the 2 m lattice (spec G2.1 phase B.3): breakwaters, piers and quay walls, which
  * the baked terrain carries as thin low ridges and sheer edges next to the sea. Pure.
  *
- *  - Thin strip: a land point 0..STONE_MAX_HEIGHT_M above the sea with sea water within STONE_REACH_CELLS on two
- *    roughly opposite sides (along an axis or a diagonal). The spec says "within 4 m"; the harbour piers in the
- *    baked data are 4 to 9 m across, so the reach is 3 cells (6 m). Flagged points are dilated by one cell so the
- *    flanks of the strip are stone too.
+ *  - Thin strip: a low land point between two sea samples (on an axis or diagonal). A bounded total span makes
+ *    the result independent of which side of the strip the point lies on and keeps wide headlands vegetated.
+ *    Flagged points are dilated by one cell to cover the flanks.
  *  - Quay wall: a land point with sea water 1 cell away and a drop of at least QUAY_DROP_M to it (or
  *    2 x QUAY_DROP_M at 2 cells), on ground that stays level behind it: a built edge, not a beach.
  */
 export const STONE_MAX_HEIGHT_M = 5;
-export const STONE_REACH_CELLS = 3;
+export const STONE_REACH_CELLS = 6;
+const STONE_WATER_SPAN_M = 18;
 export const QUAY_DROP_M = 1.5;
 /** Level ground behind a quay edge: the point one cell inland may differ by this much (m). */
 const QUAY_LEVEL_M = 0.6;
@@ -46,7 +46,8 @@ export function findManMadeStone(padded: Int16Array, padDim: number, apron: numb
           if (forward === 0 && padded[at + k * step] < Q_SEA) forward = k;
           if (back === 0 && padded[at - k * step] < Q_SEA) back = k;
         }
-        if (forward > 0 && back > 0) hit = true;
+        const metresPerStep = d < 2 ? 2 : 2 * Math.SQRT2;
+        if (forward > 0 && back > 0 && (forward + back) * metresPerStep <= STONE_WATER_SPAN_M) hit = true;
         else if (forward > 0 || back > 0) {
           // Sheer edge on one side with level ground behind it.
           const sign = forward > 0 ? 1 : -1;

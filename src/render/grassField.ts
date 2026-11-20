@@ -1,7 +1,7 @@
 import type { DataTexture, Node, UniformNode, Vector3, Vector4 } from 'three/webgpu';
 import {
   clamp, cos, dot, float, floor, hash, ivec2, length, max, mix, positionGeometry, attribute, pow, sin, smoothstep,
-  texture, uint, vec2, vec3,
+  sqrt, texture, uint, vec2, vec3,
 } from 'three/tsl';
 import { TOWN_RADIUS, TOWN_X, TOWN_Z, WORLD_MIN } from '../world/constants';
 import { CELL_M } from '../world/grassCells';
@@ -26,6 +26,8 @@ export interface GrassInputs {
   readonly wetness: DataTexture;
   readonly noise: DataTexture;
   readonly wind: DataTexture;
+  readonly sward: boolean;
+  readonly cardMask: DataTexture | null;
   /** Texels per side of the vegetation lattice and lattice cells per texel (the material texture's). */
   readonly vegetationDim: number;
   readonly vegetationStep: number;
@@ -63,6 +65,10 @@ const RIPPLE_WAVELENGTH_M = 11;
 const FULL_LEAN_MS = 10;
 /** Clumps per 8 m cell: one per 0.67 m2, a clump every 0.8 m or so (research note 7: clumps of 0.6-1.5 m). */
 export const CLUMPS_PER_CELL = 96;
+/** The thin mesh reuses one of every two dense blades. */
+export const THIN_BLADE_STRIDE = 2;
+/** Full width of the card fade-distance jitter as a fraction of near reach. */
+export const CARD_FADE_JITTER_SHARE = 0.18;
 /** Metres per noise tile of the macro patches the terrain shader uses (the colour must match) and of the patch noise. */
 export const MACRO_METRES = 37;
 const PATCH_M = 17;
@@ -80,9 +86,10 @@ type F = Node<'float'>;
  *   tussock   - tufted hair-grass: 40-80 cm, tight clumps that arch outwards (hollows, moist ground);
  *   heath     - heather, crowberry: short dark purple-brown cards only, no blades (above the treeline, thin soil).
  */
+// Widths are screen-coverage proxies, wider than many actual grass leaves; distance widening is applied separately.
 const PASTURE = { height: 0.085, width: 0.016, radius: 0.6, stiffness: 0.6, bend: 0.08 }; // unverified
-const HAY = { height: 0.45, width: 0.03, radius: 0.8, stiffness: 1, bend: 0.25 }; // unverified
-const TUSSOCK = { height: 0.6, width: 0.02, radius: 0.36, stiffness: 0.8, bend: 0.5 }; // unverified
+const HAY = { height: 0.43, width: 0.022, radius: 0.8, stiffness: 1, bend: 0.32 }; // unverified
+const TUSSOCK = { height: 0.57, width: 0.017, radius: 0.36, stiffness: 0.8, bend: 0.55 }; // unverified
 const HEATH = { height: 0.11, width: 0.03, radius: 0.5, stiffness: 0.5, bend: 0.1 }; // unverified
 
 /** Per-blade species look. Weights are 0 or 1 per clump (heath beats the rest). */
@@ -102,6 +109,7 @@ export interface GrassField {
   rnd: (k: number) => F;
   /** Root position: x, terrain height, z (absolute world). */
   root: Node<'vec3'>;
+  rootInset: F;
   /** Unit terrain normal, world axes. */
   terrainNormal: Node<'vec3'>;
   /** Meadow, heath, tree, bare at the root; wetness; macro noise -1..1. */
@@ -110,6 +118,10 @@ export interface GrassField {
   macro: F;
   /** Horizontal distance from the eye (m). */
   dist: F;
+  /** Distance to the cell centre, used to finish the dense fade before the CPU switches LOD. */
+  cellDist: F;
+  /** World-fixed weight of the short lawn inside the village. */
+  lawn: F;
   archetype: Archetype;
   /** Where the blade leans when no wind blows: unit xz direction and the fraction of its height the tip moves. */
   restDir: Node<'vec2'>;
@@ -127,7 +139,7 @@ export interface GrassField {
  * Builds the shared graph. `salt` separates the random streams of blades and cards that share a cell.
  * Must be called inside an Fn (it creates variables).
  */
-export function grassField(inp: GrassInputs, u: GrassUniforms, layout: GrassLayout, salt: number): GrassField {
+export function grassField(inp: GrassInputs, u: GrassUniforms, layout: GrassLayout, salt: number, companion: F | null): GrassField {
   const cell = attribute('grassCell', 'vec4');
   const idx = positionGeometry.z.mul(layout.stride);
   const cellU = cell.x.sub(WORLD_MIN).div(CELL_M).toUint().mul(uint(512)).add(cell.y.sub(WORLD_MIN).div(CELL_M).toUint());
@@ -168,11 +180,18 @@ export function grassField(inp: GrassInputs, u: GrassUniforms, layout: GrassLayo
   const clumpHue = cr(5).sub(0.5);
   const radius = sel(PASTURE.radius, HAY.radius, TUSSOCK.radius, HEATH.radius);
 
-  // The blade: scattered around the centre, densest at the middle.
+  // Mix irregular clumps with dispersed blades so contiguous uncovered strips cannot form between clumps.
   const angle = rnd(0).mul(TWO_PI);
-  const rad = rnd(1).mul(radius);
-  const x = cx.add(cos(angle).mul(rad));
-  const z = cz.add(sin(angle).mul(rad));
+  const rad = sqrt(rnd(1)).mul(radius).mul(1.25);
+  const dispersed = rnd(2).lessThan(mix(0.72, 0.2, isTussock));
+  let x = dispersed.select(cell.x.add(rnd(0).mul(CELL_M)), cx.add(cos(angle).mul(rad)));
+  let z = dispersed.select(cell.y.add(rnd(1).mul(CELL_M)), cz.add(sin(angle).mul(rad)));
+  if (companion) {
+    const direction = angle.add(companion.mul(2.4));
+    const offset = companion.mul(rnd(12).mul(0.045).add(0.055));
+    x = x.add(cos(direction).mul(offset));
+    z = z.add(sin(direction).mul(offset));
+  }
   const edge = float(1).sub(rad.div(radius).mul(0.25));
 
   const uv = surfaceUv(x, z);
@@ -195,17 +214,19 @@ export function grassField(inp: GrassInputs, u: GrassUniforms, layout: GrassLayo
   const upper = h11.add(h01.sub(h11).mul(float(1).sub(fx))).add(h10.sub(h11).mul(float(1).sub(fz)));
   const y = fx.add(fz).lessThanEqual(1).select(lower, upper);
   // Roots sit a little below the surface (more on slopes, where the bilinear height and the mesh differ most).
-  const root = vec3(x, y.sub(float(1).sub(nrm.y).mul(0.25).add(0.03)), z);
+  const lawn = town.mul(pasture);
+  const rootInset = float(1).sub(nrm.y).mul(0.25).add(inp.sward ? mix(0.03, 0.014, lawn) : float(0.03));
+  const root = vec3(x, y.sub(rootInset), z);
 
   // Patch noise (alpha channel, ~17 m): tall and short, thick and thin, dry and lush areas.
   const patch = texture(inp.noise, vec2(x, z).div(PATCH_M)).level(LOD0).a;
-  const densityMul = mix(0.85, 1.3, cr(6)).mul(mix(0.75, 1.15, patch));
+  const densityMul = mix(0.92, 1.16, cr(6)).mul(mix(0.85, 1.12, patch));
   const hue = clumpHue.mul(0.8).add(rnd(14).sub(0.5).mul(0.3));
   const variation = vec3(hue.mul(0.26).add(1), hue.mul(0.04).add(1), float(1).sub(hue.mul(0.26))).mul(rnd(15).mul(0.16).add(0.92));
 
   // Height: archetype mid-range x clump (0.6-1.4) x blade (+-30 %) x patch, lower at the clump's edge.
   const height = sel(PASTURE.height, HAY.height, TUSSOCK.height, HEATH.height)
-    .mul(clumpH).mul(rnd(4).mul(0.6).add(0.7)).mul(patch.mul(0.3).add(0.85)).mul(edge);
+    .mul(clumpH).mul(rnd(4).mul(0.9).add(0.55)).mul(patch.mul(0.3).add(0.85)).mul(edge);
   const archetype: Archetype = {
     height,
     width: sel(PASTURE.width, HAY.width, TUSSOCK.width, HEATH.width).mul(rnd(12).mul(0.5).add(0.75)),
@@ -222,6 +243,7 @@ export function grassField(inp: GrassInputs, u: GrassUniforms, layout: GrassLayo
   // Colour noise: the terrain shader's macro patches (top projection of the shared noise texture, channel b).
   const macro = texture(inp.noise, vec2(x, z).div(MACRO_METRES)).level(LOD0).b.mul(2).sub(1);
   const dist = length(vec2(x.sub(u.eye.x), z.sub(u.eye.z)));
+  const cellDist = length(cell.xy.add(CELL_M / 2).sub(u.eye.xz));
 
   // Wind: the local velocity at the root from the wind texture, and gust fronts travelling along the global wind.
   const w = texture(inp.wind, vec2(x, z).div(WIND_SPAN_M)).level(LOD0);
@@ -238,11 +260,11 @@ export function grassField(inp: GrassInputs, u: GrassUniforms, layout: GrassLayo
     const sp = clamp(speed.div(FULL_LEAN_MS), 0, 1.4);
     // Steady lean (calm 0.1, storm 0.7), travelling gusts (a few cm of tip motion in calm, a lot in a storm) and
     // per-blade flutter whose amplitude and pitch rise with the wind.
-    const steady = pow(sp, float(1.3)).mul(0.7);
+    const steady = pow(sp, float(1.3)).mul(mix(0.36, 0.7, smoothstep(0.25, 1, sp)));
     const gusts = mix(0.16, 0.32, clamp(sp, 0, 1)).mul(u.wind.w.mul(0.45).add(0.55)).mul(front.mul(0.75).add(ripple.mul(0.25)));
     const flutter = sin(u.time.mul(rnd(6).mul(6).add(6)).mul(sp.mul(2.2).add(0.6)).add(rnd(7).mul(TWO_PI))).mul(sp.mul(0.1).add(0.01));
     return steady.add(gusts).add(flutter).mul(stiffness);
   };
 
-  return { rnd, root, terrainNormal: nrm, veg, wet, macro, dist, archetype, restDir, restBend, windDir, lean, densityMul, variation };
+  return { rnd, root, rootInset, terrainNormal: nrm, veg, wet, macro, dist, cellDist, lawn, archetype, restDir, restBend, windDir, lean, densityMul, variation };
 }

@@ -107,15 +107,18 @@ export class Environment {
     const lift = (c: number): number => OVERCAST_LIFT * w.overcast * (9 / 7) * (eLum * w.dim + NIGHT_FLOOR * TINT[c]);
     // Sunny days add the light shaded faces get from interreflection (sunlit slopes, water, sky scattered twice);
     // overcast and night skies already are that diffuse light.
+    const daylight = smooth(0.05, 0.4, sinAlt) * (1 - w.overcast);
     const fill = 1 + SHADE_FILL * w.sun * sunVisible;
+    const neutralFill = eLum * w.dim * daylight;
+    const skyTintMix = daylight * 0.4;
+    const skyFill = (c: number): number => (1 - skyTintMix) * overcastMix(c) * fill + neutralFill;
     this.ambient.color.setRGB(
-      Math.PI * (overcastMix(0) * fill + lift(0)) + night * MOON_TINT.r,
-      Math.PI * (overcastMix(1) * fill + lift(1)) + night * MOON_TINT.g,
-      Math.PI * (overcastMix(2) * fill + lift(2)) + night * MOON_TINT.b,
+      Math.PI * (skyFill(0) + lift(0)) + night * MOON_TINT.r,
+      Math.PI * (skyFill(1) + lift(1)) + night * MOON_TINT.g,
+      Math.PI * (skyFill(2) + lift(2)) + night * MOON_TINT.b,
     );
     // Ground bounce: 0.35 x sky plus the sun's irradiance scattered by the sunlit ground and slopes around a point:
     // albedo 0.25 x about 40% of the lower hemisphere sunlit (valleys, shaded faces see lit slopes opposite).
-    // 10% (the first guess) left shaded faces near black beside lit ones, which no sunlit valley wall looks like.
     const bounce = BOUNCE_SHARE * this.sunBase;
     this.ambient.groundColor.setRGB(
       0.35 * this.ambient.color.r + bounce * t[0],
@@ -134,7 +137,11 @@ export class Environment {
 
     // Aerial perspective approximated by exponential fog tinted with the horizon radiance.
     const h = summary.horizon;
-    const fog = (c: number): number => Math.PI * h[c] + ((zenith[c] / 3) - Math.PI * h[c]) * w.overcast + night * 0.3;
+    // The azimuth-mean horizon includes the warm solar sector. Blend some hemisphere light into clear low-sun
+    // terrain haze so cliffs away from that sector retain their rock colour.
+    const horizonMix = 0.38 * sunVisible * (1 - smooth(0.08, 0.25, sinAlt));
+    const fog = (c: number): number => Math.PI * (h[c] * (1 - horizonMix) + e[c] * horizonMix) * (1 - w.overcast)
+      + (zenith[c] / 3) * w.overcast + night * 0.3;
     this.fogBase.setRGB(fog(0), fog(1), fog(2));
     this.fog.density = w.fog;
 

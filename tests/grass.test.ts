@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { Matrix4, PerspectiveCamera } from 'three/webgpu';
+import { CAMERAS, GrassTestWalk, resolveCamera, type ResolvedCamera } from '../src/app/cameras';
 import { QUALITY } from '../src/app/quality';
 import { parseParams } from '../src/app/params';
 import { frustumPlanes } from '../src/world/cdlod';
 import { WORLD_MIN } from '../src/world/constants';
+import { buildGrassCardMask, buildSwardCover, GRASS_CARD_DIM, GRASS_COVER_DIM } from '../src/world/grassCover';
 import { CELL_M, GrassCells, MAX_CARD_CELLS, MAX_DENSE_CELLS, MAX_THIN_CELLS, WORLD_CELLS } from '../src/world/grassCells';
 import { HEIGHT_DIM, buildTerrainTextures, materialDim } from '../src/world/terrainTextures';
 import { createTerrainTextures } from '../src/render/terrainTextures';
@@ -86,16 +88,41 @@ describe('grass cells', () => {
     for (let c = 0; c < culled.cardCount; c++) expect(culled.cards[c * 4] + CELL_M).toBeGreaterThan(-1);
   });
 
-  it('skips the work while the eye cell and the frustum stay the same, and is deterministic', () => {
+  it('reuses selection at the same eye and frustum, and is deterministic', () => {
     const a = new GrassCells(meadowGround(255), RINGS);
     const b = new GrassCells(meadowGround(255), RINGS);
     a.select(10, 5, 10, null);
     b.select(10, 5, 10, null);
     expect(Array.from(a.cards.subarray(0, a.cardCount * 4))).toEqual(Array.from(b.cards.subarray(0, b.cardCount * 4)));
-    a.select(11, 5, 11, null);
+    a.select(10, 5, 10, null);
     expect(a.changed).toBe(false);
     a.select(30, 5, 10, null);
     expect(a.changed).toBe(true);
+  });
+
+  it('reclassifies cells when the eye moves within one 8 m cell', () => {
+    const ground = meadowGround(255);
+    const moved = new GrassCells(ground, RINGS);
+    const fresh = new GrassCells(ground, RINGS);
+    const camera = new PerspectiveCamera(60, 16 / 9, 0.3, 500);
+    camera.lookAt(1, 0, 0);
+    camera.updateMatrixWorld();
+    const planes = frustumPlanes(new Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse).elements, new Float32Array(24));
+    moved.select(0, 5, 4, planes);
+    moved.select(0, 5, 4, planes); // Warm the unchanged-frustum fast path before moving.
+    moved.select(4, 5, 4, planes);
+    fresh.select(4, 5, 4, planes);
+    for (const kind of ['dense', 'thin', 'cards'] as const) {
+      const count = kind === 'dense' ? 'denseCount' : kind === 'thin' ? 'thinCount' : 'cardCount';
+      expect(Array.from(moved[kind].subarray(0, moved[count] * 4)))
+        .toEqual(Array.from(fresh[kind].subarray(0, fresh[count] * 4)));
+    }
+    const hasTarget = (list: Float32Array, count: number) => {
+      for (let i = 0; i < count; i++) if (list[i * 4] === 16 && list[i * 4 + 1] === 0) return true;
+      return false;
+    };
+    expect(hasTarget(moved.dense, moved.denseCount)).toBe(true);
+    expect(hasTarget(moved.thin, moved.thinCount)).toBe(false);
   });
 
   it('never overflows its lists at the largest tier with no culling', () => {
@@ -109,13 +136,16 @@ describe('grass cells', () => {
 });
 
 describe('grass geometry and tiers', () => {
-  it('blades: 3 segments are 7 vertices and 5 triangles, 1 segment is a 4-vertex quad; cards are 3 triangles', () => {
+  it('blades: 3 segments are 7 vertices and 5 triangles, 1 segment has the same pointed tip; cards are 3 triangles', () => {
     const near = createBladeGeometry(10, 3, new Float32Array(8));
     expect(near.trianglesPerInstance).toBe(50);
     expect(near.geometry.getAttribute('position').count).toBe(70);
     const far = createBladeGeometry(10, 1, new Float32Array(8));
-    expect(far.trianglesPerInstance).toBe(20);
-    expect(far.geometry.getAttribute('position').count).toBe(40);
+    expect(far.trianglesPerInstance).toBe(10);
+    const farPosition = far.geometry.getAttribute('position');
+    expect(farPosition.count).toBe(30);
+    expect([farPosition.getX(2), farPosition.getY(2), farPosition.getZ(2)]).toEqual([0, 1, 0]);
+    expect(Array.from(far.geometry.index?.array.slice(0, 3) ?? [])).toEqual([0, 1, 2]);
     const card = createCardGeometry(5, new Float32Array(8));
     expect(card.trianglesPerInstance).toBe(15);
     expect(card.geometry.getAttribute('part').count).toBe(45);
@@ -128,8 +158,20 @@ describe('grass geometry and tiers', () => {
   it('tiers match the spec: blades per m2 low 0 / med 40 / high 70 near (phase G density), cards only on low out to 60 m', () => {
     expect(QUALITY.low.grass.nearM).toBe(0);
     expect(QUALITY.low.grass.midM).toBe(60);
-    expect(QUALITY.med.grass).toMatchObject({ nearM: 40, midM: 100, bladesPerM2: 40 });
+    expect(QUALITY.med.grass).toMatchObject({ nearM: 40, midM: 94, bladesPerM2: 40 });
     expect(QUALITY.high.grass).toMatchObject({ nearM: 60, midM: 150, bladesPerM2: 70 });
+  });
+
+  it('fits two companion leaves per dense placement in the original triangle budget and index range', () => {
+    const placements = Math.round(CELL_M ** 2 * QUALITY.high.grass.bladesPerM2);
+    const { geometry, trianglesPerInstance } = createBladeGeometry(placements, 2, new Float32Array(4), 2);
+    const position = geometry.getAttribute('position');
+    const part = geometry.getAttribute('part');
+    expect(trianglesPerInstance).toBe(placements * 5);
+    expect(position.count).toBe(placements * 11);
+    expect(geometry.index?.array.at(-1)).toBe(position.count - 1);
+    expect([part.getX(4), part.getX(5), part.getX(8)]).toEqual([0, 1, 2]);
+    expect(position.getZ(position.count - 1)).toBe(placements - 1);
   });
 
   it('phase F density: the boosted blade count per cell still fits 16-bit indices at every tier, cards keep their ring order', () => {
@@ -177,4 +219,37 @@ describe('grass layer on the Hellesylt terrain', () => {
       expect(layer.root.children.length).toBe(tier === 'low' ? 1 : 3);
     });
   }
+});
+
+describe('measured-density grass prototype', () => {
+  it('bakes deterministic coverage and leaves gaps in the canopy and cutout', () => {
+    const cover = buildSwardCover();
+    expect(cover).toHaveLength(GRASS_COVER_DIM ** 2);
+    expect(cover).toEqual(buildSwardCover());
+    expect(cover.some((value) => value === 85)).toBe(true);
+    expect(cover.some((value) => value >= 180)).toBe(true);
+    const mask = buildGrassCardMask();
+    expect(mask).toHaveLength(GRASS_CARD_DIM ** 2);
+    expect(mask.includes(0)).toBe(true);
+    expect(mask.includes(255)).toBe(true);
+  });
+
+  it('opts in from the URL and repeats the same 8.4 m test path', () => {
+    expect(parseParams('?cam=2')).toMatchObject({ sward: false, walk: false });
+    expect(parseParams('?cam=2&sward=1&walk=1')).toMatchObject({ sward: true, walk: true });
+    const spec = CAMERAS[2];
+    const eye: ResolvedCamera = { x: 0, y: 0, z: 0, targetX: 0, targetY: 0, targetZ: 0, fovDeg: 60 };
+    resolveCamera(spec, eye);
+    const walk = new GrassTestWalk();
+    walk.reset(spec);
+    walk.update(0, eye);
+    const start = { ...eye };
+    walk.update(6000, eye);
+    expect(Math.hypot(eye.x - start.x, eye.z - start.z)).toBeCloseTo(8.4);
+    expect(eye.targetX).toBe(start.targetX);
+    walk.update(12000, eye);
+    expect(eye.x).toBeCloseTo(start.x);
+    expect(eye.y).toBeCloseTo(start.y);
+    expect(eye.z).toBeCloseTo(start.z);
+  });
 });

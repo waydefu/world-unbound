@@ -3,10 +3,11 @@ import {
   type Node, type UniformNode,
 } from 'three/webgpu';
 import {
-  Discard, Fn, clamp, cos, dFdx, dFdy, float, length, max, min, mix, normalize, positionLocal, positionWorld, pow, reflect,
+  Discard, Fn, clamp, cos, float, length, max, min, mix, normalize, positionLocal, positionWorld, pow, reflect,
   smoothstep, sin, texture, uniform, varyingProperty, vec2, vec3,
 } from 'three/tsl';
 import { WORLD_MAX, WORLD_MIN } from '../world/constants';
+import { ENCLOSED_OPENNESS } from '../world/basinOpenness';
 import { seaDepth as sampleSeaDepth } from './seaFloorSampling';
 import type { SkyDome } from './sky';
 
@@ -19,9 +20,9 @@ const DETAIL_B_METRES = 6.5;
 const FOAM_METRES = 3;
 const DEEP = vec3(0.004, 0.016, 0.022);
 /** Shallow water over the bottom: a murky green-teal, not a bright turquoise (the band was read as a cyan stroke). */
-const SHALLOW = vec3(0.022, 0.07, 0.058);
+const SHALLOW = vec3(0.024, 0.052, 0.051);
 /** Water of a closed harbour basin: dark and green-grey, no turquoise at the edge. */
-const BASIN = vec3(0.01, 0.03, 0.03);
+const BASIN = vec3(0.011, 0.022, 0.021);
 const SHALLOW_SAND = vec3(0.1, 0.12, 0.09);
 const SSS = vec3(0.02, 0.18, 0.15);
 const FOAM_ALBEDO = 0.8;
@@ -90,7 +91,9 @@ export function createOceanMaterial(
   const vertex = Fn(() => {
     const p = positionLocal.xz.add(eyeSnap).toVar();
     const depth = seaDepth(p);
-    const fade = smoothstep(0.3, 4, depth).mul(smoothstep(2500, 900, length(positionLocal.xz))).toVar();
+    const open01 = openness ? texture(openness, p.sub(WORLD_MIN).div(WORLD_MAX - WORLD_MIN)).level(float(0)).r : float(1);
+    const swell = mix(0.16, 1, smoothstep(ENCLOSED_OPENNESS, 0.45, open01));
+    const fade = smoothstep(0.3, 4, depth).mul(smoothstep(2500, 900, length(positionLocal.xz))).mul(swell).toVar();
     const dx = float(0).toVar();
     const dy = float(0).toVar();
     const dz = float(0).toVar();
@@ -135,24 +138,17 @@ export function createOceanMaterial(
     // Basin openness (G2.1 phase D): 1 in the open fjord, towards 0 in harbour basins that no 150 m run of open water
     // reaches. Sampled before the discard with the other texture reads. `calm` is 1 inside enclosed basins.
     const open01 = openness ? texture(openness, p.sub(WORLD_MIN).div(WORLD_MAX - WORLD_MIN)).r : float(1);
-    const calm = float(1).sub(smoothstep(0.15, 0.3, open01)).toVar();
+    const calm = float(1).sub(smoothstep(ENCLOSED_OPENNESS, 0.45, open01)).toVar();
+    const exposed = float(1).sub(calm);
 
     // Fragment: bicubic near the shore (not in lite), so the waterline follows the terrain smoothly.
     const sea = sampleSeaDepth(coast, p, !lite).toVar();
-    // Horizontal distance to the waterline ~ depth / |gradient|, the gradient from screen derivatives (uniform flow).
-    const dpx = dFdx(p);
-    const dpy = dFdy(p);
-    const dsx = dFdx(sea);
-    const dsy = dFdy(sea);
-    const det = dpx.x.mul(dpy.y).sub(dpx.y.mul(dpy.x));
-    const gradX = dsx.mul(dpy.y).sub(dsy.mul(dpx.y)).div(det);
-    const gradY = dsy.mul(dpx.x).sub(dsx.mul(dpy.x)).div(det);
-    const shoreSlope = max(length(vec2(gradX, gradY)), 0.03);
     // Land per the height map: terrain covers it where it is streamed in; where it is not, show the horizon haze instead of sea.
     Discard(sea.lessThan(-0.5));
 
     // Detail normal: sum of the decoded slopes, scaled by weather and faded out with distance.
-    const amp = slope.mul(1.5).add(0.05).mul(chop).mul(smoothstep(400, 60, dist)).mul(mix(1, 0.55, calm));
+    const distanceDetail = mix(0.2, 1, smoothstep(800, 80, dist));
+    const amp = slope.mul(1.5).add(0.05).mul(chop).mul(distanceDetail).mul(mix(1, 0.38, calm));
     const detail = slopeA.add(slopeB.mul(0.6)).mul(amp);
     const Ng = normalize(vNormal);
     const N = normalize(Ng.sub(vec3(detail.x, 0, detail.y))).toVar();
@@ -178,28 +174,26 @@ export function createOceanMaterial(
     // Water body lit by sky irradiance (zenith radiance x pi x 0.5) plus the sun's illuminance on a horizontal surface.
     const sunIlluminance = sunE.mul(max(sunDir.y, 0));
     const bodyLight = zenith.mul(Math.PI * 0.5).add(sunIlluminance);
-    // Deep -> green shallows. The tint is depth-graded (e-folding 2.2 m, 1 m on steep coasts: quays, breakwaters), broken up
-    // by the low-frequency noise so it is not one even stroke along every shore, and absent in closed basins, which
-    // take a dark green-grey instead.
+    // Depth-graded shallows fade over a short range, with grain breaking their colour along the coast.
+    // Closed basins keep the same dark green-grey water down to the edge.
     const shallow = mix(SHALLOW, SHALLOW_SAND, smoothstep(1.5, 0, depth));
-    const narrow = smoothstep(0.25, 0.7, shoreSlope);
-    const patchy = mix(0.55, 1, smoothstep(-0.35, 0.35, slopeA.y));
-    const tint = depth.negate().div(mix(2.2, 1, narrow)).exp().mul(patchy).mul(mix(1, 0.12, calm));
+    const patchy = mix(0.45, 1, smoothstep(0.2, 0.75, lite ? slopeA.y.mul(0.5).add(0.5) : grain));
+    const tint = depth.negate().div(1.25).exp().mul(patchy).mul(exposed.mul(exposed));
     const body = mix(mix(DEEP, BASIN, calm), shallow, tint).mul(bodyLight).toVar();
     // Backlit crests: sun shining through the wave when looking towards it.
     const crest = clamp(vWaveY.div(weather.y), 0, 1);
     const sunH = normalize(vec3(sunDir.x, 0, sunDir.z).add(vec3(1e-5, 0, 0)));
     const backlit = pow(max(V.dot(sunH.negate()), 0), 4).mul(crest.mul(crest)).mul(smoothstep(0, 0.08, sunDir.y));
-    body.addAssign(SSS.mul(sunE).mul(backlit).div(Math.PI));
+    body.addAssign(SSS.mul(sunE).mul(backlit).mul(exposed).div(Math.PI));
 
     // Lite: breakup from the Gerstner phase (wave height) and no crest foam.
     const breakup = lite ? vWaveY.div(weather.y).mul(0.5).add(0.5) : smoothstep(0.3, 0.7, grain);
-    // Thin broken band: ~0.6-1.8 m of horizontal distance from the waterline, ragged by the noise alpha channel.
-    const shoreDist = depth.div(shoreSlope);
-    const reach = lite ? float(1.2) : grain.mul(1.2).add(0.6);
-    const shore = smoothstep(1, 0, shoreDist.div(reach)).mul(breakup).mul(0.6);
+    // Break the foam up along the edge. Depth bounds the band to the real waterline and avoids a second
+    // contour from the change in slope of the synthetic seabed.
+    const shallowFoam = float(1).sub(smoothstep(0.1, 0.45, depth));
+    const shore = shallowFoam.mul(breakup).mul(0.38).mul(exposed);
     // Enclosed basins stay calm: no shore or crest foam.
-    const foam = (lite ? min(shore, 1) : min(shore.add(smoothstep(0.8, 1, crest).mul(0.4).mul(weather.z)), 1)).mul(float(1).sub(calm));
+    const foam = (lite ? min(shore, 1) : min(shore.add(smoothstep(0.8, 1, crest).mul(0.4).mul(weather.z)), 1)).mul(exposed);
     const sunIrradianceTerm = sunE.mul(max(sunDir.y, 0).div(Math.PI));
     const foamColour = zenith.add(sunIrradianceTerm).mul(FOAM_ALBEDO);
 
