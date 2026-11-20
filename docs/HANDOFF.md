@@ -7,7 +7,7 @@ Base main: b5a3c96fedcb957c5e4dcc3a0303cea3d49ec80b
 ## 30-second resume (verify GitHub state before acting)
 
 - **Accepted baseline:** PRs #28–#32 merged at this snapshot; do not redo their grass/wind implementation.
-- **Grass sod branch:** [Real-world sod integration](specs/g2.1-real-turf-field.md) adds the approved fine-fescue model's runtime assets and the [real-world reference review rule](process/visual-review.md#real-world-reference). Verify PR state and phone results before marking it accepted.
+- **Grass sod branch:** [PR #39](https://github.com/waydefu/world-unbound/pull/39) includes the [complete approved grass master in the game](specs/g2.1-real-turf-field.md) at `?sod=full&sodView=edge` and the [real-world reference review rule](process/visual-review.md#real-world-reference). Use that one-square-metre capture as the benchmark for analyzing the earlier LOD test. Verify PR state and phone results before marking it accepted.
 - **Next scoped task:** [Issue #33](https://github.com/waydefu/world-unbound/issues/33) — grass contact, overlapping blades, and thin-tip lighting. No implementation approval is implied here.
 - **Evidence:** prior phone/CDLOD gate passed; **latest grass WebGPU p95 and 10-minute thermal gate are not yet verified**. Headless SwiftShader is not device proof.
 - **Trust boundary:** `AGENTS.md` and owner approval govern every edit; next agent checks fresh `main`, Issues, PRs and Actions.

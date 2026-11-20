@@ -2,7 +2,9 @@
 
 blender -b fescue-sod.blend -t 2 --python-exit-code 1 -P tools/bake-sod.py -- extract /tmp/sod.npz
 python3 tools/bake-sod.py /tmp/sod.npz assets/grass
+blender -b fescue-sod.blend -t 2 --python-exit-code 1 -P tools/bake-sod.py -- full assets/grass/sod-full.bin
 """
+import gzip
 from pathlib import Path
 import struct
 import sys
@@ -10,7 +12,7 @@ import sys
 import numpy as np
 
 
-def extract(path):
+def read_blades():
     import bpy
 
     source = bpy.data.objects["Fine fescue · authored blade canopy"]
@@ -20,7 +22,12 @@ def extract(path):
     colours = np.empty(count * 19 * 4, dtype=np.float32)
     mesh.vertices.foreach_get("co", points)
     mesh.color_attributes["Leaf tint"].data.foreach_get("color", colours)
-    np.savez(path, points=points.reshape(count, 19, 3), colours=colours.reshape(count, 19, 4))
+    return mesh, points.reshape(count, 19, 3), colours.reshape(count, 19, 4)
+
+
+def extract(path):
+    _, points, colours = read_blades()
+    np.savez(path, points=points, colours=colours)
 
 
 def triangles(rows):
@@ -31,6 +38,46 @@ def triangles(rows):
     a = (rows - 1) * 3
     faces.extend(((a, rows * 3, a+1), (a+1, rows * 3, a+2)))
     return np.asarray(faces, dtype=np.int32)
+
+
+def export_full(path):
+    import bpy
+
+    mesh, points, colours = read_blades()
+    leaf_count, vertices_per_leaf, _ = points.shape
+    template = triangles(6).astype("<u4").reshape(-1)
+    indices = np.empty(len(mesh.loops), dtype=np.int32)
+    mesh.loops.foreach_get("vertex_index", indices)
+    expected = np.arange(leaf_count, dtype=np.int32)[:, None] * vertices_per_leaf + template
+    if not np.array_equal(indices, expected.ravel()):
+        raise ValueError("Unexpected master topology")
+
+    normals = np.empty(points.size, dtype=np.float32)
+    mesh.vertex_normals.foreach_get("vector", normals)
+    soil = bpy.data.objects["1000 mm by 1000 mm root mat"].data
+    soil_points = np.empty(len(soil.vertices) * 3, dtype=np.float32)
+    soil.vertices.foreach_get("co", soil_points)
+    soil.calc_loop_triangles()
+    soil_indices = np.empty(len(soil.loop_triangles) * 3, dtype=np.int32)
+    soil.loop_triangles.foreach_get("vertices", soil_indices)
+
+    def y_up(vectors):
+        converted = vectors.reshape(-1, 3)[:, [0, 2, 1]].astype("<f4")
+        converted[:, 2] *= -1
+        return converted
+
+    with path.open("wb") as target:
+        with gzip.GzipFile(filename="", mode="wb", fileobj=target, compresslevel=6, mtime=0) as zipped:
+            zipped.write(struct.pack("<4s5I", b"SOD1", leaf_count, vertices_per_leaf, template.size,
+                                     len(soil.vertices), soil_indices.size))
+            zipped.write(template.tobytes())
+            # Group the bytes of each XYZ/RGB lane for gzip, with no loss of float precision.
+            for attribute in (y_up(points), y_up(normals), colours[:, :, :3].astype("<f4")):
+                bytes_by_lane = np.ascontiguousarray(attribute).view(np.uint8).reshape(-1, 12).T
+                zipped.write(bytes_by_lane.tobytes())
+            zipped.write(y_up(soil_points).tobytes(order="C"))
+            zipped.write(soil_indices.astype("<u4").tobytes())
+    print("full mesh", leaf_count, len(mesh.vertices), len(mesh.polygons), "gzip bytes", path.stat().st_size)
 
 
 def bake_near(points, colours, output):
@@ -124,9 +171,12 @@ def bake_top(points, colours, output):
 if __name__ == "__main__":
     if "--" in sys.argv:
         mode, path = sys.argv[sys.argv.index("--")+1:]
-        if mode != "extract":
-            raise ValueError("Expected extract")
-        extract(Path(path))
+        if mode == "extract":
+            extract(Path(path))
+        elif mode == "full":
+            export_full(Path(path))
+        else:
+            raise ValueError("Expected extract or full")
     else:
         source, dest = map(Path, sys.argv[1:])
         with np.load(source) as data:

@@ -12,6 +12,7 @@ Every PR that changes what the game looks like (rendering, materials, terrain, s
 
 - Define the visual target with photos, footage, or measured specimens of the actual object. Record its scale, usable viewpoints, lighting and material cues. Game and mod examples can inform technique. Score realism against the real-world reference.
 - For a new asset or a substantial visual change, start with an isolated, real-scale sample. Show the reference and high-quality model together before deriving runtime geometry, textures and LODs from the approved sample. For grass, include the leaf and roots, standing turf coverage, an elevated view and backlighting. Review static density separately from wind behaviour.
+- When the owner asks to use the approved master directly, first render its complete geometry and authored attributes in the game. Capture it at the master’s scale and camera angles, and record the differences in lighting and materials. Keep that runtime capture as the benchmark for evaluating any later optimization.
 - Capture the runtime result at the same scale, camera, light and wind settings as the approved model wherever practical. Label references with unmatched shooting conditions and list visible losses. Keep image preference, realism relative to photos, and device frame time as separate results.
 
 ### Runtime review

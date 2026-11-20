@@ -8,12 +8,13 @@ import { WEATHER_WETNESS, type Weather } from '../env/weather';
 import { MemoryPartition, type MemoryRegistry } from '../perf/memoryRegistry';
 import type { SlidingRate } from '../perf/slidingRate';
 import { GrassLayer } from '../render/grass';
+import { loadFullSod } from '../render/fullSod';
 import { GUST_WAVELENGTH_M } from '../render/grassWind';
 import type { Ocean } from '../render/ocean';
 import { WIND_BYTES, WindTexture } from '../render/windTexture';
 import { WORLD_SEED } from '../world/constants';
 import { CdlodBackend } from './cdlodBackend';
-import type { ResolvedCamera } from './cameras';
+import { type ResolvedCamera, SOD_ORIGIN, sodBaseY } from './cameras';
 import type { QualityTier } from './quality';
 import type { AppState } from './report';
 import type { TerrainBackend } from './terrainBackend';
@@ -40,6 +41,7 @@ export interface VegetationOptions {
   /** `?grass=0` turns the grass off. */
   readonly grass: boolean;
   readonly sward?: boolean;
+  readonly fullSod: boolean;
   /** Sun shadows are on (blades receive them on the med and high tiers). */
   readonly shadows: boolean;
 }
@@ -51,6 +53,7 @@ export interface VegetationOptions {
 export class VegetationBackend {
   readonly climate: ClimateState = createClimateState();
   private grass: GrassLayer | null = null;
+  private fullSod: { leaves: number; triangles: number } | null = null;
   private wind: WindTexture | null = null;
   private day = 0;
   private hour = 12;
@@ -79,13 +82,23 @@ export class VegetationBackend {
    * `?grass=0` have no grass). Call before warm-up so the grass pipelines compile with the rest.
    * @amortized once at start-up
    */
-  prepare(): void {
+  async prepare(): Promise<void> {
     const { terrain, tier, memory, noise, ocean, uploads } = this.options;
     if (!(terrain instanceof CdlodBackend) || !terrain.gpu || !terrain.data?.masks) return;
     // Calm harbour basins (phase D): the ocean shader reads the worker's openness map.
     ocean.setOpenness(terrain.data.masks.openness);
     uploads.add(performance.now(), terrain.data.masks.openness.byteLength);
     if (!this.options.grass) return;
+    if (this.options.fullSod) {
+      const { tile, leaves, triangles, bytes } = await loadFullSod(this.options.shadows);
+      tile.position.set(SOD_ORIGIN.x, sodBaseY(), SOD_ORIGIN.z);
+      terrain.root.add(tile);
+      memory.add(MemoryPartition.Gpu, bytes);
+      memory.add(MemoryPartition.CpuRetained, bytes);
+      uploads.add(performance.now(), bytes);
+      this.fullSod = { leaves, triangles };
+      return;
+    }
     const wind = terrain.carpetWind ?? new WindTexture(terrain.data.masks.windChannel);
     const sward = this.options.sward === true;
     // Spend more placements in the foreground. Cards and baked coverage fill the shorter blade ring.
@@ -164,8 +177,13 @@ export class VegetationBackend {
     state.temperatureC = this.climate.temperatureC;
     state.season01 = this.climate.season01;
     const grass = this.grass;
-    state.grassEnabled = this.wind !== null;
+    state.grassEnabled = this.wind !== null || this.fullSod !== null;
     state.windUpdates = this.wind?.updates ?? 0;
+    if (this.fullSod) {
+      state.grassCells = 1;
+      state.grassBlades = this.fullSod.leaves;
+      state.grassTris = this.fullSod.triangles;
+    }
     if (grass === null) return;
     state.grassCells = grass.stats.cells;
     state.grassBlades = grass.stats.blades;

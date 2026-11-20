@@ -2,13 +2,14 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { Matrix4, PerspectiveCamera } from 'three/webgpu';
-import { CAMERAS, GrassTestWalk, resolveCamera, type ResolvedCamera } from '../src/app/cameras';
+import { CAMERAS, GrassTestWalk, resolveCamera, type ResolvedCamera, resolveSodCamera, sodBaseY } from '../src/app/cameras';
 import { QUALITY } from '../src/app/quality';
 import { parseParams } from '../src/app/params';
 import { frustumPlanes } from '../src/world/cdlod';
 import { WORLD_MIN } from '../src/world/constants';
 import { SWARD_COVER_DIM } from '../src/world/grassCover';
 import { createGrassCoverTexture } from '../src/render/noiseTextures';
+import { decodeFullSod } from '../src/render/fullSod';
 import { CELL_M, GrassCells, MAX_CARD_CELLS, MAX_DENSE_CELLS, MAX_THIN_CELLS, WORLD_CELLS } from '../src/world/grassCells';
 import { HEIGHT_DIM, buildTerrainTextures, materialDim } from '../src/world/terrainTextures';
 import { createTerrainTextures } from '../src/render/terrainTextures';
@@ -276,6 +277,32 @@ describe('measured-density grass prototype', () => {
     expect(covered).toBeLessThan(texels);
     expect(cover.some((height, i) => i % 4 === 1 && height >= 180)).toBe(true);
     texture.dispose();
+  });
+
+  it('preserves all master vertices, leaf faces and float pigment in the full mesh path', async () => {
+    const archive = readFileSync(fileURLToPath(new URL('../assets/grass/sod-full.bin', import.meta.url)));
+    const stream = new Blob([archive.slice().buffer]).stream().pipeThrough(new DecompressionStream('gzip'));
+    const { geometry, soil, leaves, triangles } = decodeFullSod(await new Response(stream).arrayBuffer());
+    const { position, normal, color } = geometry.attributes;
+    expect(leaves).toBe(79_524);
+    expect(triangles).toBe(1_749_528);
+    expect(position.count).toBe(1_510_956);
+    expect(normal.count).toBe(position.count);
+    expect(Array.from(position.array.slice(-3))).toEqual([0.531430721282959, 0.020583376288414, -0.4534603953361511]);
+    expect(Array.from(color.array.slice(-3))).toEqual([0.09001520276069641, 0.21786624193191528, 0.024205153807997704]);
+    expect(Array.from(geometry.index?.array.slice(-6) ?? [])).toEqual([1_510_952, 1_510_955, 1_510_953, 1_510_953, 1_510_955, 1_510_954]);
+    expect(soil.attributes.position.count).toBe(10_601);
+    expect(soil.index?.count).toBe(62_400);
+    geometry.dispose();
+    soil.dispose();
+    expect(parseParams('?sod=full&sodView=standing')).toMatchObject({ cam: 2, sodView: 'standing' });
+    expect(parseParams('?sod=full&sodView=other')).toMatchObject({ sodView: 'edge' });
+    expect(parseParams('?sod=full&grass=0')).toMatchObject({ sodView: null });
+    expect(parseParams('?sod=full&terrain=chunks')).toMatchObject({ sodView: null });
+    const eye: ResolvedCamera = { x: 0, y: 0, z: 0, targetX: 0, targetY: 0, targetZ: 0, fovDeg: 60 };
+    resolveSodCamera('standing', eye);
+    expect(eye.y - sodBaseY()).toBeCloseTo(1.62);
+    expect(eye.fovDeg).toBeCloseTo(28.58, 1);
   });
 
   it('loads sod by default, accepts the old path as a fallback, and repeats the same 8.4 m test path', () => {
