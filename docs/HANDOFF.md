@@ -1,12 +1,13 @@
 # Handoff
 
-Snapshot: 2026-11-20, after merged grass baseline PR #32 (`0b064b2`). Read [AGENTS.md](../AGENTS.md) first (binding), then this handoff, then [INDEX.md](INDEX.md). For tools, environment and token-efficient discovery, see [process/agent-workflow.md](process/agent-workflow.md). Confirm open Issues and latest `main` before planning; this snapshot is not an authority for future state.
+Snapshot: 2026-11-20, based on merged agent tooling PR #35 (`b5a3c96`) and grass baseline PR #32 (`0b064b2`). Read [AGENTS.md](../AGENTS.md) first (binding), then this handoff, then [INDEX.md](INDEX.md). For tools, environment and token-efficient discovery, see [process/agent-workflow.md](process/agent-workflow.md). Confirm open Issues and latest `main` before planning; this snapshot is not an authority for future state.
 
-Base main: 0b064b2e8404b81e9c6fec72426db1983bd512e9
+Base main: b5a3c96fedcb957c5e4dcc3a0303cea3d49ec80b
 
 ## 30-second resume (verify GitHub state before acting)
 
 - **Accepted baseline:** PRs #28–#32 merged at this snapshot; do not redo their grass/wind implementation.
+- **Grass sod branch:** [Real-world sod integration](specs/g2.1-real-turf-field.md) adds the approved fine-fescue model's runtime assets and the [real-world reference review rule](process/visual-review.md#real-world-reference). Verify PR state and phone results before marking it accepted.
 - **Next scoped task:** [Issue #33](https://github.com/waydefu/world-unbound/issues/33) — grass contact, overlapping blades, and thin-tip lighting. No implementation approval is implied here.
 - **Evidence:** prior phone/CDLOD gate passed; **latest grass WebGPU p95 and 10-minute thermal gate are not yet verified**. Headless SwiftShader is not device proof.
 - **Trust boundary:** `AGENTS.md` and owner approval govern every edit; next agent checks fresh `main`, Issues, PRs and Actions.
@@ -53,7 +54,7 @@ Owner's phone: Adreno 8xx, Chrome 157, WebGPU, 60 Hz, 2.2 MP drawing buffer, med
 
 **Next agent session** (order agreed with the owner; details in [environment research](research/environment-systems.md)):
 
-1. **Do not reimplement merged grass PRs #28–#32.** First collect the owner's phone WebGPU A/B (med/high, `?sward=1` versus `?sward=0`, same cameras and exposure), then follow [Issue #33](https://github.com/waydefu/world-unbound/issues/33): root-to-ground contact shading, self-occlusion within the tuft and backlit thin tips. Preserve the accepted fescue silhouette, current scene budgets and fixed camera comparisons. Other unresolved visual findings from G2.1 (cliff colour, harbour water, stone pier, near-black shadows) should be tracked separately rather than silently bundled into #33.
+1. **Verify the grass sod PR and the owner’s phone WebGPU results.** Compare low and med at the same cameras, height, wind and exposure. `?sward=0` selects the procedural fallback. For the precise #32 prototype comparison, use the #32 build with `?sward=1`. Then follow [Issue #33](https://github.com/waydefu/world-unbound/issues/33) for root-to-ground contact shading, self-occlusion within the tuft and backlit thin tips. Preserve the accepted fescue silhouette, current scene budgets and fixed camera comparisons. Other unresolved visual findings from G2.1 (cliff colour, harbour water, stone pier, near-black shadows) should be tracked separately.
 2. Weather W1/W2: layered clouds, fog layers, rain/snow, surface wetness, lightning (cam 4 rain night is still too dark and shows no rain).
 3. Ocean O1: tide, wind-driven sea state, water colour and caustics, bathymetry constrained by Kartverket soundings.
 4. Player controller (needed by S1 and gameplay), then S1 soil and ground system (footprints that recover, puddles after rain, mud).
