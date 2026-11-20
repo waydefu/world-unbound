@@ -135,9 +135,12 @@ if (command === 'find') {
         if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
           const expr = node.expression;
           const sym = canonical(checker.getSymbolAtLocation(ts.isPropertyAccessExpression(expr) ? expr.name : expr));
-          const target = bySymbol.get(sym)?.[0];
+          // A resolved call signature is the most reliable declaration link for class methods,
+          // including destructured receivers; alias symbols alone can differ across access sites.
+          const declaration = checker.getResolvedSignature(node)?.declaration;
+          const target = (declaration && byNode.get(declaration)) || bySymbol.get(sym)?.[0];
           const call = { at: location(sf, node), from: parent?.qualified ?? '(top-level)', to: target?.qualified ?? '(external/dynamic)' };
-          if (sym && sym === chosen.symbol) incoming.push(call);
+          if (target && target.symbol === chosen.symbol) incoming.push(call);
           if (parent?.symbol && parent.symbol === chosen.symbol && target) outgoing.push(call);
         }
         ts.forEachChild(node, (child) => visit(child, parent));
