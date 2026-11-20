@@ -33,8 +33,9 @@ for (const doc of paths) {
   const file = join(ROOT, doc);
   if (!existsSync(file)) { problems.push(`Missing expected document: ${doc}`); continue; }
   const content = readFileSync(file, 'utf8');
-  for (const m of content.matchAll(/!?\[[^\]\n]*\]\(([^)]+)\)/g)) {
-    let href = m[1].trim().replace(/^<|>$/g, '');
+  const stripped = content.replace(/```[\s\S]*?```|`[^`\n]+`/g, '');
+  for (const m of stripped.matchAll(/!?\[[^\]\n]*\]\(([^)]+)\)/g)) {
+    let href = m[1].trim().replace(/\s+(?:"[^"]*"|'[^']*')\s*$/, '').trim().replace(/^<|>$/g, '');
     if (!href || /^(?:https?:|mailto:|data:)/i.test(href) || href[0] === '#') continue;
     try {
       href = decodeURIComponent(href.split('#')[0].split('?')[0]);

@@ -10,8 +10,7 @@ const [cmd,term]=args;
 const get=opt=>{const i=args.indexOf(opt);return i<0?null:args[i+1];};
 const json=args.includes('--json');
 const startedAt=process.hrtime.bigint();
-const number=(opt,fallback,cap=100000)=>{const raw=get(opt);if(raw===null)return fallback;const n=Number(raw);
-  if(!Number.isSafeInteger(n)||n<0||n>cap)throw Error(`Invalid ${opt}: expected 0..${cap}`);return n;};
+const number=(opt,fallback,cap=100000,min=0)=>{const raw=get(opt);if(raw===null)return fallback;const n=Number(raw);if(!Number.isSafeInteger(n)||n<min||n>cap)throw Error(`Invalid ${opt}: expected ${min}..${cap}`);return n;};
 const print=obj=>{
   if(json)console.log(JSON.stringify(obj));
   else{
@@ -34,7 +33,7 @@ try{
   const file=get('--file')?.replaceAll('\\','/')??null;
   let result;
   if(cmd==='find')result=find(p,term,{file,kind:get('--kind'),limit,offset});
-  if(cmd==='calls')result=calls(p,term,{file,line:number('--line',0),limit,
+  if(cmd==='calls')result=calls(p,term,{file,line:number('--line',null,100000,1),limit,
     inOffset:number('--in-offset',offset),outOffset:number('--out-offset',offset)});
   if(cmd==='impact')result=impact(p,term.replaceAll('\\','/'),{limit,offset});
   if(args.includes('--profile')) result.metrics={wallMs:Number((Number(process.hrtime.bigint()-startedAt)/1e6).toFixed(2)),maxRssKiB:process.resourceUsage().maxRSS};

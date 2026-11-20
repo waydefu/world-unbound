@@ -105,3 +105,26 @@ test('ambiguous symbols are never silently coerced into a single target', () => 
   const x=JSON.parse(r.stdout);
   assert.equal(x.status,'ambiguous');assert.ok(x.candidates.length>=2);
 });
+
+test('overload resolves to implementation, arrow functions are indexed, --line 0 is rejected', () => {
+  const cli=(...a)=>spawnSync(process.execPath,['tools/agent-index.mjs',...a,'--json'],{cwd:process.cwd(),encoding:'utf8',timeout:60_000});
+  const f=cli('find','arrowCaller');
+  assert.equal(f.status,0,f.stderr);
+  assert.ok(JSON.parse(f.stdout).results.some(x=>x.kind==='function-variable'));
+  const o=cli('calls','overloadStep','--file','tests/agent-fixtures/calls.ts');
+  assert.equal(o.status,0,o.stderr);
+  const ox=JSON.parse(o.stdout);
+  assert.equal(ox.status,'ok');
+  assert.ok(ox.incoming.some(z=>z.at.startsWith('tests/agent-fixtures/external.ts:')),'overload caller must resolve');
+  const bad=cli('calls','step','--file','tests/agent-fixtures/calls.ts','--line','0');
+  assert.equal(bad.status,2);
+  assert.match(bad.stderr,/Invalid --line: expected 1\.\.100000/);
+});
+test('impact reports direct importers and unknown dynamic edges', () => {
+  const r=spawnSync(process.execPath,['tools/agent-index.mjs','impact','tests/agent-fixtures/calls.ts','--json'],{cwd:process.cwd(),encoding:'utf8',timeout:60_000});
+  assert.equal(r.status,0,r.stderr);
+  const x=JSON.parse(r.stdout);
+  assert.ok(x.details.some(d=>d.path==='tests/agent-fixtures/external.ts'&&d.classification==='resolved-direct-import'));
+  assert.ok(x.unknown.includes('Worker entrypoint'));
+  assert.ok(x.unknown.includes('dynamic import'));
+});

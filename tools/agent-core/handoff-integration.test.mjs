@@ -49,6 +49,9 @@ test('handoff checker distinguishes main progression, squash merge, offline and 
   r=run('--links-only');
   assert.equal(r.data.status,'invalid');
   assert.ok(r.data.problems.some(x=>x.includes('escaping')));
+  file(dir,'docs/INDEX.md','```md\n[fake](not-exist.md)\n```\n[Valid](INDEX.md "Index Title")\n');
+  r=run('--links-only');
+  assert.equal(r.data.status,'ok',JSON.stringify(r.data));
   git('checkout','--','docs/INDEX.md');
   git('update-ref','-d','refs/remotes/origin/main');
   r=run('--strict');

@@ -1,7 +1,6 @@
 // On-demand TypeScript navigation. Cheap AST paths never instantiate a semantic program.
 // Language Service call hierarchy and static imports are the only reported edges.
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
 import { join, relative, resolve, sep, isAbsolute } from 'node:path';
 import ts from 'typescript';
 
@@ -31,12 +30,18 @@ export const project = (root) => {
   const git = execFileSync('git', ['ls-files', '-z', '--', 'src', 'tests', 'spike'], { cwd: root, encoding: 'utf8' });
   const tracked = new Set(git.split('\0').filter(p => /\.tsx?$/.test(p) && !p.endsWith('.d.ts')).map(p=>p.replaceAll('\\', '/')));
   const sources = parsed.fileNames.filter(p=>tracked.has(slash(relative(root,p))));
-  return { root, parsed, tracked, sources, options:parsed.options };
+  const files = new Map();
+  const read = (f) => {
+    const k = resolve(f);
+    if (!files.has(k)) files.set(k, ts.sys.readFile(k));
+    return files.get(k);
+  };
+  return { root, parsed, tracked, sources, options:parsed.options, read };
 };
 const readSymbols = (p) => {
   const defs=[];
   for (const abs of p.sources) {
-    const content = ts.sys.readFile(abs);
+    const content = p.read(abs);
     if (content === undefined) continue;
     const sf = ts.createSourceFile(abs, content, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
     const file = slash(relative(p.root, abs));
@@ -67,7 +72,7 @@ const readSymbols = (p) => {
         const end=body?Math.max(0,body.getStart(sf)-signatureNode.getStart(sf)):190;
         const signature=kind==='class' || kind==='interface'||kind==='enum'?
           `${kind} ${unqualified}`:signatureNode.getText(sf).slice(0,Math.min(end,190)).replace(/\s+/g,' ').trim();
-        defs.push({name:unqualified,qualified,kind,file,at:locate(sf,pos,p.root),start:pos,signature});
+        defs.push({name:unqualified,qualified,kind,file,at:locate(sf,pos,p.root),start:pos,signature,hasBody:Boolean(signatureNode.body)});
       }
       ts.forEachChild(node,walk);
     };
@@ -88,10 +93,10 @@ const getService = p => {
     getCompilationSettings: () => p.options,
     getScriptFileNames: () => all,
     getScriptVersion: () => '0',
-    getScriptSnapshot: f => { const x=ts.sys.readFile(f); return x===undefined?undefined:ts.ScriptSnapshot.fromString(x); },
+    getScriptSnapshot: f => { const x=p.read(f); return x===undefined?undefined:ts.ScriptSnapshot.fromString(x); },
     getCurrentDirectory: () => p.root,
     getDefaultLibFileName: o => ts.getDefaultLibFilePath(o),
-    fileExists:ts.sys.fileExists,readFile:ts.sys.readFile,readDirectory:ts.sys.readDirectory,
+    fileExists:ts.sys.fileExists,readFile:f=>p.read(f),readDirectory:ts.sys.readDirectory,
     directoryExists:ts.sys.directoryExists,getDirectories:ts.sys.getDirectories,
     realpath:ts.sys.realpath,
   };
@@ -108,8 +113,12 @@ const formatCall = (p, item, offset, dir, callerFile, sourceFor) => ({
   confidence:'resolved-static',
 });
 export const calls = (p, symbol, { file=null, line=null, limit=8, inOffset=0, outOffset=0 }={}) => {
-  const defs=readSymbols(p).filter(d=>(d.name===symbol||d.qualified===symbol)&&(!file||d.file===file)&&
+  let defs=readSymbols(p).filter(d=>(d.name===symbol||d.qualified===symbol)&&(!file||d.file===file)&&
     (!line||Number(d.at.split(':').at(-2))===line));
+  if(!line&&defs.length>1&&defs.every(d=>d.file===defs[0].file&&d.qualified===defs[0].qualified)){
+    const impls=defs.filter(d=>d.hasBody);
+    if(impls.length===1)defs=impls;
+  }
   if (defs.length!==1) return { command:'calls',query:symbol,total:defs.length,status:defs.length?'ambiguous':'not-found',
     candidates:defs.slice(0,20).map(x=>({name:x.qualified,at:x.at,kind:x.kind})),
     results:[],incoming:[],outgoing:[],incomingCount:0,outgoingCount:0,
@@ -129,7 +138,7 @@ export const calls = (p, symbol, { file=null, line=null, limit=8, inOffset=0, ou
   const sourceFor=(path)=>{
     let sf=cache.get(path);
     if(!sf){
-      const content=ts.sys.readFile(path);
+      const content=p.read(path);
       if(content===undefined)throw Error('Call-site source disappeared during query: '+path);
       sf=ts.createSourceFile(path,content,ts.ScriptTarget.Latest,true);
       cache.set(path,sf);
@@ -155,7 +164,7 @@ export const impact = (p,file,{limit=8,offset=0}={}) => {
   const sourceSet=new Set(p.sources.map(x=>slash(relative(p.root,x))));
   for(const abs of p.sources){
     const from=slash(relative(p.root,abs));
-    const code=readFileSync(abs,'utf8');
+    const code=p.read(abs);
     const sf=ts.createSourceFile(abs,code,ts.ScriptTarget.Latest,true);
     const deps=new Set(),unknown=new Set();
     const visit=node=>{
