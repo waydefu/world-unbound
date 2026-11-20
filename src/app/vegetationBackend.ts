@@ -86,8 +86,9 @@ export class VegetationBackend {
     if (!this.options.grass) return;
     const wind = new WindTexture(terrain.data.masks.windChannel);
     const sward = this.options.sward === true;
+    // Spend more placements in the foreground. Cards and baked coverage fill the shorter blade ring.
     const settings = sward && tier.name === 'med'
-      ? { ...tier.grass, bladesPerM2: tier.grass.bladesPerM2 + 4 }
+      ? { ...tier.grass, nearM: 32, bladesPerM2: 60 }
       : tier.grass;
     const grass = new GrassLayer({
       textures: terrain.gpu, data: terrain.data, noise, wind: wind.texture, settings,

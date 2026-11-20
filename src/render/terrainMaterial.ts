@@ -113,7 +113,10 @@ export function createTerrainMaterial(noise: DataTexture, lite = false, surface:
     .mul(grassRange.greaterThan(0).select(1, 0));
   // Keep the mean canopy colour stable between cards and terrain; mips average the small gaps.
   const tipColour = surface?.sward ? meadowTint(veg.r, season.z) : meadowTint(veg.r, season.z).mul(mix(1, 1.08, tips));
-  const grassDetail = float(1).add(tipNoise.mul(surface?.sward ? float(0.82) : mix(1.55, 0.85, tips)).mul(veg.r));
+  // Fine gaps in the coverage texture should read as soft canopy shading. Limit the contrast of isolated gaps.
+  const coverContrast = surface?.sward ? clamp(tipNoise, -0.18, 0.18).mul(0.35)
+    : tipNoise.mul(mix(1.55, 0.85, tips));
+  const grassDetail = float(1).add(coverContrast.mul(veg.r));
   const grassCol = groundCover(macro, wet01, veg, season).mul(canopyShade(veg.r, grassDist, grassRange))
     .mul(surface && !lite ? tipColour.mul(grassDetail) : float(1));
   // Stone quays and breakwaters read as stone, not as a flat tan band: darker on the steep flank and at the foot,

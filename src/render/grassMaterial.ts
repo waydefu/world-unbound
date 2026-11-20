@@ -53,7 +53,7 @@ function buildVertex(kind: GrassKind, inp: GrassInputs, u: GrassUniforms, layout
     // the CPU's halfway switch, keeping the same surviving roots and probability on either side.
     // Cards stand for grass and heath alike; blades only for grass (meadow density).
     let keep: Node<'float'> = f.veg.r.mul(f.densityMul);
-    if (inp.sward) keep = keep.mul(mix(1, 1.38, f.lawn));
+    if (inp.sward) keep = keep.mul(mix(1, 1.48, f.lawn));
     const shared = positionGeometry.z.div(THIN_BLADE_STRIDE).fract().equal(0);
     if (kind === 'dense') {
       const spread = f.rnd(5).sub(0.5).mul(near.mul(0.24));
@@ -76,7 +76,7 @@ function buildVertex(kind: GrassKind, inp: GrassInputs, u: GrassUniforms, layout
     // Total bend: the rest lean of the clump plus the wind (fraction of the height the tip moves, quadratic along t).
     const bend = f.restBend.add(lean);
     const leafHeight = companion ? companion.greaterThan(0).select(mix(f.rnd(13).mul(0.38).add(0.45), f.rnd(13).mul(0.25).add(0.3), a.hay), 1) : float(1);
-    const hs = a.height.mul(alive).mul(leafHeight).mul(inp.sward ? mix(1, 1.18, f.lawn) : float(1));
+    const hs = a.height.mul(alive).mul(leafHeight);
     // Shared dense blades converge to the thin triangle's straight silhouette before the cell switches.
     const straight = kind === 'dense' ? shared.select(smoothstep(near.mul(0.38), near.mul(0.5), f.cellDist), 0) : float(0);
     const bendAlong = mix(t.mul(t), t, straight);
@@ -103,7 +103,10 @@ function buildVertex(kind: GrassKind, inp: GrassInputs, u: GrassUniforms, layout
         ? float(1).sub(smoothstep(mid.mul(0.43), mid.mul(0.75), d)).mul(float(1).sub(a.heath))
         : float(0);
       if (vCardDetail) vCardDetail.assign(detail);
-      const width = max(a.width, d.mul(MIN_WIDTH_PER_M)).mul(mix(2.6, 5.2, detail)).mul(float(1).sub(t.mul(0.9))).mul(alive);
+      // At card range the width describes several leaves. Narrow the silhouette where cards overlap individual leaves.
+      const widthScale = inp.sward ? mix(0.9, 0.73, detail) : float(1);
+      const width = max(a.width, d.mul(MIN_WIDTH_PER_M)).mul(widthScale)
+        .mul(mix(2.6, 5.2, detail)).mul(float(1).sub(t.mul(0.9))).mul(alive);
       const reach = float(0.07).mul(alive).add(t.mul(hs).mul(0.3));
       px = out.x.add(outX.mul(reach)).add(outZ.negate().mul(side).mul(width).mul(0.5)).add(rest.x.mul(tuft)).add(windOff.x.mul(tuft));
       py = out.y.add(lift.mul(tuft));
@@ -114,17 +117,21 @@ function buildVertex(kind: GrassKind, inp: GrassInputs, u: GrassUniforms, layout
       const fwd = vec3(sin(yaw).negate(), 0, cos(yaw));
       // Give the dense middle row the thin triangle's exact half-width before the handoff.
       const remaining = float(1).sub(t);
-      const taper = mix(remaining.pow(1.4).mul(0.92).add(0.08), remaining, straight);
-      const leafWidth = companion ? companion.greaterThan(0).select(1.35, 1) : float(1);
+      const taper = mix(inp.sward ? remaining.mul(remaining.mul(0.65).add(0.35))
+        : remaining.pow(1.4).mul(0.92).add(0.08), remaining, straight);
+      const leafWidth = companion ? companion.greaterThan(0).select(inp.sward ? 0.9 : 1.35, 1) : float(1);
       // Pasture basal leaves spread gently from their rooted centre; longer hay stems remain upright.
       const fan = companion ? companion.greaterThan(0).select(
-        (inp.sward ? mix(0.06, 0.105, f.lawn) : float(0.06)).mul(a.pasture).mul(t).mul(alive), 0,
+        float(0.06).mul(a.pasture).mul(t).mul(alive), 0,
       ) : float(0);
-      const lawnWidth = inp.sward ? mix(1, 1.25, f.lawn) : float(1);
-      const widthM = max(a.width.mul(lawnWidth), d.mul(MIN_WIDTH_PER_M)).mul(taper).mul(alive).mul(leafWidth);
-      px = out.x.add(right.x.mul(side).mul(widthM).mul(0.5)).add(rest.x).add(windOff.x).add(fwd.x.mul(fan));
-      py = out.y.add(lift);
-      pz = out.z.add(right.z.mul(side).mul(widthM).mul(0.5)).add(rest.y).add(windOff.y).add(fwd.z.mul(fan));
+      const reach = inp.sward ? hs.mul(f.rnd(10).mul(0.95).add(0.40)).mul(bendAlong) : fan;
+      const arch = inp.sward ? hs.mul(t).mul(remaining).mul(float(1).sub(straight)).mul(1.4) : float(0);
+      // Limit the screen-space width floor to keep distant blade tips from gaining bulk.
+      const widthFloor = inp.sward ? d.mul(0.0011).min(0.014) : d.mul(MIN_WIDTH_PER_M);
+      const widthM = max(a.width, widthFloor).mul(taper).mul(alive).mul(leafWidth);
+      px = out.x.add(right.x.mul(side).mul(widthM).mul(0.5)).add(rest.x).add(windOff.x).add(fwd.x.mul(reach));
+      py = out.y.add(lift).add(arch);
+      pz = out.z.add(right.z.mul(side).mul(widthM).mul(0.5)).add(rest.y).add(windOff.y).add(fwd.z.mul(reach));
       // Rounded normal (phase G.4): tilted across the width towards the side, towards the blade's face on tall
       // blades, and anchored to the terrain normal at the root. Short pasture is lit like the ground.
       const towardsEye = fwd.x.mul(u.eye.x.sub(out.x)).add(fwd.z.mul(u.eye.z.sub(out.z)));
@@ -140,15 +147,15 @@ function buildVertex(kind: GrassKind, inp: GrassInputs, u: GrassUniforms, layout
     if (!lite) ground = ground.mul(meadowTint(f.veg.r, u.season.z));
     ground = mix(ground, ground.mul(SILVER), a.tussock.mul(0.7));
     ground = mix(ground, HEATHER.mul(float(1).add(u.season.y)).mul(wetDark), a.heath);
-    const tipIntensity = inp.sward ? mix(1, 0.52, a.pasture) : float(1);
+    const tipIntensity = inp.sward ? float(0.46) : float(1);
     const tipLift = mix(vec3(1, 1, 1), vec3(1.14, 1.16, 0.9), smoothstep(0.1, 1, t).mul(tipIntensity));
     let colour = ground.mul(f.variation).mul(tipLift);
     if (inp.sward) {
-      // Darker leaf bases describe overlap in the short canopy; muted tips keep the edge from sparkling.
-      const lawnShade = mix(0.73, 1.10, smoothstep(0, 0.9, t));
-      colour = colour.mul(mix(1, lawnShade, f.lawn));
+      // A shallow brightness gradient gives texture without punching dark holes in the lawn.
+      const leafShade = mix(vec3(0.89, 0.95, 0.91), vec3(1.05, 1.16, 1.03), smoothstep(0, 0.9, t));
+      colour = colour.mul(mix(leafShade, vec3(1, 1, 1), a.heath));
     }
-    if (kind !== 'card') {
+    if (kind !== 'card' && !inp.sward) {
       const green = float(1).sub(u.season.z);
       const seeds = a.hay.mul(smoothstep(0.78, 0.9, t)).mul(step(f.rnd(11), 0.08)).mul(0.85);
       colour = mix(colour, SEED_HEAD.mul(mix(1, 0.8, u.season.y)).mul(wetDark), seeds);

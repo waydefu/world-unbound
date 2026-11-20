@@ -92,6 +92,11 @@ const HAY = { height: 0.43, width: 0.022, radius: 0.8, stiffness: 1, bend: 0.32 
 const TUSSOCK = { height: 0.57, width: 0.017, radius: 0.36, stiffness: 0.8, bend: 0.55 }; // unverified
 const HEATH = { height: 0.11, width: 0.03, radius: 0.5, stiffness: 0.5, bend: 0.1 }; // unverified
 
+// Leaf canopy dimensions in metres. The flowering shoots are separate from the canopy.
+const SWARD_PASTURE = { height: 0.080, width: 0.0024 };
+const SWARD_MEADOW = { height: 0.22, width: 0.0035 };
+const SWARD_TUSSOCK = { height: 0.29, width: 0.0032 };
+
 /** Per-blade species look. Weights are 0 or 1 per clump (heath beats the rest). */
 export interface Archetype {
   height: F;
@@ -188,7 +193,7 @@ export function grassField(inp: GrassInputs, u: GrassUniforms, layout: GrassLayo
   let z = dispersed.select(cell.y.add(rnd(1).mul(CELL_M)), cz.add(sin(angle).mul(rad)));
   if (companion) {
     const direction = angle.add(companion.mul(2.4));
-    const offset = companion.mul(rnd(12).mul(0.045).add(0.055));
+    const offset = companion.mul(inp.sward ? rnd(12).mul(0.014).add(0.009) : rnd(12).mul(0.045).add(0.055));
     x = x.add(cos(direction).mul(offset));
     z = z.add(sin(direction).mul(offset));
   }
@@ -224,12 +229,13 @@ export function grassField(inp: GrassInputs, u: GrassUniforms, layout: GrassLayo
   const hue = clumpHue.mul(0.8).add(rnd(14).sub(0.5).mul(0.3));
   const variation = vec3(hue.mul(0.26).add(1), hue.mul(0.04).add(1), float(1).sub(hue.mul(0.26))).mul(rnd(15).mul(0.16).add(0.92));
 
+  const [short, meadow, tuft] = inp.sward ? [SWARD_PASTURE, SWARD_MEADOW, SWARD_TUSSOCK] : [PASTURE, HAY, TUSSOCK];
   // Height: archetype mid-range x clump (0.6-1.4) x blade (+-30 %) x patch, lower at the clump's edge.
-  const height = sel(PASTURE.height, HAY.height, TUSSOCK.height, HEATH.height)
+  const height = sel(short.height, meadow.height, tuft.height, HEATH.height)
     .mul(clumpH).mul(rnd(4).mul(0.9).add(0.55)).mul(patch.mul(0.3).add(0.85)).mul(edge);
   const archetype: Archetype = {
     height,
-    width: sel(PASTURE.width, HAY.width, TUSSOCK.width, HEATH.width).mul(rnd(12).mul(0.5).add(0.75)),
+    width: sel(short.width, meadow.width, tuft.width, HEATH.width).mul(rnd(12).mul(0.5).add(0.75)),
     stiffness: sel(PASTURE.stiffness, HAY.stiffness, TUSSOCK.stiffness, HEATH.stiffness),
     hay: isHay, tussock: isTussock, pasture, heath,
   };
