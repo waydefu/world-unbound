@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-const read = (path: string): string => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+// CI and documented npm commands run Vitest from the repository root.
+const read = (path: string): string => readFileSync(path, 'utf8');
 
 describe('GitHub development environment', () => {
   it('defines a reproducible, lightweight Node 22 setup', () => {
