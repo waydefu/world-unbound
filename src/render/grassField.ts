@@ -184,8 +184,8 @@ export function grassField(inp: GrassInputs, u: GrassUniforms, layout: GrassLayo
   const grid = layout.grid;
   if (grid) {
     const spacing = cellM / grid;
-    x = cell.x.add(idx.mod(grid).add(rnd(0).mul(0.82).add(0.09)).mul(spacing));
-    z = cell.y.add(floor(idx.div(grid)).add(rnd(1).mul(0.82).add(0.09)).mul(spacing));
+    x = cell.x.add(idx.mod(grid).add(rnd(0).mul(0.87).add(0.065)).mul(spacing));
+    z = cell.y.add(floor(idx.div(grid)).add(rnd(1).mul(0.87).add(0.065)).mul(spacing));
   }
   if (companion) {
     const direction = angle.add(companion.mul(2.4));

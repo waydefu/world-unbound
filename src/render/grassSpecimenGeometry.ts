@@ -98,7 +98,7 @@ function decodePack(dataUrl: string): Uint8Array {
 }
 
 export const TUFT_GRID = 11;
-const TUFT_WIDTH = 0.24;
+const TUFT_WIDTH = 0.27;
 const TUFT_HEIGHT = 0.12;
 
 export function createFescueTuftTexture(): DataTexture {
@@ -124,7 +124,7 @@ export function createFescueTuftGeometry(cells: Float32Array) {
       const start = positions.length / 3;
       for (const [u, v] of [[0, 0], [1, 0], [1, 1], [0, 1]]) {
         const lateral = (u - 0.5) * TUFT_WIDTH;
-        positions.push(plane === 0 ? lateral : 0, v * TUFT_HEIGHT, plane === 1 ? lateral : 0);
+        positions.push(plane === 0 ? lateral - 0.021 : 0.030, v * TUFT_HEIGHT, plane === 1 ? lateral + 0.021 : -0.028);
         uv.push(u, v);
         plants.push(plant);
       }

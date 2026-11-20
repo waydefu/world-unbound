@@ -54,7 +54,7 @@ def bake(folder, output):
 
 def bake_tuft(folder, output):
     """Orthographic cutout of 32 actual sample B shoots, with supersampled leaf edges."""
-    from PIL import Image, ImageDraw
+    from PIL import Image, ImageChops, ImageDraw
 
     width, height = 512, 256
     span, rise = .24, .12
@@ -67,7 +67,8 @@ def bake_tuft(folder, output):
         angle = rng.uniform(0, math.tau)
         c, sn = math.cos(angle), math.sin(angle)
         scale = rng.uniform(.73, 1.14)
-        x0 = rng.uniform(-.071, .071)
+        # Stratified roots span the tile. Wrap full leaves at the edges before feathering the cutout.
+        x0 = span * ((k + 0.5 + rng.uniform(-0.32, 0.32)) / 32 - 0.5)
         depth = rng.uniform(-.08, .08)
         coords = []
         for x, y, z, _, _, _, r, g, b in vertices:
@@ -85,9 +86,19 @@ def bake_tuft(folder, output):
     odraw, sdraw = ImageDraw.Draw(opacity), ImageDraw.Draw(shades)
     for _, points in sorted(triangles, key=lambda t: t[0]):
         face = [(x*oversample, y*oversample) for x, y, _, _ in points]
-        odraw.polygon(face, fill=255)
-        sdraw.polygon(face, fill=round(sum(p[3] for p in points)/3))
+        light = round(sum(p[3] for p in points) / 3)
+        for phase in (-width * oversample, 0, width * oversample):
+            projected = [(x + phase, y) for x, y in face]
+            if max(x for x, _ in projected) < 0 or min(x for x, _ in projected) >= opacity.width:
+                continue
+            odraw.polygon(projected, fill=255)
+            sdraw.polygon(projected, fill=light)
     alpha = opacity.resize((width, height), Image.Resampling.LANCZOS)
+    # Leave neighbouring cards' leaves visible through the outer eight percent on either side.
+    feather = Image.new("L", (width, 1))
+    feather.putdata([round(255 * min(1, min(x + 0.5, width - x - 0.5) / (width * 0.08)) ** 0.75)
+                    for x in range(width)])
+    alpha = ImageChops.multiply(alpha, feather.resize((width, height)))
     shade = shades.resize((width, height), Image.Resampling.LANCZOS)
     texture = Image.merge("LA", (alpha, shade))
     output.write_bytes(texture.transpose(Image.Transpose.FLIP_TOP_BOTTOM).tobytes())

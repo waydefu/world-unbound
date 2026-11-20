@@ -26,7 +26,7 @@ export interface GrassSettings {
 }
 
 const DENSE_COMPANIONS = 2;
-const TUFT_REACH_M = 16;
+const TUFT_REACH_M = 19;
 /** 16-bit indices: 11 vertices per dense placement (5 primary plus two three-vertex companions). */
 const MAX_BLADES_PER_CELL = 5000;
 /** Gust phase advances this many cycles per m/s of wind speed per second (gust fronts move with the wind). */
