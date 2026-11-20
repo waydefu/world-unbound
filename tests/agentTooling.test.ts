@@ -46,4 +46,13 @@ describe('read-only Agent discovery tools', () => {
     const out = spawnSync('node', ['--test', 'tools/agent-core/quality.test.mjs'], { encoding: 'utf8', timeout: 90_000 });
     expect(out.status, `${out.stderr}\n${out.stdout}`).toBe(0);
   }, 45_000);
+
+  it('benchmarks CLI costs without claiming model token usage', () => {
+    const out = spawnSync('node', ['tools/agent-benchmark.mjs', '--runs', '1', '--json'], { encoding: 'utf8', timeout: 60_000 });
+    expect(out.status, out.stderr).toBe(0);
+    const report = JSON.parse(out.stdout) as { kind: string; tasks: Array<{ p50WallMs: number; medianOutputBytes: number }> };
+    expect(report.kind).toBe('CLI_EXECUTION_PROXY_NOT_LLM_TOKENS');
+    expect(report.tasks.length).toBe(3);
+    expect(report.tasks.every((x) => x.p50WallMs > 0 && x.medianOutputBytes > 0)).toBe(true);
+  }, 30_000);
 });
