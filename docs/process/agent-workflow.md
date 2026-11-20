@@ -32,11 +32,12 @@ Output goes to `out/` (git-ignored). The page exposes `window.__wu.ready()` and 
 
 - Node and npm (versions per `package.json` / CI); Chromium for Playwright (`npx playwright install chromium` if the environment has none). Headless rendering is WebGL2 on SwiftShader: slow, and WebGPU-specific results (render bundles, timestamps, vertex texture fetch performance) need the phone.
 - Network: npm registry; `waydefu.github.io` to confirm deploys; Kartverket hosts only when re-baking terrain or fetching bathymetry.
-- Optional search tools: `rg`, `fd`, `ast-grep`, `jq` — read only what you need instead of whole files and logs.
+- GitHub Codespaces: [docs/DEVELOPMENT.md](../DEVELOPMENT.md) configures Node 22 and installs `rg`, `fd`, `jq` on new containers. No heavy MCP, full dependency install, or Chromium download on startup.
+- Optional search tools: `rg`, `fd`, `ast-grep`, `jq` — first locate with `git ls-files` or `fd -t f`, then `rg -n -F 'symbol' src tests`, then read only the matching function or line range. Search is not a substitute for checking call sites and tests.
 
 ## Saving tokens
 
-- Prefer `npm run check:quiet` over raw tool output; read failing tails only.
+- Prefer `npm run check:quiet` over raw tool output; read failing tails only. At the start of each new session, check the `main` HEAD and open Issues before trusting `HANDOFF.md`, and avoid repeating files already located by another subagent.
 - **RTK** (Rust Token Killer, `rtk-ai/rtk`, tag `v1.2.0` exists) filters command output for agents (measured here: a 96 KB `git diff` became 32 KB; `git log --stat` unchanged). Install the official `rtk` package (prebuilt release, or `cargo install --git https://github.com/rtk-ai/rtk --tag v1.2.0 --locked rtk`); crates.io's `rtk` is a different project (Rust Type Kit). It supports Codex hooks. Verify with `rtk --version` / `rtk gain`, and make sure it does not hide failure details of the visual audit.
 - Parallel research fan-outs: use a small, cheap model; one implementation step at a time with a stronger one.
 

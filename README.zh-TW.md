@@ -6,16 +6,16 @@
 
 一個從可驗證的 GitHub 治理基線出發的開源專案。
 
-**要接手工作嗎？** 請先閱讀 [docs/HANDOFF.md](docs/HANDOFF.md)，再閱讀 [docs/INDEX.md](docs/INDEX.md)。
+**要接手工作嗎？** 請先閱讀 [AGENTS.md](AGENTS.md)，再閱讀 [docs/HANDOFF.md](docs/HANDOFF.md) 與 [docs/INDEX.md](docs/INDEX.md)。GitHub 雲端開發工具請參閱 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
 
 ## 目前狀態
 
 - **治理 M0：** 已於 2026-11-17 完成（負向測試通過）。獨立的雙人審查仍是未達成的控制項。
 - **治理 M1：** 代理端已完成（[狀態](docs/governance/status.md)）。
 - **遊戲 G0（引擎骨架）：** Vite + TypeScript + three.js WebGPURenderer（WebGL2 備援）、Worker 中的區塊串流、遲滯動態解析度、附 JSON 匯出的遙測 HUD、六個固定測試攝影機，以及靜態與無頭稽核。
-- **遊戲 G1（進行中）：** 物理天空與大氣、曆法與星曆、自動曝光、串級太陽陰影、渲染束（render bundles）中的地形。尚無建築、植被、真實海洋或遊戲玩法。
+- **遊戲 G1／G2.1 環境基礎（進行中）：** 物理天空、時間與天氣、串級陰影、真實 Hellesylt 地形、CDLOD、海洋、峽灣風場、植被遮罩與紫羊茅草毯。草叢基準 PR #32 已合併；葉根光影改善追蹤於 [#33](https://github.com/waydefu/world-unbound/issues/33)。尚無城鎮建築、玩家玩法或音訊。
 
-已在擁有者的手機上部分驗證（引擎試作、GPU 負載爬升）；陰影尚未驗證。效能、熱行為與 WebGPU 結果必須來自硬體測試。
+較早的引擎／CDLOD 版本已有部分手機 60 FPS 驗收；**最新草叢 PR #32 尚無手機 WebGPU 幀時間及長時間溫度驗收證據**。無頭 WebGL2 與 CI 不可取代真機量測。
 
 ## 執行
 

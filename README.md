@@ -4,16 +4,16 @@ English | [繁體中文](README.zh-TW.md)
 
 An open-source project starting from a verifiable GitHub governance baseline.
 
-**Picking up the work?** Read [docs/HANDOFF.md](docs/HANDOFF.md), then [docs/INDEX.md](docs/INDEX.md).
+**Picking up the work?** Read [AGENTS.md](AGENTS.md), then [docs/HANDOFF.md](docs/HANDOFF.md) and [docs/INDEX.md](docs/INDEX.md). For GitHub cloud development see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 ## Current status
 
 - **Governance M0:** complete on 2026-11-17 (negative test passed). Independent two-person review remains an unmet control.
 - **Governance M1:** complete on the agent side ([status](docs/governance/status.md)).
 - **Game G0 (engine skeleton):** Vite + TypeScript + three.js WebGPURenderer (WebGL2 fallback), chunk streaming in a Worker, hysteresis dynamic resolution, telemetry HUD with JSON export, six fixed test cameras, static and headless audits.
-- **Game G1 (in progress):** physical sky and atmosphere, calendar and ephemeris, auto-exposure, cascaded sun shadows, terrain in render bundles. No buildings, vegetation, real ocean or gameplay yet.
+- **Game G1 / G2.1 groundwork (in progress):** physical sky, weather/time state, cascaded shadows, real Hellesylt terrain, CDLOD, ocean, fjord wind, vegetation mask and a fescue grass carpet. Grass baseline PR #32 is merged; grass-root lighting follow-up [#33](https://github.com/waydefu/world-unbound/issues/33) is open. No town buildings, player gameplay or audio yet.
 
-Partly verified on the owner's phone (engine spike, GPU ramp); shadows not yet. Performance, thermal and WebGPU results must come from hardware tests.
+Earlier engine/CDLOD revisions passed selected owner-run phone 60 FPS gates; **the newest grass PR #32 has not passed a documented phone WebGPU frame-time/thermal gate**. Headless WebGL2 and CI cannot substitute for device data.
 
 ## Run it
 
