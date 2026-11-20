@@ -16,8 +16,13 @@ export const realInside = (root, candidate) => {
   }
 };
 
-export const relevantPath = (file) => /^(src\/|spike\/|assets\/|tests\/|governance\/|\.github\/|\.claude\/|scripts\/|docs\/(?:specs|adr|contracts|governance|release-policy)\/)/.test(file)
-  || ['AGENTS.md', 'package.json', 'package-lock.json', 'tsconfig.json'].includes(file);
+// Agent-only tests and the Node typing shim do not alter game acceptance.
+// Classify these separately instead of flagging a docs/tooling squash merge as game-state drift.
+export const agentToolingPath = (file) => /^(?:tools\/(?:agent-|handoff-check)|tests\/agent(?:Tooling|[-_/])|tests\/setup\/node-modules\.d\.ts|CLAUDE\.md$|GEMINI\.md$|docs\/architecture\/CODE-MAP\.md$|docs\/process\/index-benchmark\.md$)/.test(file);
+export const relevantPath = (file) => !agentToolingPath(file) && (
+  /^(src\/|spike\/|assets\/|tests\/|governance\/|\.github\/|\.claude\/|scripts\/|docs\/(?:specs|adr|contracts|governance|release-policy)\/)/.test(file)
+  || ['AGENTS.md', 'package.json', 'package-lock.json', 'tsconfig.json'].includes(file)
+);
 
 export const classifySnapshot = ({ recorded, current, ancestor, reverseAncestor = false, files = [] }) => {
   if (!recorded || !current || ancestor === null) {
@@ -33,5 +38,9 @@ export const classifySnapshot = ({ recorded, current, ancestor, reverseAncestor 
   if (relevant.length) {
     return { state: 'review-required', severity: 'warning', reason: 'Potentially relevant files changed since the snapshot; do not presume the handoff remains valid.', relevant };
   }
-  return { state: 'advanced-docs-only', severity: 'info', reason: 'Main advanced without tracked runtime/governance/spec/test changes; GitHub Issues/PRs still require live verification.', relevant: [] };
+  const tooling = files.filter(agentToolingPath).sort();
+  if (tooling.length) {
+    return { state: 'advanced-agent-tooling', severity: 'info', reason: 'Agent tooling/docs/tests advanced without a detected game-state change; verify the tooling contract and live PR/Issue states.', relevant: [], tooling };
+  }
+  return { state: 'advanced-docs-only', severity: 'info', reason: 'Main advanced without detected material state changes; GitHub Issues/PRs still require live verification.', relevant: [] };
 };

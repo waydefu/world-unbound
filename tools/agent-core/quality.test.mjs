@@ -44,7 +44,9 @@ test('symlink escape is not treated as a safe local document', (t) => {
 test('snapshot states distinguish actual runtime changes from documentation commits', () => {
   const a='a'.repeat(40),b='b'.repeat(40);
   assert.equal(classifySnapshot({recorded:a,current:a,ancestor:true}).state,'at-base');
-  assert.equal(classifySnapshot({recorded:a,current:b,ancestor:true,files:['docs/HANDOFF.md','tools/agent-index.mjs']}).state,'advanced-docs-only');
+  assert.equal(classifySnapshot({recorded:a,current:b,ancestor:true,files:['docs/HANDOFF.md']}).state,'advanced-docs-only');
+  assert.equal(classifySnapshot({recorded:a,current:b,ancestor:true,files:['docs/HANDOFF.md','tools/agent-index.mjs','tests/agentTooling.test.ts']}).state,'advanced-agent-tooling');
+  assert.equal(classifySnapshot({recorded:a,current:b,ancestor:true,files:['tests/setup/node-modules.d.ts']}).state,'advanced-agent-tooling');
   assert.equal(classifySnapshot({recorded:a,current:b,ancestor:true,files:['src/render/grass.ts']}).state,'review-required');
   assert.equal(classifySnapshot({recorded:a,current:b,ancestor:true,files:['.claude/agents/critic.md']}).state,'review-required');
   assert.equal(classifySnapshot({recorded:a,current:b,ancestor:true,files:['spike/engines.html']}).state,'review-required');
