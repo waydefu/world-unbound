@@ -1,5 +1,5 @@
 import type { DataTexture, Node } from 'three/webgpu';
-import { dFdx, dFdy, dot, float, length, positionWorld, smoothstep, texture, vec3 } from 'three/tsl';
+import { dFdx, dFdy, dot, float, length, mix, positionWorld, smoothstep, texture, vec3 } from 'three/tsl';
 import { GRASS_COVER_METRES } from '../world/grassCover';
 import { canopyWind, type GrassWindUniforms } from './grassWind';
 
@@ -20,10 +20,13 @@ export function grassCanopy(
   const angle = dot(sight, groundNormal).abs().max(0.24);
   const drift = dir.mul(bend).mul(0.016);
   const uv = xz.sub(drift).div(GRASS_COVER_METRES);
-  const roughHeight = texture(tile, uv).bias(float(1.25)).g;
-  const height = roughHeight.mul(0.07).sub(0.032).mul(float(1).sub(smoothstep(12, 42, dist)));
-  const offset = sight.xz.mul(height).div(angle).div(GRASS_COVER_METRES);
-  const leaf = texture(tile, uv.sub(offset)).grad(dFdx(uv), dFdy(uv));
+  // Project two heights through the same leaf tile. The upper fibre layers over the lower one at grazing angles.
+  const offset = sight.xz.div(angle).div(GRASS_COVER_METRES);
+  const dx = dFdx(uv);
+  const dy = dFdy(uv);
+  const lower = texture(tile, uv.sub(offset.mul(0.018))).grad(dx, dy);
+  const upper = texture(tile, uv.sub(offset.mul(0.061))).grad(dx, dy);
+  const leaf = mix(lower, upper, smoothstep(0.42, 0.72, upper.g));
   const fibre = leaf.ba.mul(2).sub(1);
   const sightXZ = sight.xz;
   const brushed = dot(dir, sightXZ).mul(bend);

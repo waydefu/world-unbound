@@ -14,7 +14,8 @@ import { WORLD_MAX, WORLD_MIN } from './constants';
  * instances. Heights for the frustum test come from the CPU copy of the terrain; nothing is read back from the GPU.
  */
 export const CELL_M = 8;
-const HALF_DIAGONAL = CELL_M * Math.SQRT1_2;
+export const SPECIMEN_CELL_M = 2;
+export const FLOWER_CELL_M = 4;
 /** Cells per side of the world and the most cells each list can hold (the box around the eye at the largest tier). */
 export const WORLD_CELLS = (WORLD_MAX - WORLD_MIN) / CELL_M;
 export const MAX_DENSE_CELLS = 160;
@@ -32,6 +33,9 @@ export interface GrassRings {
   cardInnerM: number;
   /** Prefetch/retain cells in this margin around the camera frustum. */
   frustumPaddingM?: number;
+  cellM?: typeof CELL_M | typeof SPECIMEN_CELL_M;
+  /** Cutout turf reaches into the detailed mesh region and overlaps the baked surface. */
+  tuftM?: number;
 }
 
 /** The CPU arrays the cell test reads: the height lattice (2 m) and the vegetation texture (R = meadow). */
@@ -101,43 +105,50 @@ export class GrassCells {
     this.lastX = ex;
     this.lastY = ey;
     this.lastZ = ez;
-    const { nearM, midM, cardInnerM } = this.rings;
+    const { nearM, midM, cardInnerM, cellM = CELL_M, tuftM = 0 } = this.rings;
+    const flowerM = cellM === SPECIMEN_CELL_M ? FLOWER_CELL_M : cellM;
+    const flowerStride = flowerM / cellM;
+    const flowerOffset = (flowerM - cellM) * 0.5;
+    const halfDiagonal = cellM * Math.SQRT1_2;
+    const worldCells = (WORLD_MAX - WORLD_MIN) / cellM;
     // Exclusive by cell-centre distance: a cell is drawn with one blade class only.
     const denseMax = nearM * 0.5;
-    const thinMax = nearM + HALF_DIAGONAL;
-    const cardMin = cardInnerM - HALF_DIAGONAL;
-    const cardMax = midM + HALF_DIAGONAL;
-    const reach = Math.max(nearM, midM) + CELL_M;
-    const i0 = Math.max(0, Math.floor((ex - reach - WORLD_MIN) / CELL_M));
-    const i1 = Math.min(WORLD_CELLS - 1, Math.floor((ex + reach - WORLD_MIN) / CELL_M));
-    const j0 = Math.max(0, Math.floor((ez - reach - WORLD_MIN) / CELL_M));
-    const j1 = Math.min(WORLD_CELLS - 1, Math.floor((ez + reach - WORLD_MIN) / CELL_M));
+    const thinMax = (tuftM || nearM) + halfDiagonal;
+    const cardMin = cardInnerM - flowerM * Math.SQRT1_2;
+    const cardMax = midM + flowerM * Math.SQRT1_2;
+    const reach = Math.max(nearM, midM, tuftM) + flowerM;
+    const i0 = Math.max(0, Math.floor((ex - reach - WORLD_MIN) / cellM));
+    const i1 = Math.min(worldCells - 1, Math.floor((ex + reach - WORLD_MIN) / cellM));
+    const j0 = Math.max(0, Math.floor((ez - reach - WORLD_MIN) / cellM));
+    const j1 = Math.min(worldCells - 1, Math.floor((ez + reach - WORLD_MIN) / cellM));
     let nd = 0;
     let nt = 0;
     let nc = 0;
     let overflow = false;
     let changed = false;
     for (let j = j0; j <= j1; j++) {
-      const z0 = WORLD_MIN + j * CELL_M;
-      const dz = z0 + CELL_M * 0.5 - ez;
+      const z0 = WORLD_MIN + j * cellM;
+      const dz = z0 + cellM * 0.5 - ez;
       for (let i = i0; i <= i1; i++) {
-        const x0 = WORLD_MIN + i * CELL_M;
-        const dx = x0 + CELL_M * 0.5 - ex;
+        const x0 = WORLD_MIN + i * cellM;
+        const dx = x0 + cellM * 0.5 - ex;
         const d = Math.sqrt(dx * dx + dz * dz);
         const dense = nearM > 0 && d < denseMax;
-        const thin = nearM > 0 && d >= denseMax && d < thinMax;
-        const card = d > cardMin && d < cardMax;
+        const thin = nearM > 0 && (tuftM > 0 || d >= denseMax) && d < thinMax;
+        // Flowering plants still share a coarser grid. Small fescue cells spend the budget close to the eye.
+        const cardDistance = flowerStride === 1 ? d : Math.hypot(dx + flowerOffset, dz + flowerOffset);
+        const card = i % flowerStride === 0 && j % flowerStride === 0 && cardDistance > cardMin && cardDistance < cardMax;
         if (!dense && !thin && !card) continue;
-        if (!this.occupied(x0, z0, ex, ey, ez, planes)) continue;
-        if (dense) {
+        const bladeCell = (dense || thin) && this.occupied(x0, z0, ex, ey, ez, cellM, planes);
+        if (dense && bladeCell) {
           if (nd < MAX_DENSE_CELLS) changed = put(this.dense, nd++, x0, z0) || changed;
           else overflow = true;
         }
-        if (thin) {
+        if (thin && bladeCell) {
           if (nt < MAX_THIN_CELLS) changed = put(this.thin, nt++, x0, z0) || changed;
           else overflow = true;
         }
-        if (card) {
+        if (card && (flowerStride === 1 && bladeCell || this.occupied(x0, z0, ex, ey, ez, flowerM, planes))) {
           if (nc < MAX_CARD_CELLS) changed = put(this.cards, nc++, x0, z0) || changed;
           else overflow = true;
         }
@@ -151,11 +162,11 @@ export class GrassCells {
   }
 
   /** Cell has meadow somewhere and its box is inside the frustum. @hot */
-  private occupied(x0: number, z0: number, ex: number, ey: number, ez: number, planes: Float32Array | null): boolean {
-    const x1 = x0 + CELL_M;
-    const z1 = z0 + CELL_M;
-    const xm = x0 + CELL_M * 0.5;
-    const zm = z0 + CELL_M * 0.5;
+  private occupied(x0: number, z0: number, ex: number, ey: number, ez: number, cellM: number, planes: Float32Array | null): boolean {
+    const x1 = x0 + cellM;
+    const z1 = z0 + cellM;
+    const xm = x0 + cellM * 0.5;
+    const zm = z0 + cellM * 0.5;
     if (this.meadowAt(xm, zm) < EMPTY && this.meadowAt(x0, z0) < EMPTY && this.meadowAt(x1, z0) < EMPTY
       && this.meadowAt(x0, z1) < EMPTY && this.meadowAt(x1, z1) < EMPTY) return false;
     if (planes === null) return true;
@@ -176,9 +187,9 @@ export class GrassCells {
       const nx = planes[p];
       const ny = planes[p + 1];
       const nz = planes[p + 2];
-      const px = nx >= 0 ? rx + CELL_M : rx;
+      const px = nx >= 0 ? rx + cellM : rx;
       const py = ny >= 0 ? ry1 : ry0;
-      const pz = nz >= 0 ? rz + CELL_M : rz;
+      const pz = nz >= 0 ? rz + cellM : rz;
       if (nx * px + ny * py + nz * pz + planes[p + 3] < -padding) return false;
     }
     return true;

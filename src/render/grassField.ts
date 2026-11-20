@@ -3,8 +3,8 @@ import {
   clamp, cos, float, floor, hash, ivec2, length, max, mix, positionGeometry, attribute, pow, sin, smoothstep,
   sqrt, texture, uint, vec2, vec3,
 } from 'three/tsl';
-import { TOWN_RADIUS, TOWN_X, TOWN_Z, WORLD_MIN } from '../world/constants';
-import { CELL_M } from '../world/grassCells';
+import { TOWN_RADIUS, TOWN_X, TOWN_Z, WORLD_MAX, WORLD_MIN } from '../world/constants';
+import { CELL_M, SPECIMEN_CELL_M } from '../world/grassCells';
 import { HEIGHT_DIM } from '../world/terrainTextures';
 import { type GrassWindUniforms, grassGust } from './grassWind';
 import { WIND_SPAN_M } from './windTexture';
@@ -28,7 +28,6 @@ export interface GrassInputs {
   readonly noise: DataTexture;
   readonly wind: DataTexture;
   readonly sward: boolean;
-  readonly cardMask: DataTexture | null;
   /** Texels per side of the vegetation lattice and lattice cells per texel (the material texture's). */
   readonly vegetationDim: number;
   readonly vegetationStep: number;
@@ -54,6 +53,8 @@ export interface GrassUniforms extends GrassWindUniforms {
 export interface GrassLayout {
   readonly stride: number;
   readonly perClump: number;
+  /** Jittered uniform patches for the dense fescue carpet. */
+  readonly grid?: number;
 }
 
 /** Wind speed (m/s, local, after shelter) at which grass is fully laid over; a storm in the village reaches it. */
@@ -87,8 +88,6 @@ const HAY = { height: 0.43, width: 0.022, radius: 0.8, stiffness: 1, bend: 0.32 
 const TUSSOCK = { height: 0.57, width: 0.017, radius: 0.36, stiffness: 0.8, bend: 0.55 }; // unverified
 const HEATH = { height: 0.11, width: 0.03, radius: 0.5, stiffness: 0.5, bend: 0.1 }; // unverified
 
-// Leaf canopy dimensions in metres. The flowering shoots are separate from the canopy.
-const CARPET = { height: 0.085, width: 0.0028, radius: 0.34, stiffness: 0.82, bend: 0.26 };
 
 /** Per-blade species look. Weights are 0 or 1 per clump (heath beats the rest). */
 export interface Archetype {
@@ -135,10 +134,10 @@ export interface GrassField {
  * Builds the shared graph. `salt` separates the random streams of blades and cards that share a cell.
  * Must be called inside an Fn (it creates variables).
  */
-export function grassField(inp: GrassInputs, u: GrassUniforms, layout: GrassLayout, salt: number, companion: F | null): GrassField {
+export function grassField(inp: GrassInputs, u: GrassUniforms, layout: GrassLayout, salt: number, companion: F | null, sampleIndex: F = positionGeometry.z, cellM: number = inp.sward ? SPECIMEN_CELL_M : CELL_M): GrassField {
   const cell = attribute('grassCell', 'vec4');
-  const idx = positionGeometry.z.mul(layout.stride);
-  const cellU = cell.x.sub(WORLD_MIN).div(CELL_M).toUint().mul(uint(512)).add(cell.y.sub(WORLD_MIN).div(CELL_M).toUint());
+  const idx = sampleIndex.mul(layout.stride);
+  const cellU = cell.x.sub(WORLD_MIN).div(cellM).toUint().mul(uint((WORLD_MAX - WORLD_MIN) / cellM)).add(cell.y.sub(WORLD_MIN).div(cellM).toUint());
   const bladeU = cellU.mul(uint(8192)).add(idx.toUint()).mul(uint(16)).add(uint(salt));
   const rnd = (k: number): F => hash(bladeU.add(uint(k)));
   // Clump streams carry no salt: blades, thin blades and cards of one cell share their clumps.
@@ -151,8 +150,8 @@ export function grassField(inp: GrassInputs, u: GrassUniforms, layout: GrassLayo
   const load = (i: F, j: F): F => heights.load(ivec2(clamp(i, 0, LAST_TEXEL).toInt(), clamp(j, 0, LAST_TEXEL).toInt())).r;
 
   // Clump centre and what lies under it: species is decided per clump.
-  const cx = cell.x.add(cr(0).mul(CELL_M));
-  const cz = cell.y.add(cr(1).mul(CELL_M));
+  const cx = cell.x.add(cr(0).mul(cellM));
+  const cz = cell.y.add(cr(1).mul(cellM));
   const uvC = surfaceUv(cx, cz);
   const vegC = texture(inp.vegetation, uvC).level(LOD0);
   const wetC = texture(inp.wetness, uvC).level(LOD0).r;
@@ -174,14 +173,20 @@ export function grassField(inp: GrassInputs, u: GrassUniforms, layout: GrassLayo
   const clumpH = cr(2).mul(0.8).add(0.6);
   const leanAngle = cr(4).mul(TWO_PI);
   const clumpHue = cr(5).sub(0.5);
-  const radius = sel(inp.sward ? CARPET.radius : PASTURE.radius, HAY.radius, TUSSOCK.radius, HEATH.radius);
+  const radius = sel(inp.sward ? 0.34 : PASTURE.radius, HAY.radius, TUSSOCK.radius, HEATH.radius);
 
   // Mix irregular clumps with dispersed blades so contiguous uncovered strips cannot form between clumps.
   const angle = rnd(0).mul(TWO_PI);
   const rad = sqrt(rnd(1)).mul(radius).mul(1.25);
   const dispersed = rnd(2).lessThan(mix(0.72, 0.2, isTussock));
-  let x = dispersed.select(cell.x.add(rnd(0).mul(CELL_M)), cx.add(cos(angle).mul(rad)));
-  let z = dispersed.select(cell.y.add(rnd(1).mul(CELL_M)), cz.add(sin(angle).mul(rad)));
+  let x = dispersed.select(cell.x.add(rnd(0).mul(cellM)), cx.add(cos(angle).mul(rad)));
+  let z = dispersed.select(cell.y.add(rnd(1).mul(cellM)), cz.add(sin(angle).mul(rad)));
+  const grid = layout.grid;
+  if (grid) {
+    const spacing = cellM / grid;
+    x = cell.x.add(idx.mod(grid).add(rnd(0).mul(0.82).add(0.09)).mul(spacing));
+    z = cell.y.add(floor(idx.div(grid)).add(rnd(1).mul(0.82).add(0.09)).mul(spacing));
+  }
   if (companion) {
     const direction = angle.add(companion.mul(2.4));
     const offset = companion.mul(inp.sward ? rnd(12).mul(0.014).add(0.009) : rnd(12).mul(0.045).add(0.055));
@@ -219,14 +224,13 @@ export function grassField(inp: GrassInputs, u: GrassUniforms, layout: GrassLayo
   const hue = clumpHue.mul(0.8).add(rnd(14).sub(0.5).mul(0.3));
   const variation = vec3(hue.mul(0.26).add(1), hue.mul(0.04).add(1), float(1).sub(hue.mul(0.26))).mul(rnd(15).mul(0.16).add(0.92));
 
-  const short = inp.sward ? CARPET : PASTURE;
   // Height: archetype mid-range x clump (0.6-1.4) x blade (+-30 %) x patch, lower at the clump's edge.
-  const height = sel(short.height, HAY.height, TUSSOCK.height, HEATH.height)
+  const height = sel(PASTURE.height, HAY.height, TUSSOCK.height, HEATH.height)
     .mul(clumpH).mul(rnd(4).mul(0.9).add(0.55)).mul(inp.sward ? float(1) : patch.mul(0.3).add(0.85)).mul(edge);
   const archetype: Archetype = {
     height,
-    width: sel(short.width, HAY.width, TUSSOCK.width, HEATH.width).mul(rnd(12).mul(0.5).add(0.75)),
-    stiffness: sel(short.stiffness, HAY.stiffness, TUSSOCK.stiffness, HEATH.stiffness),
+    width: sel(PASTURE.width, HAY.width, TUSSOCK.width, HEATH.width).mul(rnd(12).mul(0.5).add(0.75)),
+    stiffness: sel(PASTURE.stiffness, HAY.stiffness, TUSSOCK.stiffness, HEATH.stiffness),
     hay: isHay, tussock: isTussock, pasture, heath,
   };
 
@@ -234,12 +238,12 @@ export function grassField(inp: GrassInputs, u: GrassUniforms, layout: GrassLayo
   const outward = vec2(cos(angle), sin(angle));
   const clumpDir = vec2(cos(leanAngle.add(rnd(10).sub(0.5).mul(0.9))), sin(leanAngle.add(rnd(10).sub(0.5).mul(0.9))));
   const restDir = mix(clumpDir, outward, isTussock.mul(0.7)).normalize();
-  const restBend = sel(short.bend, HAY.bend, TUSSOCK.bend, HEATH.bend).mul(cr(7).add(0.5)).mul(rnd(13).mul(0.6).add(0.7));
+  const restBend = sel(PASTURE.bend, HAY.bend, TUSSOCK.bend, HEATH.bend).mul(cr(7).add(0.5)).mul(rnd(13).mul(0.6).add(0.7));
 
   // Colour noise: the terrain shader's macro patches (top projection of the shared noise texture, channel b).
   const macro = texture(inp.noise, vec2(x, z).div(MACRO_METRES)).level(LOD0).b.mul(2).sub(1);
   const dist = length(vec2(x.sub(u.eye.x), z.sub(u.eye.z)));
-  const cellDist = length(cell.xy.add(CELL_M / 2).sub(u.eye.xz));
+  const cellDist = length(cell.xy.add(cellM / 2).sub(u.eye.xz));
 
   // Wind: the local velocity at the root from the wind texture, and gust fronts travelling along the global wind.
   const w = texture(inp.wind, vec2(x, z).div(WIND_SPAN_M)).level(LOD0);

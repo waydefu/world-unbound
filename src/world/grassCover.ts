@@ -1,3 +1,4 @@
+import { FESCUE_LEAVES, fescueProfile } from './fescue';
 import { hash2 } from './hash';
 
 export const GRASS_COVER_DIM = 256;
@@ -36,39 +37,21 @@ export function buildGrassCover(): Uint8Array {
 }
 
 /** Virtual leaves in the baked tile, tuned for at least 99% grass canopy coverage. */
-export const SWARD_LEAVES_PER_M2 = 18000;
+export const SWARD_LEAVES_PER_M2 = 32000;
 export const SWARD_LEAVES = Math.round(SWARD_LEAVES_PER_M2 * GRASS_COVER_METRES ** 2);
-export const GRASS_CARD_DIM = 64;
-
-export interface SwardLeaf {
-  x: number;
-  z: number;
-  angle: number;
-  length: number;
-  height: number;
-  width: number;
-  shade: number;
-}
-
-/** A deterministic short-leaf reference patch, in metres, with clumped and dispersed shoots. */
-export function swardLeaf(i: number): SwardLeaf {
+/** Place the same leaf outlines as the foreground shoot, with stable world-independent rotation and colour. */
+function swardLeaf(i: number) {
   const seed = 0x3c47;
   const root = hash2(i, 2, seed);
   const shape = hash2(i, 3, seed);
   const scatter = hash2(i, 4, seed);
-  const clump = hash2(i % 96, 5, seed);
-  const clumped = (scatter & 255) < 110;
-  const wrap = (metres: number) => (metres + GRASS_COVER_METRES) % GRASS_COVER_METRES;
-  const x = clumped ? wrap((clump & 65535) / 65536 * GRASS_COVER_METRES + ((scatter >>> 8 & 255) / 255 - 0.5) * 0.14)
-    : (root & 65535) / 65536 * GRASS_COVER_METRES;
-  const z = clumped ? wrap((clump >>> 16) / 65536 * GRASS_COVER_METRES + ((scatter >>> 16 & 255) / 255 - 0.5) * 0.14)
-    : (root >>> 16) / 65536 * GRASS_COVER_METRES;
+  const profile = FESCUE_LEAVES[i % FESCUE_LEAVES.length];
   return {
-    x, z, angle: (shape & 255) * (Math.PI / 128),
-    length: 0.02 + (shape >>> 8 & 255) / 255 * 0.065,
-    height: 0.034 + (shape >>> 16 & 255) / 255 * 0.065,
-    width: 0.002 + (shape >>> 24) / 255 * 0.003,
-    shade: 132 + (scatter >>> 24) / 255 * 72,
+    x: (root & 65535) / 65536 * GRASS_COVER_METRES,
+    z: (root >>> 16) / 65536 * GRASS_COVER_METRES,
+    angle: (shape & 255) * (Math.PI / 128),
+    profile,
+    shade: 144 + (scatter >>> 24) / 255 * 72,
   };
 }
 
@@ -89,16 +72,17 @@ export function buildSwardCover(): Uint8Array {
     const leaf = swardLeaf(i);
     const dx = Math.cos(leaf.angle);
     const dz = Math.sin(leaf.angle);
-    const steps = Math.ceil(leaf.length * pxPerM * 2);
+    const steps = Math.ceil(leaf.profile[1] * pxPerM * 2.5);
     const dirX = Math.round(dx * 127 + 128);
     const dirZ = Math.round(dz * 127 + 128);
     for (let step = 0; step < steps; step++) {
       const t = step / steps;
-      const reach = t * t * leaf.length;
-      const x = (leaf.x + dx * reach - dz * reach * t * 0.24) * pxPerM;
-      const z = (leaf.z + dz * reach + dx * reach * t * 0.24) * pxPerM;
-      const radius = leaf.width * pxPerM * (1 - t * 0.75);
-      const height = Math.round(255 * (leaf.height / 0.1) * (0.2 + t * (1.45 - t * 0.64)));
+      const [reach, y, half] = fescueProfile(leaf.profile, t);
+      const x = (leaf.x + dx * reach) * pxPerM;
+      const z = (leaf.z + dz * reach) * pxPerM;
+      const roll = (12 + 32 * t) * Math.PI / 180;
+      const radius = half * Math.cos(roll) * pxPerM;
+      const height = Math.round(255 * y / 0.115);
       for (let across = -1; across <= 1; across++) {
         const ix = Math.floor(x - dz * across * radius) & wrap;
         const iz = Math.floor(z + dx * across * radius) & wrap;
@@ -112,26 +96,4 @@ export function buildSwardCover(): Uint8Array {
     }
   }
   return cover;
-}
-
-/** Seven visible leaves from the short-grass reference, projected into a triangular card. */
-export function buildGrassCardMask(): Uint8Array {
-  const mask = new Uint8Array(GRASS_CARD_DIM ** 2);
-  for (let i = 0; i < 7; i++) {
-    const leaf = swardLeaf(i + 12);
-    const root = 0.12 + i * 0.125;
-    const tip = 0.5 + Math.cos(leaf.angle) * 0.17;
-    const height = leaf.height * 8.2 + 0.13;
-    for (let y = 0; y < GRASS_CARD_DIM * height; y++) {
-      const t = y / (GRASS_CARD_DIM * height);
-      const centre = (root + (tip - root) * t * t) * GRASS_CARD_DIM;
-      const radius = GRASS_CARD_DIM * (0.047 + leaf.width * 4) * (1 - t * 0.92);
-      const offset = y * GRASS_CARD_DIM;
-      for (let x = Math.max(0, Math.floor(centre - radius - 1)); x <= Math.min(GRASS_CARD_DIM - 1, centre + radius + 1); x++) {
-        const coverage = Math.min(1, Math.max(0, radius + 0.6 - Math.abs(x + 0.5 - centre)));
-        mask[offset + x] = Math.max(mask[offset + x], Math.round(coverage * 255));
-      }
-    }
-  }
-  return mask;
 }

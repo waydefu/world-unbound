@@ -5,10 +5,11 @@ import { QUALITY } from '../src/app/quality';
 import { parseParams } from '../src/app/params';
 import { frustumPlanes } from '../src/world/cdlod';
 import { WORLD_MIN } from '../src/world/constants';
-import { buildGrassCardMask, buildSwardCover, GRASS_CARD_DIM, SWARD_COVER_DIM } from '../src/world/grassCover';
+import { buildSwardCover, SWARD_COVER_DIM } from '../src/world/grassCover';
 import { CELL_M, GrassCells, MAX_CARD_CELLS, MAX_DENSE_CELLS, MAX_THIN_CELLS, WORLD_CELLS } from '../src/world/grassCells';
 import { HEIGHT_DIM, buildTerrainTextures, materialDim } from '../src/world/terrainTextures';
 import { createTerrainTextures } from '../src/render/terrainTextures';
+import { createFescueTuftGeometry, createFescueTuftTexture, createSpecimenGeometry, TUFT_GRID } from '../src/render/grassSpecimenGeometry';
 import { createBladeGeometry, createCardGeometry } from '../src/render/grassGeometry';
 import { GrassLayer } from '../src/render/grass';
 import { WindTexture } from '../src/render/windTexture';
@@ -240,6 +241,24 @@ describe('grass layer on the Hellesylt terrain', () => {
 });
 
 describe('measured-density grass prototype', () => {
+  it('keeps the approved fescue leaf arcs in the detailed mesh and uses leaf cutouts for the carpet', () => {
+    const dense = createSpecimenGeometry('dense', 1, new Float32Array(4));
+    expect(dense.trianglesPerInstance).toBe(126);
+    const high = dense.geometry.attributes.position;
+    // Leaf 2 drops from its crest to a tip only 18 mm above its root.
+    expect(high.getY(25)).toBeGreaterThan(high.getY(31) + 0.025);
+    expect(high.getY(31)).toBeCloseTo(0.01885, 5);
+    const tuft = createFescueTuftGeometry(new Float32Array(4));
+    expect(tuft.trianglesPerInstance).toBe(TUFT_GRID ** 2 * 4);
+    const texture = createFescueTuftTexture();
+    const alpha = (texture.image.data as Uint8Array).filter((_, index) => index % 2 === 0);
+    expect(alpha.some(value => value === 0)).toBe(true);
+    expect(alpha.some(value => value === 255)).toBe(true);
+    const flower = createSpecimenGeometry('card', 2, new Float32Array(4));
+    expect(flower.trianglesPerInstance).toBe(686 + 1056);
+    expect(flower.geometry.attributes.position.count).toBe(506 + 869);
+  });
+
   it('bakes a deterministic fibre map with at least 99% grass canopy coverage', () => {
     const cover = buildSwardCover();
     expect(cover).toHaveLength(SWARD_COVER_DIM ** 2 * 4);
@@ -249,10 +268,6 @@ describe('measured-density grass prototype', () => {
     expect(covered / texels).toBeGreaterThanOrEqual(0.99);
     expect(covered).toBeLessThan(texels);
     expect(cover.some((height, i) => i % 4 === 1 && height >= 180)).toBe(true);
-    const mask = buildGrassCardMask();
-    expect(mask).toHaveLength(GRASS_CARD_DIM ** 2);
-    expect(mask.includes(0)).toBe(true);
-    expect(mask.includes(255)).toBe(true);
   });
 
   it('opts in from the URL and repeats the same 8.4 m test path', () => {
