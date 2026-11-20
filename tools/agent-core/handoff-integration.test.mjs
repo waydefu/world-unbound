@@ -9,6 +9,7 @@ const source=resolve('tools');
 const file=(base,path,value)=>{mkdirSync(dirname(join(base,path)),{recursive:true});writeFileSync(join(base,path),value);};
 test('handoff checker distinguishes main progression, squash merge, offline and escaped paths',()=>{
  const dir=mkdtempSync(join(tmpdir(),'wu-handoff-e2e-'));
+ const today=new Date().toISOString().slice(0,10); // avoid a test that expires 14 days after it is written
  const git=(...args)=>execFileSync('git',args,{cwd:dir,encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim();
  const run=(...args)=>{
   const x=spawnSync(process.execPath,['tools/handoff-check.mjs',...args,'--json'],{cwd:dir,encoding:'utf8',timeout:15_000});
@@ -20,12 +21,12 @@ test('handoff checker distinguishes main progression, squash merge, offline and 
   file(dir,'tools/agent-core/handoff-utils.mjs','');
   copyFileSync(join(source,'agent-core/handoff-utils.mjs'),join(dir,'tools/agent-core/handoff-utils.mjs'));
   for(const d of ['docs/INDEX.md','docs/process/agent-workflow.md','docs/architecture/CODE-MAP.md','docs/process/index-benchmark.md','CLAUDE.md','GEMINI.md'])file(dir,d,'# fixture\n');
-  file(dir,'docs/HANDOFF.md','# Handoff\n\nSnapshot: 2026-11-20\n\nBase main: '+'0'.repeat(40)+'\n');
+  file(dir,'docs/HANDOFF.md','# Handoff\n\nSnapshot: '+today+'\n\nBase main: '+'0'.repeat(40)+'\n');
   git('init','-b','main');git('config','user.email','fixture@example.invalid');git('config','user.name','Fixture');
   git('add','.');git('commit','-m','initial');
   const base=git('rev-parse','HEAD');
   git('checkout','-b','feature');
-  file(dir,'docs/HANDOFF.md','# Handoff\n\nSnapshot: 2026-11-20\n\nBase main: '+base+'\n');
+  file(dir,'docs/HANDOFF.md','# Handoff\n\nSnapshot: '+today+'\n\nBase main: '+base+'\n');
   git('add','docs/HANDOFF.md');git('commit','-m','snapshot');
   git('checkout','main');file(dir,'src/render/new.ts','export const changed = true;\n');
   git('add','src/render/new.ts');git('commit','-m','runtime change');
