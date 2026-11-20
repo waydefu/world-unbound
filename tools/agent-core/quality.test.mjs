@@ -78,6 +78,12 @@ test('CLI keeps incoming and outgoing independently when both exceed one item', 
   assert.equal(x.limits.incoming.truncated,true);
   assert.ok(x.results.some(t=>t.name.startsWith('incoming:')));
   assert.ok(x.results.some(t=>t.name.startsWith('outgoing:')));
+  // A renamed imported type still resolves as a caller in another source file.
+  const all=spawnSync(process.execPath,['tools/agent-index.mjs','calls','CallFixture.step','--file','tests/agent-fixtures/calls.ts','--limit','20','--json'],
+    {cwd:process.cwd(),encoding:'utf8',timeout:60_000});
+  assert.equal(all.status,0,all.stderr);
+  const y=JSON.parse(all.stdout);
+  assert.ok(y.incoming.some(z=>z.at.startsWith('tests/agent-fixtures/external.ts:')),'renamed cross-file caller must resolve');
 });
 test('ambiguous symbols are never silently coerced into a single target', () => {
   const r=spawnSync(process.execPath,['tools/agent-index.mjs','calls','select','--json'],

@@ -97,14 +97,16 @@ const getService = p => {
   };
   return ts.createLanguageService(host,ts.createDocumentRegistry());
 };
-const formatCall = (p, item, offset, dir) => {
-  const file=slash(relative(p.root,item.file));
-  const sf=ts.createSourceFile(item.file,ts.sys.readFile(item.file)||'',ts.ScriptTarget.Latest,true);
-  const at=locate(sf,offset,p.root);
-  return { name:`${dir}: ${item.containerName?item.containerName+'.':''}${item.name}`,
-    at,kind:dir,from:dir==='incoming'?file:null,to:dir==='outgoing'?file:null,
-    provenance:'typescript-language-service',confidence:'resolved-static' };
-};
+// Format call sites against the correct caller source, parsing each file at most once.
+const formatCall = (p, item, offset, dir, callerFile, sourceFor) => ({
+  name:`${dir}: ${item.containerName?item.containerName+'.':''}${item.name}`,
+  at:locate(sourceFor(callerFile),offset,p.root),
+  kind:dir,
+  from:dir==='incoming'?slash(relative(p.root,item.file)):null,
+  to:dir==='outgoing'?slash(relative(p.root,item.file)):null,
+  provenance:'typescript-language-service',
+  confidence:'resolved-static',
+});
 export const calls = (p, symbol, { file=null, line=null, limit=8, inOffset=0, outOffset=0 }={}) => {
   const defs=readSymbols(p).filter(d=>(d.name===symbol||d.qualified===symbol)&&(!file||d.file===file)&&
     (!line||Number(d.at.split(':').at(-2))===line));
@@ -123,15 +125,20 @@ export const calls = (p, symbol, { file=null, line=null, limit=8, inOffset=0, ou
     inc=ls.provideCallHierarchyIncomingCalls(filename,d.start);
     out=ls.provideCallHierarchyOutgoingCalls(filename,d.start);
   } finally {ls.dispose();}
-  const incoming = inc.flatMap(c=>c.fromSpans.map(span=>formatCall(p,c.from,span.start,'incoming')));
-  const outgoing = out.flatMap(c=>c.fromSpans.map(span=>formatCall(p,c.to,span.start,'outgoing')));
-  // Incoming span is a call site in the caller. Outgoing span is a call site in the selected method.
-  // Correct the location for outgoing using the selected file rather than the callee file.
-  for(let i=0;i<outgoing.length;i++){
-    const call=out.flatMap(c=>c.fromSpans.map(span=>({span,to:c.to})))[i];
-    const sf=ts.createSourceFile(filename,ts.sys.readFile(filename)||'',ts.ScriptTarget.Latest,true);
-    outgoing[i].at=locate(sf,call.span.start,p.root);
-  }
+  const cache=new Map();
+  const sourceFor=(path)=>{
+    let sf=cache.get(path);
+    if(!sf){
+      const content=ts.sys.readFile(path);
+      if(content===undefined)throw Error('Call-site source disappeared during query: '+path);
+      sf=ts.createSourceFile(path,content,ts.ScriptTarget.Latest,true);
+      cache.set(path,sf);
+    }
+    return sf;
+  };
+  // TS call hierarchy: incoming spans are in the caller, outgoing spans in the selected declaration.
+  const incoming=inc.flatMap(c=>c.fromSpans.map(span=>formatCall(p,c.from,span.start,'incoming',c.from.file,sourceFor)));
+  const outgoing=out.flatMap(c=>c.fromSpans.map(span=>formatCall(p,c.to,span.start,'outgoing',filename,sourceFor)));
   incoming.sort((a,b)=>a.at.localeCompare(b.at)||a.name.localeCompare(b.name));
   outgoing.sort((a,b)=>a.at.localeCompare(b.at)||a.name.localeCompare(b.name));
   const pi=page(incoming,limit,inOffset),po=page(outgoing,limit,outOffset);
