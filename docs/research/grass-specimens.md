@@ -37,6 +37,8 @@ NIBIO 將紫羊茅、細弱剪股穎和黃花茅列為自然放牧地常見草�
 
 ## 技術方案
 
+現有即時版的葉寬是為了螢幕覆蓋而放大。以現有的短草 16 mm、乾草甸 22 mm 葉寬代理為例，近看已經遠大於這次選擇的物種葉寬。下一步要讓可辨認的近景葉片使用物種比例，草叢的覆蓋則在中景草卡和遠景草冠另行承擔。[現有程式的寬度代理值](../../src/render/grassField.ts)
+
 - 單株用公尺座標、三次 Bézier 中線和有窄折脊的雙面葉片。葉片由中線與左右緣構成，寬度隨位置收至同一尖點。穗梗沿細管走向，穗頭用分枝和小穗的實體幾何描述輪廓。原型在 Blender 以固定種子建模，輸出 glTF 2.0 和相同幾何的兩視角渲染。
 - 進遊戲時優先沿用 three.js／TSL 的 GPU 實例畫法。在近景保留折脊和長短不同的葉形，將複雜花序放在很小的近景範圍。薄葉接近亞像素時，以草叢覆蓋交接到中景卡片，再由地表草冠接遠景。保持草根與輪廓在 LOD 前後對得上。
 - 草冠的顏色從葉片底色和自然土色混合而來。先用同鏡頭拆開草幾何、草冠、地表著色來查黑點，再用低對比、連續的地表明暗做驗收。密度分布參考照片中與道路、岩緣及坡度一起變化的覆蓋。
@@ -52,4 +54,9 @@ blender -b -t 3 --python-exit-code 1 -P docs/research/grass-specimens/build.py -
 
 單體以葉形與草莖比例來審。A 的彎莖和窄穗輪廓清楚，小穗間距仍略整齊。B 的葉寬最接近低矮細草的目標，某些側視葉尖需要在手機上驗證時間穩定性。C 的開展花序可和 A 分辨，側視時細分枝的對比偏低。群落密度、近遠交接、黑點和移動閃爍列為場景樣片的驗收條件。
 
-`npm run dev -- --strictPort` 啟動後，[渲染管線檢查頁](grass-specimens/renderer-check.html) 可用本專案的 three.js 讀入三個 GLB。從 Vite 開啟 `/world-unbound/docs/research/grass-specimens/renderer-check.html?backend=webgpu` 或同一路徑的 `?backend=webgl2`，確認實際 backend、包圍盒高度、幾何和渲染三角形數。
+`git lfs pull --include="docs/research/grass-specimens/*.glb"` 下載網格後，以 `npm run dev -- --strictPort` 啟動專案。[渲染管線檢查頁](grass-specimens/renderer-check.html) 可用本專案的 three.js 讀入三個 GLB。從 Vite 開啟 `/world-unbound/docs/research/grass-specimens/renderer-check.html?backend=webgpu` 或同一路徑的 `?backend=webgl2`，確認實際 backend、包圍盒高度、幾何和渲染三角形數。
+
+
+三株幾何量為 A 686、B 454、C 1,056 個三角形，各使用 4–5 個材質批次。Chromium 的軟體 WebGL2 已逐一載入並繪製，回報的場景繪製量包含一個輸出通道的全螢幕三角形。這些網格供單體形態檢查。群落原型要把材質與批次合併，以實景鏡頭檢查草葉從近景交接到中遠景的穩定性。
+
+軟體 WebGPU 測試出現裝置／實例失效，POCO 的 WebGPU 驗證仍待進行。
