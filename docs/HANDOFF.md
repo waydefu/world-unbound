@@ -33,7 +33,7 @@ Owner's phone: Adreno 8xx, Chrome 157, WebGPU, 60 Hz, 2.2 MP drawing buffer, med
 - **GPU ramp (2026-11-18):** the spike scene (terrain only, 1298 chunks, pinned 1300 m ring) holds 60 FPS up to 8 passes, drops at 10 → one pass ≤ 12.5 % of a frame, far above the 30 % headroom rule. It does not include ocean or shadows; the app numbers above are the real evidence.
 - `gpu Σpass` (`frames.gpuPassSumP50Ms`) is the **sum of per-pass durations** from three.js, inflated by down-clocking and tiled-GPU overlap; it is not a frame time (11–13 ms at a steady 60 FPS).
 - Render bundles cut CPU per frame from ~7 ms to ~1.6–2.3 ms ([engine spike](spikes/engine-spike.md)).
-- **Grass baseline #32 (2026-11-20):** latest Chromium software-WebGL2/Medium comparison reports at most 3 grass batches and 230,468 grass triangles in 16:9; two blind reviewers rated the revised images 5.13/7 and 4.75/7. This is **not** evidence for phone WebGPU frame time. Mobile p95, 60 FPS stability and 10-minute thermal behaviour remain unmeasured for this grass revision.
+- **Grass baseline #32 (2026-11-20):** latest Chromium software-WebGL2/Medium comparison reports at most 3 grass batches and 230,468 grass triangles in 16:9; two blind reviewers rated the revised images 5.13/10 and 4.75/10. This is **not** evidence for phone WebGPU frame time. Mobile p95, 60 FPS stability and 10-minute thermal behaviour remain unmeasured for this grass revision.
 - Not yet measured: sustained (10 min+) thermal behaviour.
 
 ## Next actions
@@ -59,7 +59,6 @@ npm run dev                 # http://localhost:5173/world-unbound/
 npm run check:quiet         # same checks, less log output; no visual: -- --no-visual
 ```
 
-- On GitHub Codespaces, see [development setup](DEVELOPMENT.md) for lightweight `rg`, `fd`, `jq` and Node 22. It does not emulate phone WebGPU.
 - Work on a branch, never push to `main`; the owner squash-merges PRs. (Claude sessions used `ccr-249f8f67-fulgp3`; use whatever branch your tool assigns.) After a squash merge, restart the branch from `origin/main`.
 - `npm run check:quiet` runs the same steps as `npm run check` with one line per step (add `-- --no-visual` to skip the headless visual audit).
 - Every PR: follow the template, `Refs #`, list tests not run, say that AI summaries are not CI proof. The owner merges; agents never approve or merge.

@@ -6,7 +6,7 @@
 
 一個從可驗證的 GitHub 治理基線出發的開源專案。
 
-**要接手工作嗎？** 請先閱讀 [AGENTS.md](AGENTS.md)，再閱讀 [docs/HANDOFF.md](docs/HANDOFF.md) 與 [docs/INDEX.md](docs/INDEX.md)。GitHub 雲端開發工具請參閱 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
+**要接手工作嗎？** 請先閱讀 [AGENTS.md](AGENTS.md)，再閱讀 [docs/HANDOFF.md](docs/HANDOFF.md) 與 [docs/INDEX.md](docs/INDEX.md)。
 
 ## 目前狀態
 

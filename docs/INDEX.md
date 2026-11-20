@@ -11,7 +11,6 @@ Where everything is. Read the protected [AGENTS.md](../AGENTS.md) before acting;
 | [README.md](../README.md) | Status, how to run, roadmap |
 | [README.zh-TW.md](../README.zh-TW.md) | 繁體中文版 README（狀態、執行方式、路線圖） |
 | [architecture/README.md](architecture/README.md) | Module layers (enforced), frame and data flow, units |
-| [DEVELOPMENT.md](DEVELOPMENT.md) | GitHub Codespaces / CLI setup and low-token search commands |
 
 ## Decisions and plans
 

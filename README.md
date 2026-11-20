@@ -4,7 +4,7 @@ English | [繁體中文](README.zh-TW.md)
 
 An open-source project starting from a verifiable GitHub governance baseline.
 
-**Picking up the work?** Read [AGENTS.md](AGENTS.md), then [docs/HANDOFF.md](docs/HANDOFF.md) and [docs/INDEX.md](docs/INDEX.md). For GitHub cloud development see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+**Picking up the work?** Read [AGENTS.md](AGENTS.md), then [docs/HANDOFF.md](docs/HANDOFF.md) and [docs/INDEX.md](docs/INDEX.md).
 
 ## Current status
 

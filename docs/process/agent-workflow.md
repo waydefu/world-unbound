@@ -32,8 +32,7 @@ Output goes to `out/` (git-ignored). The page exposes `window.__wu.ready()` and 
 
 - Node and npm (versions per `package.json` / CI); Chromium for Playwright (`npx playwright install chromium` if the environment has none). Headless rendering is WebGL2 on SwiftShader: slow, and WebGPU-specific results (render bundles, timestamps, vertex texture fetch performance) need the phone.
 - Network: npm registry; `waydefu.github.io` to confirm deploys; Kartverket hosts only when re-baking terrain or fetching bathymetry.
-- GitHub Codespaces: [docs/DEVELOPMENT.md](../DEVELOPMENT.md) configures Node 22 and installs `rg`, `fd`, `jq` on new containers. No heavy MCP, full dependency install, or Chromium download on startup.
-- Optional search tools: `rg`, `fd`, `ast-grep`, `jq` — first locate with `git ls-files` or `fd -t f`, then `rg -n -F 'symbol' src tests`, then read only the matching function or line range. Search is not a substitute for checking call sites and tests.
+- Optional search tools: `rg`, `fd`, `ast-grep`, `jq` — first locate with `git ls-files` or `fd -t f`, then `rg -n -F 'symbol' src tests`, then read only the matching function or line range. A GitHub file map is not a semantic symbol index: check imports, callers, tests and active feature flags before editing. Do not dump whole repositories or install indexing services for ordinary changes.
 
 ## Saving tokens
 
