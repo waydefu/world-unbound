@@ -1,5 +1,5 @@
-import type { Node } from 'three/webgpu';
-import { float, mix, smoothstep, vec3 } from 'three/tsl';
+import type { DataTexture, Node } from 'three/webgpu';
+import { float, mix, smoothstep, texture, vec2, vec3 } from 'three/tsl';
 
 /**
  * Ground-cover colours shared by the terrain shader and the grass blades, so a blade has exactly the colour of
@@ -40,6 +40,24 @@ export function groundCover(
   const heathShare = veg.g.div(veg.r.add(veg.g).max(1e-3));
   const ground = mix(grass, HEATH, heathShare);
   return mix(ground, ground.mul(FOREST_MUL), veg.b);
+}
+
+/** A uniform turf base. The vegetation mask determines where it starts, not its density within the meadow. */
+export function grassCarpetWeight(meadow: Node<'float'>): Node<'float'> {
+  return smoothstep(0.08, 0.5, meadow);
+}
+
+export function grassCarpetColour(season: Node<'vec3'>): Node<'vec3'> {
+  return seasonal(vec3(0.094, 0.212, 0.041), season);
+}
+
+/** World-fixed crown relief shared by the drawn tufts and ground between them.
+ * The two lower frequency channels survive when the individual fibre map mips to its mean.
+ */
+export function grassCrownField(noise: DataTexture, xz: Node<'vec2'>, macro: Node<'float'>) {
+  const uv = vec2(xz.x.mul(0.93).sub(xz.y.mul(0.37)), xz.x.mul(0.37).add(xz.y.mul(0.93)))
+    .div(4.6).add(vec2(macro.mul(0.42), macro.mul(-0.31)));
+  return texture(noise, uv);
 }
 
 /** Match the fresh-green canopy between the ground texture and the visible blades. */

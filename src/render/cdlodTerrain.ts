@@ -8,7 +8,7 @@ import { CdlodSelector, MAX_CASCADES, MAX_NODES, frustumPlanes } from '../world/
 import { LEVELS, PATCH } from '../world/cdlodPyramid';
 import { createCdlodShaders } from './cdlodShader';
 import type { CascadeCamera } from './shadows';
-import { createTerrainMaterial, type TerrainMaterial } from './terrainMaterial';
+import { createTerrainMaterial, type TerrainMaterial, type TerrainSurface } from './terrainMaterial';
 import type { TerrainTextures } from './terrainTextures';
 
 /** Triangles in one node patch. */
@@ -65,7 +65,7 @@ function instancedPatch(
 
 export interface CdlodOptions {
   readonly grassCover: DataTexture | null;
-  readonly sward: boolean;
+  readonly carpet: TerrainSurface['carpet'];
   readonly textures: TerrainTextures;
   readonly pyramid: Float32Array;
   readonly noise: DataTexture;
@@ -113,7 +113,7 @@ export class CdlodTerrain {
       vegetation: textures.vegetation,
       wetness: textures.wetness,
       grassCover,
-      sward: options.sward,
+      carpet: options.carpet,
     });
     this.material = this.terrainMaterial.material;
     this.material.positionNode = shaders.position;

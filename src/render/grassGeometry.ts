@@ -15,7 +15,8 @@ export interface GrassGeometry {
   readonly bytes: number;
 }
 
-function finish(geometry: InstancedBufferGeometry, position: Float32Array, index: Uint16Array, cellList: Float32Array, part?: Float32Array): GrassGeometry {
+export function finishGrassGeometry(position: Float32Array, index: Uint16Array, cellList: Float32Array, part?: Float32Array): GrassGeometry {
+  const geometry = new InstancedBufferGeometry();
   geometry.setAttribute('position', new BufferAttribute(position, 3));
   if (part) geometry.setAttribute('part', new BufferAttribute(part, 1));
   geometry.setIndex(new BufferAttribute(index, 1));
@@ -72,7 +73,7 @@ export function createBladeGeometry(blades: number, segments: number, cellList: 
       }
     }
   }
-  return finish(new InstancedBufferGeometry(), position, index, cellList, part);
+  return finishGrassGeometry(position, index, cellList, part);
 }
 
 /** Cards: tufts of three one-triangle blades (9 vertices, 3 triangles per card), `part` 0..2 per blade. */
@@ -93,5 +94,5 @@ export function createCardGeometry(cards: number, cellList: Float32Array): Grass
       }
     }
   }
-  return finish(new InstancedBufferGeometry(), position, index, cellList, part);
+  return finishGrassGeometry(position, index, cellList, part);
 }
