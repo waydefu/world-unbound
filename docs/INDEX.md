@@ -31,6 +31,7 @@ Where everything is. Start with [HANDOFF.md](HANDOFF.md) to pick up the work.
 | [process/agent-workflow.md](process/agent-workflow.md) | Tool-neutral workflow, commands, environment and token-saving notes for any agent (handover) |
 | [process/subagents.md](process/subagents.md) | Which subagent and model for which job; parallel fan-outs use Haiku |
 | [research/environment-systems.md](research/environment-systems.md) | Environment systems research overview (fields, weather, sky, water, ecology, surface, audio) and proposed order |
+| [research/grass-specimens.md](research/grass-specimens.md) | Hellesylt grass ecology and three isolated blind-review specimens |
 
 ## Governance and security
 
