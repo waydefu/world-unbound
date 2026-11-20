@@ -1,9 +1,7 @@
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const root = resolve(import.meta.dirname, '..');
-const read = (path: string): string => readFileSync(resolve(root, path), 'utf8');
+const read = (path: string): string => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
 describe('GitHub development environment', () => {
   it('defines a reproducible, lightweight Node 22 setup', () => {
