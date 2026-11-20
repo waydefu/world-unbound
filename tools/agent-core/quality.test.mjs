@@ -21,13 +21,22 @@ test('Windows drive and UNC paths respect separators and case', () => {
   assert.equal(inside('\\\\server\\share\\world', '\\\\server\\share\\world\\docs', path.win32), true);
   assert.equal(inside('\\\\server\\share\\world', '\\\\server\\other\\world', path.win32), false);
 });
-test('symlink escape is not treated as a safe local document', () => {
+test('symlink escape is not treated as a safe local document', (t) => {
   const dir=mkdtempSync(path.join(tmpdir(),'wu-path-'));
   try {
     mkdirSync(path.join(dir,'repo'));
     mkdirSync(path.join(dir,'outside'));
     writeFileSync(path.join(dir,'outside','private.md'),'not public');
-    symlinkSync(path.join(dir,'outside','private.md'),path.join(dir,'repo','linked.md'));
+    try {
+      symlinkSync(path.join(dir,'outside','private.md'),path.join(dir,'repo','linked.md'));
+    } catch (e) {
+      // On Windows, creating symlinks may require Developer Mode or elevated privileges.
+      if (process.platform === 'win32' && ['EPERM', 'EACCES', 'ENOTSUP'].includes(e?.code)) {
+        t.skip('Native Windows symlink permission unavailable; path.win32 boundary tests still run');
+        return;
+      }
+      throw e;
+    }
     assert.equal(inside(path.join(dir,'repo'),path.join(dir,'repo','linked.md')),true);
     assert.equal(realInside(path.join(dir,'repo'),path.join(dir,'repo','linked.md')),false);
   } finally { rmSync(dir,{recursive:true,force:true}); }
