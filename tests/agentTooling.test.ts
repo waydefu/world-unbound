@@ -44,6 +44,6 @@ describe('read-only Agent discovery tools', () => {
 
   it('covers Git drift, portable paths, symlink escapes, independent call windows and ambiguity', () => {
     const out = spawnSync('node', ['--test', 'tools/agent-core/quality.test.mjs'], { encoding: 'utf8', timeout: 90_000 });
-    expect(out.status, out.stderr + '\n' + out.stdout).toBe(0);
+    expect(out.status, `${out.stderr}\n${out.stdout}`).toBe(0);
   }, 45_000);
 });
