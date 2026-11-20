@@ -134,14 +134,18 @@ if (command === 'find') {
         if (byNode.has(node)) parent = byNode.get(node);
         if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
           const expr = node.expression;
-          const sym = canonical(checker.getSymbolAtLocation(ts.isPropertyAccessExpression(expr) ? expr.name : expr));
-          // A resolved call signature is the most reliable declaration link for class methods,
-          // including destructured receivers; alias symbols alone can differ across access sites.
-          const declaration = checker.getResolvedSignature(node)?.declaration;
-          const target = (declaration && byNode.get(declaration)) || bySymbol.get(sym)?.[0];
-          const call = { at: location(sf, node), from: parent?.qualified ?? '(top-level)', to: target?.qualified ?? '(external/dynamic)' };
-          if (target && target.symbol === chosen.symbol) incoming.push(call);
-          if (parent?.symbol && parent.symbol === chosen.symbol && target) outgoing.push(call);
+          const invokedName = ts.isPropertyAccessExpression(expr) ? expr.name.text
+            : ts.isIdentifier(expr) ? expr.text : null;
+          // Only resolve the candidate method name or calls inside the selected method.
+          // Looking up every call in the entire program is slow and wastes CPU.
+          if (invokedName === chosen.name || parent?.symbol === chosen.symbol) {
+            const sym = canonical(checker.getSymbolAtLocation(ts.isPropertyAccessExpression(expr) ? expr.name : expr));
+            const declaration = checker.getResolvedSignature(node)?.declaration;
+            const target = (declaration && byNode.get(declaration)) || bySymbol.get(sym)?.[0];
+            const call = { at: location(sf, node), from: parent?.qualified ?? '(top-level)', to: target?.qualified ?? '(external/dynamic)' };
+            if (target && target.symbol === chosen.symbol) incoming.push(call);
+            if (parent?.symbol === chosen.symbol && target) outgoing.push(call);
+          }
         }
         ts.forEachChild(node, (child) => visit(child, parent));
       };

@@ -28,7 +28,7 @@ describe('read-only Agent discovery tools', () => {
     expect(data.command).toBe('calls');
     expect(data.incomingCount).toBeGreaterThan(0);
     expect(data.results?.some((r) => typeof r !== 'string' && r.name?.startsWith('incoming:'))).toBe(true);
-  });
+  }, 20_000); // TypeScript program analysis can exceed Vitest's default 5s under CI contention.
 
   it('traces import impact to existing grass tests', () => {
     const data = runTool('tools/agent-index.mjs', 'impact', 'src/world/grassCells.ts');
