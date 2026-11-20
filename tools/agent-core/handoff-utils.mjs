@@ -16,7 +16,7 @@ export const realInside = (root, candidate) => {
   }
 };
 
-export const relevantPath = (file) => /^(src\/|assets\/|tests\/|governance\/|\.github\/|scripts\/|docs\/(?:specs|adr|contracts)\/)/.test(file)
+export const relevantPath = (file) => /^(src\/|spike\/|assets\/|tests\/|governance\/|\.github\/|\.claude\/|scripts\/|docs\/(?:specs|adr|contracts|governance|release-policy)\/)/.test(file)
   || ['AGENTS.md', 'package.json', 'package-lock.json', 'tsconfig.json'].includes(file);
 
 export const classifySnapshot = ({ recorded, current, ancestor, reverseAncestor = false, files = [] }) => {

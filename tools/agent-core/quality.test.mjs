@@ -46,6 +46,8 @@ test('snapshot states distinguish actual runtime changes from documentation comm
   assert.equal(classifySnapshot({recorded:a,current:a,ancestor:true}).state,'at-base');
   assert.equal(classifySnapshot({recorded:a,current:b,ancestor:true,files:['docs/HANDOFF.md','tools/agent-index.mjs']}).state,'advanced-docs-only');
   assert.equal(classifySnapshot({recorded:a,current:b,ancestor:true,files:['src/render/grass.ts']}).state,'review-required');
+  assert.equal(classifySnapshot({recorded:a,current:b,ancestor:true,files:['.claude/agents/critic.md']}).state,'review-required');
+  assert.equal(classifySnapshot({recorded:a,current:b,ancestor:true,files:['spike/engines.html']}).state,'review-required');
   assert.equal(classifySnapshot({recorded:a,current:b,ancestor:false}).state,'diverged');
   assert.equal(classifySnapshot({recorded:a,current:b,ancestor:false,reverseAncestor:true}).state,'recorded-ahead');
   assert.equal(classifySnapshot({recorded:a,current:null,ancestor:null}).state,'unknown');
