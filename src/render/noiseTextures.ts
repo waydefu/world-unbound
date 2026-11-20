@@ -1,5 +1,5 @@
 import { DataTexture, LinearMipmapLinearFilter, LinearFilter, ClampToEdgeWrapping, RedFormat, RGBAFormat, RepeatWrapping, UnsignedByteType } from 'three/webgpu';
-import { GRASS_CARD_DIM, GRASS_COVER_DIM, buildGrassCardMask, buildGrassCover, buildSwardCover } from '../world/grassCover';
+import { GRASS_CARD_DIM, GRASS_COVER_DIM, SWARD_COVER_DIM, buildGrassCardMask, buildGrassCover, buildSwardCover } from '../world/grassCover';
 import { NOISE_TILE_SIZE, generateNoiseTile } from '../world/noiseTile';
 
 /** The shared tileable noise texture and its GPU footprint (with the full mip chain). */
@@ -30,10 +30,11 @@ export function createNoiseTexture(): NoiseTexture {
   return { texture, gpuBytes: Math.round((NOISE_TILE_SIZE * NOISE_TILE_SIZE * 4 * 4) / 3) };
 }
 
-/** Small R8 canopy map for the CDLOD meadow. @amortized once at startup */
+/** Canopy map for the CDLOD meadow or directional grass carpet. @amortized once at startup */
 export function createGrassCoverTexture(sward = false): NoiseTexture & { readonly uploadBytes: number } {
   const data = sward ? buildSwardCover() : buildGrassCover();
-  const texture = new DataTexture(data, GRASS_COVER_DIM, GRASS_COVER_DIM, RedFormat, UnsignedByteType);
+  const dim = sward ? SWARD_COVER_DIM : GRASS_COVER_DIM;
+  const texture = new DataTexture(data, dim, dim, sward ? RGBAFormat : RedFormat, UnsignedByteType);
   texture.name = 'grass-canopy';
   repeatMipmapped(texture);
   return { texture, gpuBytes: Math.round(data.byteLength * 4 / 3), uploadBytes: data.byteLength };

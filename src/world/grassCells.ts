@@ -30,6 +30,8 @@ export interface GrassRings {
   midM: number;
   /** Cards start here (inside it the blades carry the ground); 0 when there are no blades. */
   cardInnerM: number;
+  /** Prefetch/retain cells in this margin around the camera frustum. */
+  frustumPaddingM?: number;
 }
 
 /** The CPU arrays the cell test reads: the height lattice (2 m) and the vegetation texture (R = meadow). */
@@ -169,6 +171,7 @@ export class GrassCells {
     const ry1 = hi + 1.5 + 0.25 * (hi - lo) - ey;
     const rx = x0 - ex;
     const rz = z0 - ez;
+    const padding = this.rings.frustumPaddingM ?? 0;
     for (let p = 0; p < 24; p += 4) {
       const nx = planes[p];
       const ny = planes[p + 1];
@@ -176,7 +179,7 @@ export class GrassCells {
       const px = nx >= 0 ? rx + CELL_M : rx;
       const py = ny >= 0 ? ry1 : ry0;
       const pz = nz >= 0 ? rz + CELL_M : rz;
-      if (nx * px + ny * py + nz * pz + planes[p + 3] < 0) return false;
+      if (nx * px + ny * py + nz * pz + planes[p + 3] < -padding) return false;
     }
     return true;
   }

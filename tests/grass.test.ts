@@ -5,7 +5,7 @@ import { QUALITY } from '../src/app/quality';
 import { parseParams } from '../src/app/params';
 import { frustumPlanes } from '../src/world/cdlod';
 import { WORLD_MIN } from '../src/world/constants';
-import { buildGrassCardMask, buildSwardCover, GRASS_CARD_DIM, GRASS_COVER_DIM } from '../src/world/grassCover';
+import { buildGrassCardMask, buildSwardCover, GRASS_CARD_DIM, SWARD_COVER_DIM } from '../src/world/grassCover';
 import { CELL_M, GrassCells, MAX_CARD_CELLS, MAX_DENSE_CELLS, MAX_THIN_CELLS, WORLD_CELLS } from '../src/world/grassCells';
 import { HEIGHT_DIM, buildTerrainTextures, materialDim } from '../src/world/terrainTextures';
 import { createTerrainTextures } from '../src/render/terrainTextures';
@@ -86,6 +86,24 @@ describe('grass cells', () => {
     expect(culled.cardCount).toBeGreaterThan(0);
     // Everything kept is east of the eye (looking along +x): a cell's far corner has x >= 0.
     for (let c = 0; c < culled.cardCount; c++) expect(culled.cards[c * 4] + CELL_M).toBeGreaterThan(-1);
+  });
+
+  it('keeps grass cells in the streaming margin until the frustum moves past it', () => {
+    const ground = meadowGround(255);
+    const tight = new GrassCells(ground, RINGS);
+    const padded = new GrassCells(ground, { ...RINGS, frustumPaddingM: 2 });
+    // Only the +x plane intersects the meadow. A cell ending at x = 0 lies 1 m outside it.
+    const planes = new Float32Array(24);
+    planes.set([1, 0, 0, -1]);
+    const hasWesternCell = (cells: GrassCells) => cells.dense.subarray(0, cells.denseCount * 4)
+      .some((value, index) => index % 4 === 0 && value === -8);
+    tight.select(0, 5, 0, planes);
+    padded.select(0, 5, 0, planes);
+    expect(hasWesternCell(tight)).toBe(false);
+    expect(hasWesternCell(padded)).toBe(true);
+    planes[3] = -3;
+    padded.select(0, 5, 0, planes);
+    expect(hasWesternCell(padded)).toBe(false);
   });
 
   it('reuses selection at the same eye and frustum, and is deterministic', () => {
@@ -222,12 +240,15 @@ describe('grass layer on the Hellesylt terrain', () => {
 });
 
 describe('measured-density grass prototype', () => {
-  it('bakes deterministic coverage and leaves gaps in the canopy and cutout', () => {
+  it('bakes a deterministic fibre map with at least 99% grass canopy coverage', () => {
     const cover = buildSwardCover();
-    expect(cover).toHaveLength(GRASS_COVER_DIM ** 2);
+    expect(cover).toHaveLength(SWARD_COVER_DIM ** 2 * 4);
     expect(cover).toEqual(buildSwardCover());
-    expect(cover.some((value) => value === 85)).toBe(true);
-    expect(cover.some((value) => value >= 180)).toBe(true);
+    const texels = SWARD_COVER_DIM ** 2;
+    const covered = cover.filter((height, i) => i % 4 === 1 && height > 0).length;
+    expect(covered / texels).toBeGreaterThanOrEqual(0.99);
+    expect(covered).toBeLessThan(texels);
+    expect(cover.some((height, i) => i % 4 === 1 && height >= 180)).toBe(true);
     const mask = buildGrassCardMask();
     expect(mask).toHaveLength(GRASS_CARD_DIM ** 2);
     expect(mask.includes(0)).toBe(true);

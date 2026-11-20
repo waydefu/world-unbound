@@ -84,14 +84,15 @@ export class VegetationBackend {
     ocean.setOpenness(terrain.data.masks.openness);
     uploads.add(performance.now(), terrain.data.masks.openness.byteLength);
     if (!this.options.grass) return;
-    const wind = new WindTexture(terrain.data.masks.windChannel);
+    const wind = terrain.carpetWind ?? new WindTexture(terrain.data.masks.windChannel);
     const sward = this.options.sward === true;
     // Spend more placements in the foreground. Cards and baked coverage fill the shorter blade ring.
     const settings = sward && tier.name === 'med'
-      ? { ...tier.grass, nearM: 32, bladesPerM2: 60 }
+      ? { ...tier.grass, nearM: 28, midM: 68, bladesPerM2: 60 }
       : tier.grass;
     const grass = new GrassLayer({
       textures: terrain.gpu, data: terrain.data, noise, wind: wind.texture, settings,
+      motion: terrain.carpetWind ? terrain.carpetMotion : undefined,
       shadows: this.options.shadows && tier.name !== 'low', lite: tier.name === 'low', sward,
     });
     grass.account(memory);
@@ -101,7 +102,7 @@ export class VegetationBackend {
     grass.setSeason(this.seasonWeights[0], this.seasonWeights[1], this.seasonWeights[2]);
     grass.setWetness(WEATHER_WETNESS[this.weather]);
     terrain.root.add(grass.root);
-    terrain.setGrassRange(tier.grass.midM);
+    terrain.setGrassRange(settings.midM);
     this.wind = wind;
     this.grass = grass;
   }

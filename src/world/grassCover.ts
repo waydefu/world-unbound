@@ -2,6 +2,7 @@ import { hash2 } from './hash';
 
 export const GRASS_COVER_DIM = 256;
 export const GRASS_COVER_METRES = 1.6;
+export const SWARD_COVER_DIM = 512;
 const LEAVES = 5000;
 const WRAP = GRASS_COVER_DIM - 1;
 
@@ -34,8 +35,8 @@ export function buildGrassCover(): Uint8Array {
   return cover;
 }
 
-/** Lower end of the leaf-count estimate from Missouri Extension's pasture data. */
-export const SWARD_LEAVES_PER_M2 = 14000;
+/** Virtual leaves in the baked tile, tuned for at least 99% grass canopy coverage. */
+export const SWARD_LEAVES_PER_M2 = 18000;
 export const SWARD_LEAVES = Math.round(SWARD_LEAVES_PER_M2 * GRASS_COVER_METRES ** 2);
 export const GRASS_CARD_DIM = 64;
 
@@ -71,27 +72,42 @@ export function swardLeaf(i: number): SwardLeaf {
   };
 }
 
-/** Prebake the dense reference into the existing one-channel terrain canopy, including gaps and overlap. */
+/**
+ * Tileable top canopy (RGBA8). Red stores fibre shade, green the top leaf height, and blue/alpha its direction.
+ * Keep the highest overlapping leaf at each texel. Empty texels have zero height and softly shaded colour.
+ */
 export function buildSwardCover(): Uint8Array {
-  const cover = new Uint8Array(GRASS_COVER_DIM ** 2).fill(85);
-  const pxPerM = GRASS_COVER_DIM / GRASS_COVER_METRES;
+  const cover = new Uint8Array(SWARD_COVER_DIM ** 2 * 4);
+  const wrap = SWARD_COVER_DIM - 1;
+  const pxPerM = SWARD_COVER_DIM / GRASS_COVER_METRES;
+  for (let offset = 0; offset < cover.length; offset += 4) {
+    cover[offset] = 120;
+    cover[offset + 2] = 128;
+    cover[offset + 3] = 128;
+  }
   for (let i = 0; i < SWARD_LEAVES; i++) {
     const leaf = swardLeaf(i);
     const dx = Math.cos(leaf.angle);
     const dz = Math.sin(leaf.angle);
     const steps = Math.ceil(leaf.length * pxPerM * 2);
+    const dirX = Math.round(dx * 127 + 128);
+    const dirZ = Math.round(dz * 127 + 128);
     for (let step = 0; step < steps; step++) {
       const t = step / steps;
       const reach = t * t * leaf.length;
-      const x = (leaf.x + dx * reach - dz * reach * t * 0.2) * pxPerM;
-      const z = (leaf.z + dz * reach + dx * reach * t * 0.2) * pxPerM;
-      const width = leaf.width * pxPerM * (1 - t * 0.8);
+      const x = (leaf.x + dx * reach - dz * reach * t * 0.24) * pxPerM;
+      const z = (leaf.z + dz * reach + dx * reach * t * 0.24) * pxPerM;
+      const radius = leaf.width * pxPerM * (1 - t * 0.75);
+      const height = Math.round(255 * (leaf.height / 0.1) * (0.2 + t * (1.45 - t * 0.64)));
       for (let across = -1; across <= 1; across++) {
-        const ix = Math.floor(x - dz * across * width) & WRAP;
-        const iz = Math.floor(z + dx * across * width) & WRAP;
-        const offset = iz * GRASS_COVER_DIM + ix;
-        const shade = leaf.shade + t * 25 - Math.abs(across) * 35;
-        if (shade > cover[offset]) cover[offset] = shade;
+        const ix = Math.floor(x - dz * across * radius) & wrap;
+        const iz = Math.floor(z + dx * across * radius) & wrap;
+        const offset = (iz * SWARD_COVER_DIM + ix) * 4;
+        if (height <= cover[offset + 1]) continue;
+        cover[offset] = Math.round(leaf.shade + t * 24 - Math.abs(across) * 20);
+        cover[offset + 1] = height;
+        cover[offset + 2] = dirX;
+        cover[offset + 3] = dirZ;
       }
     }
   }

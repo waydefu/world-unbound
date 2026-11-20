@@ -5,7 +5,8 @@ import {
 } from 'three/tsl';
 import { WORLD_MIN } from '../world/constants';
 import { GRASS_COVER_METRES } from '../world/grassCover';
-import { canopyShade, groundCover, meadowTint } from './grassPalette';
+import { grassCanopy, type GrassCanopyWind } from './grassCanopy';
+import { canopyShade, grassCarpetColour, grassCarpetWeight, groundCover, meadowTint } from './grassPalette';
 import { triplanarChannel, triplanarSlope } from './noiseSampling';
 
 /**
@@ -43,7 +44,7 @@ export interface TerrainSurface {
   readonly vegetation: DataTexture;
   readonly wetness: DataTexture;
   readonly grassCover: DataTexture | null;
-  readonly sward: boolean;
+  readonly carpet: GrassCanopyWind | null;
 }
 
 const SEABED = vec3(0.105, 0.118, 0.098);
@@ -106,19 +107,18 @@ export function createTerrainMaterial(noise: DataTexture, lite = false, surface:
   // Overlapping leaf shapes replace the smooth ground between sparse geometry. Mips average them into the
   // distant grass colour. Rotate the sample away from the terrain grid while preserving its scale.
   const tipUv = vec2(pW.x.add(pW.z), pW.z.sub(pW.x)).div(GRASS_COVER_METRES * Math.SQRT2);
-  const tipNoise = surface?.grassCover
-    ? texture(surface.grassCover, tipUv).r.sub(surface.sward ? 0.80 : 0.55) : float(0);
+  const tipNoise = surface?.grassCover && !surface.carpet ? texture(surface.grassCover, tipUv).r.sub(0.55) : float(0);
   const grassDist = length(pW.xz.sub(eyeOffset.xz));
   const tips = veg.r.mul(smoothstep(grassRange.mul(0.08), grassRange.mul(0.40).max(1), grassDist))
     .mul(grassRange.greaterThan(0).select(1, 0));
-  // Keep the mean canopy colour stable between cards and terrain; mips average the small gaps.
-  const tipColour = surface?.sward ? meadowTint(veg.r, season.z) : meadowTint(veg.r, season.z).mul(mix(1, 1.08, tips));
-  // Fine gaps in the coverage texture should read as soft canopy shading. Limit the contrast of isolated gaps.
-  const coverContrast = surface?.sward ? clamp(tipNoise, -0.18, 0.18).mul(0.35)
-    : tipNoise.mul(mix(1.55, 0.85, tips));
-  const grassDetail = float(1).add(coverContrast.mul(veg.r));
-  const grassCol = groundCover(macro, wet01, veg, season).mul(canopyShade(veg.r, grassDist, grassRange))
+  const tipColour = meadowTint(veg.r, season.z).mul(mix(1, 1.08, tips));
+  const grassDetail = float(1).add(tipNoise.mul(mix(1.55, 0.85, tips)).mul(veg.r));
+  const baseGrass = groundCover(macro, wet01, veg, season).mul(canopyShade(veg.r, grassDist, grassRange))
     .mul(surface && !lite ? tipColour.mul(grassDetail) : float(1));
+  const carpet = surface?.carpet && surface.grassCover
+    ? grassCanopy(surface.grassCover, surface.carpet, pW.xz, grassDist, nGeo) : null;
+  const carpetWeight = carpet ? grassCarpetWeight(veg.r) : float(0);
+  const grassCol = carpet ? mix(baseGrass, grassCarpetColour(season).mul(carpet.tone), carpetWeight) : baseGrass;
   // Stone quays and breakwaters read as stone, not as a flat tan band: darker on the steep flank and at the foot,
   // where the wall meets the water.
   const stoneEdge = max(float(1).sub(nGeo.y).mul(4), float(1).sub(smoothstep(0.2, 1.3, y))).min(1);
@@ -127,7 +127,7 @@ export function createTerrainMaterial(noise: DataTexture, lite = false, surface:
   let base = grassCol.mul(grass).add(SAND.mul(w.x)).add(rockCol.mul(rock)).add(stoneCol.mul(w.z));
   base = mix(base, SEABED, float(1).sub(smoothstep(-2.2, -0.2, y)));
   if (!lite) {
-    const grainWeight = surface ? grass.mul(surface.sward ? float(1).sub(veg.r.mul(0.7)) : float(1)).add(w.x) : float(1);
+    const grainWeight = surface ? grass.mul(float(1).sub(carpetWeight.mul(0.85))).add(w.x) : float(1);
     base = base.mul(float(1).add(grain.mul(0.14).mul(mix(0.4, 1, detail)).mul(grainWeight)));
   }
 
@@ -148,9 +148,10 @@ export function createTerrainMaterial(noise: DataTexture, lite = false, surface:
   if (!lite) {
     // Micro-relief: one slope fetch (the texture stores the gradient), no finite differences.
     const g = triplanarSlope(noise, pW, nGeo, RELIEF_METRES);
-    const strength = grass.mul(surface ? 0.38 : 0.3).add(w.x.mul(0.15)).add(rock.mul(0.6)).add(w.z.mul(0.34))
+    const strength = grass.mul(surface ? mix(0.38, 0.08, carpetWeight) : float(0.3)).add(w.x.mul(0.15)).add(rock.mul(0.6)).add(w.z.mul(0.34))
       .mul(detail).mul(mix(1, 0.4, wet));
-    const nW = normalize(nGeo.sub(g.mul(strength)));
+    const ground = nGeo.sub(g.mul(strength));
+    const nW = normalize(carpet ? ground.add(carpet.lean.mul(carpetWeight).mul(grass)) : ground);
     material.normalNode = transformNormalToView(nW);
   } else if (surface) {
     material.normalNode = transformNormalToView(nGeo);

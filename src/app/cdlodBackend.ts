@@ -3,6 +3,8 @@ import { MemoryPartition, type MemoryRegistry } from '../perf/memoryRegistry';
 import type { SlidingRate } from '../perf/slidingRate';
 import type { FrustumSource } from '../render/chunkStats';
 import { CdlodTerrain } from '../render/cdlodTerrain';
+import { createGrassWind } from '../render/grassWind';
+import { WindTexture } from '../render/windTexture';
 import { createGrassCoverTexture } from '../render/noiseTextures';
 import { cascadeCameras, type CascadeCamera } from '../render/shadows';
 import { createTerrainTextures, type TerrainTextures } from '../render/terrainTextures';
@@ -32,6 +34,8 @@ export class CdlodBackend implements TerrainBackend {
   data: TerrainTextureData | null = null;
   gpu: TerrainTextures | null = null;
   private season = [1, 0, 0];
+  carpetWind: WindTexture | null = null;
+  readonly carpetMotion = createGrassWind();
   private updates = 0;
   private wetness = 0;
   private sun: DirectionalLight | null = null;
@@ -84,6 +88,7 @@ export class CdlodBackend implements TerrainBackend {
     this.uploads.add(performance.now(), textures.uploadBytes + textures.normalUploadBytes + textures.vegetationUploadBytes);
     const lite = this.tier.name === 'low';
     const grassCover = lite ? null : createGrassCoverTexture(this.sward);
+    if (this.sward && !lite && masks) this.carpetWind = new WindTexture(masks.windChannel);
     if (grassCover) {
       memory.add(MemoryPartition.Gpu, grassCover.gpuBytes);
       memory.add(MemoryPartition.CpuRetained, grassCover.uploadBytes);
@@ -98,7 +103,7 @@ export class CdlodBackend implements TerrainBackend {
       cascades: this.cascades,
       lite,
       grassCover: grassCover?.texture ?? null,
-      sward: this.sward && !lite,
+      carpet: this.carpetWind ? { map: this.carpetWind.texture, motion: this.carpetMotion } : null,
     });
     terrain.account(memory);
     this.root.add(terrain.root);

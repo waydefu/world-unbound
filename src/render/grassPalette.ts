@@ -42,6 +42,15 @@ export function groundCover(
   return mix(ground, ground.mul(FOREST_MUL), veg.b);
 }
 
+/** A uniform turf base. The vegetation mask determines where it starts, not its density within the meadow. */
+export function grassCarpetWeight(meadow: Node<'float'>): Node<'float'> {
+  return smoothstep(0.08, 0.5, meadow);
+}
+
+export function grassCarpetColour(season: Node<'vec3'>): Node<'vec3'> {
+  return seasonal(vec3(0.094, 0.212, 0.041), season);
+}
+
 /** Match the fresh-green canopy between the ground texture and the visible blades. */
 export function meadowTint(meadow: Node<'float'>, straw: Node<'float'>): Node<'vec3'> {
   return mix(vec3(1, 1, 1), vec3(0.64, 1.28, 0.83), meadow.mul(float(1).sub(straw)));
