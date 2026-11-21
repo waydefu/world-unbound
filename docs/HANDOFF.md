@@ -1,6 +1,6 @@
 # Handoff
 
-Snapshot: 2026-11-22, based on merged global turf LOD trial PR #43. Read [AGENTS.md](../AGENTS.md) first (binding), then this handoff, then [INDEX.md](INDEX.md). For tools, environment and token-efficient discovery, see [process/agent-workflow.md](process/agent-workflow.md). Confirm open Issues and latest `main` before planning.
+Snapshot: 2026-11-21, based on merged global turf LOD trial PR #43. Read [AGENTS.md](../AGENTS.md) first (binding), then this handoff, then [INDEX.md](INDEX.md). For tools, environment and token-efficient discovery, see [process/agent-workflow.md](process/agent-workflow.md). Confirm open Issues and latest `main` before planning.
 
 Base main: 53d4b0b18c55f716a99f86993d794131aa926780
 
