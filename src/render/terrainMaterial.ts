@@ -127,9 +127,14 @@ export function createTerrainMaterial(noise: DataTexture, lite = false, surface:
     ? grassCanopy(surface.grassCover, noise, surface.carpet, pW.xz, grassDist, nGeo, macro, lite) : null;
   const vegetationCell = depth && surfaceUv && surface
     ? texture(surface.vegetation).load(surfaceUv.mul(surface.materialDim).floor().clamp(0, surface.materialDim - 1).toIVec2()) : null;
-  const carpetWeight = vegetationCell
+  const smoothCover = smoothstep(0.32, 0.58, veg.r.add(veg.g).add(grain.mul(0.08)))
+    .mul(float(1).sub(smoothstep(0.42, 0.62, veg.a))).mul(smoothstep(0.05, 0.18, y));
+  const cellEligible = vegetationCell
     ? vegetationCell.r.add(vegetationCell.g).greaterThanEqual(123 / 255).and(vegetationCell.a.lessThan(130 / 255))
       .and(y.greaterThan(.08)).select(float(1), float(0))
+    : float(0);
+  const carpetWeight = vegetationCell
+    ? mix(cellEligible.mul(0.85).add(smoothCover.mul(0.15)), smoothCover, smoothstep(8, 22, grassDist))
     : carpet ? grassCarpetWeight(veg.r.add(veg.g).min(1)) : float(0);
   const organic = smoothstep(0.12, 0.48, veg.a).mul(float(1).sub(smoothstep(0.39, 0.80, rockShare)))
     .mul(smoothstep(0.5, 2.8, y)).mul(0.67);

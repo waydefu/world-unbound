@@ -60,7 +60,9 @@ export function worldTurfMesh(geometry: InstancedBufferGeometry, root: Node<'vec
   const moisture = varyingProperty('float', 'worldTurfMoisture');
   const visibility = varyingProperty('float', 'worldTurfVisibility');
   const normalDetail = varyingProperty('float', 'worldTurfNormalDetail');
+  const terrainNormal = varyingProperty('vec3', 'worldTurfTerrainNormal');
   const canopyBlend = ribbonHandoff ? varyingProperty('float', 'worldTurfCanopyBlend') : null;
+  const shadingBlend = ribbonHandoff ? varyingProperty('float', 'worldTurfShadingBlend') : null;
   const tables = master.map(tex => texture(tex));
   const terrainY = terrainHeightNode(height);
   const address = (i: Node<'float'>) => ivec2(i.mod(MASTER_WIDTH).toInt(), floor(i.div(MASTER_WIDTH)).toInt());
@@ -79,13 +81,15 @@ export function worldTurfMesh(geometry: InstancedBufferGeometry, root: Node<'vec
     const phase = r.w.sub(id);
     const base = r.xz;
     const foot = base.add(leaf.xz);
-    const y = terrainY(foot);
+    const ground = terrainY.withNormal(foot);
+    const y = ground.y;
     const distance = length(r.xyz.sub(eye)).max(.01);
-    const combined = smoothstep(.85, 2.35, distance);
+    const combined = smoothstep(1.2, 5.5, distance);
     canopyBlend?.assign(combined);
+    shadingBlend?.assign(smoothstep(5.0, TURF_NATIVE_FADE_END_M, distance));
     const coverage = unfaded ? float(1) : ribbonHandoff ? nativeTurfCoverage(distance) : smoothstep(.72, 1.25, reach.div(distance));
     visibility.assign(coverage);
-    normalDetail.assign(reference ? float(1) : mix(1, ribbonHandoff ? .13 : .44, smoothstep(.65, 2.55, distance)));
+    normalDetail.assign(reference ? float(1) : mix(1, ribbonHandoff ? .24 : .48, smoothstep(1.2, 7.5, distance)));
     const h = p.y.sub(leaf.y);
     bladeHeight.assign(h);
     const gust = grassGust(base, phase, wind);
@@ -94,25 +98,27 @@ export function worldTurfMesh(geometry: InstancedBufferGeometry, root: Node<'vec
     const oct = detail.xy.mul(2).sub(1);
     const nz = abs(oct.x).add(abs(oct.y)).oneMinus();
     const unfolded = nz.lessThan(0).select(abs(oct.yx).oneMinus().mul(sign(oct)), oct);
-    const n = normalize(vec3(unfolded, nz));
+    const windTilt = vec3(sway.x.mul(3.2), 0, sway.y.mul(3.2));
+    const n = normalize(vec3(unfolded, nz).add(windTilt));
+    terrainNormal.assign(normalize(ground.normal.add(windTilt.mul(.45))));
     pigment.assign(vec3(lo.a, hi.a, detail.b));
     normal.assign(n);
     moisture.assign(texture(water, base.sub(WORLD_MIN).div(WORLD_MAX - WORLD_MIN)).level(float(0)).r);
     return vec3(top.x, y.sub(SOD_ROOT_INSET_M).add(h), top.y);
   })();
   const native = seasonal(pigment.mul(vec3(.26, .34, .19)), season);
-  const contact = mix(.60, 1, smoothstep(.006, .076, bladeHeight));
-  const canopy = grassCarpetColour(season).mul(proxyLeaf ? mix(.72, .90, pigment.g) : mix(.85, 1.04, pigment.g));
+  const contact = mix(.58, 1, smoothstep(.005, .076, bladeHeight));
+  const canopy = grassCarpetColour(season).mul(proxyLeaf ? mix(.72, .94, pigment.g) : mix(.82, 1.08, pigment.g)).mul(mix(.76, 1.06, contact));
   const colour = canopyBlend ? mix(native.mul(contact), canopy, canopyBlend) : native.mul(contact);
   material.colorNode = colour
     .mul(mix(1, .91, smoothstep(.45, .95, moisture)));
   if (!unfaded) material.opacityNode = visibility;
-  material.normalNode = transformNormalToView(normalize(mix(vec3(0, 1, 0), normal, normalDetail)));
-  const ao = mix(.44, 1, smoothstep(0, .065, bladeHeight));
-  material.aoNode = canopyBlend ? mix(ao, .94, canopyBlend) : ao;
-  if (canopyBlend) {
-    material.roughnessNode = mix(.49, .87, canopyBlend);
-    material.specularIntensityNode = mix(.26, proxyLeaf ? .045 : .12, canopyBlend);
+  material.normalNode = transformNormalToView(normalize(mix(terrainNormal, normal, normalDetail)));
+  const ao = mix(.42, 1, smoothstep(0, .068, bladeHeight));
+  material.aoNode = shadingBlend ? mix(ao, .86, shadingBlend) : ao;
+  if (shadingBlend) {
+    material.roughnessNode = mix(.49, .82, shadingBlend);
+    material.specularIntensityNode = mix(.26, proxyLeaf ? .08 : .15, shadingBlend);
   }
   material.thicknessColorNode = pigment.mul(vec3(.27, .30, .13));
   material.thicknessAttenuationNode = visibility.mul(proxyLeaf ? .12 : .29);

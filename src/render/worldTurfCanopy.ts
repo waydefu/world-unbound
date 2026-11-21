@@ -29,23 +29,26 @@ export function worldTurfCanopy(
     const layer = texture(layers[index], at).grad(filtered ? dFdx(at) : dX, filtered ? dFdy(at) : dY);
     const directional = filtered ? dot(layer.rgb, viewAxis).mul(.78) : length(layer.rgb.mul(viewAxis));
     const area = directional.mul(CANOPY_AREA_RANGE).div(incidence);
-    return { pass: exp(area.mul(-1)), green: layer.a };
+    return { pass: exp(area.mul(-1)), green: layer.a, dir: layer.rgb };
   };
   const root = sample(0, .014);
   const middle = sample(1, .040);
   const tip = sample(2, .069);
   const ground = root.pass.mul(middle.pass).mul(tip.pass);
-  const light = tip.pass.oneMinus().mul(tip.green.mul(1.32)).add(middle.pass.oneMinus().mul(tip.pass).mul(middle.green))
-    .add(root.pass.oneMinus().mul(tip.pass).mul(middle.pass).mul(root.green.mul(.68)));
-  const grazing = smoothstep(.09, .45, incidence).oneMinus();
+  // Emergent crest and deep trough contrast from the three height layers without extra texture fetches.
+  const crestRelief = tip.pass.oneMinus().sub(root.pass.oneMinus().mul(tip.pass).mul(.42));
+  const light = tip.pass.oneMinus().mul(tip.green.mul(1.36)).add(middle.pass.oneMinus().mul(tip.pass).mul(middle.green))
+    .add(root.pass.oneMinus().mul(tip.pass).mul(middle.pass).mul(root.green.mul(.62)));
+  const grazing = smoothstep(.09, .48, incidence).oneMinus();
   // Retain aggregated canopy relief after the individual leaf mips average out.
   const patchUv = uv.sub(dir.mul(bend).mul(.047)).mul(.31);
   const foliage = texture(layers[2], patchUv).grad(dX.mul(.31), dY.mul(.31));
   const patch = length(foliage.rgb).mul(CANOPY_AREA_RANGE).min(1.25);
-  let tone = light.div(ground.oneMinus().max(.15)).mul(3.74).add(grazing.mul(.18))
-    .add(patch.sub(.26).mul(.17)).add(crowns.a.sub(.5).mul(.054))
-    .add(dot(dir, sight.xz).mul(bend).mul(.13)).clamp(.54, 1.45);
-  let lean = dir.mul(bend).mul(.091).sub(crowns.rg.mul(2).sub(1).mul(mix(.037, .021, smoothstep(6, 23, dist))));
+  let tone = light.div(ground.oneMinus().max(.15)).mul(3.74).add(grazing.mul(.21))
+    .add(crestRelief.mul(.12)).add(patch.sub(.26).mul(.21)).add(crowns.a.sub(.5).mul(.095))
+    .add(dot(dir, sight.xz).mul(bend).mul(.15)).clamp(.50, 1.48);
+  const microSway = tip.dir.rb.sub(root.dir.rb).mul(.18);
+  let lean = dir.mul(bend).mul(.125).add(microSway).sub(crowns.rg.mul(2).sub(1).mul(mix(.065, .038, smoothstep(6, 28, dist))));
   if (multiscale) {
     // Once leaf frequencies mip away, retain broader variations in the source canopy's height and pigment.
     const bent = patchUv;
@@ -54,13 +57,13 @@ export function worldTurfCanopy(
     const footprint = length(dX).max(length(dY));
     const closer = smoothstep(.035, .24, footprint);
     const broad = mix(foliage, coarse, closer);
-    const leaflet = broad.a.sub(.24).mul(.57).add(length(broad.rgb).mul(CANOPY_AREA_RANGE).sub(.36).mul(.13));
-    tone = tone.mul(.88).add(leaflet.clamp(-.13, .17)).add(gust.mul(.10)).clamp(.52, 1.45);
-    lean = lean.add(broad.rb.sub(broad.g).mul(.19 * CANOPY_AREA_RANGE));
+    const leaflet = broad.a.sub(.24).mul(.62).add(length(broad.rgb).mul(CANOPY_AREA_RANGE).sub(.36).mul(.16));
+    tone = tone.mul(.88).add(leaflet.clamp(-.15, .19)).add(gust.mul(.12)).clamp(.50, 1.48);
+    lean = lean.add(broad.rb.sub(broad.g).mul(.24 * CANOPY_AREA_RANGE));
     if (filtered) {
       const silhouette = dot(broad.rgb, viewAxis).mul(CANOPY_AREA_RANGE).clamp(0, 1);
-      tone = tone.add(silhouette.sub(.29).mul(.14)).clamp(.52, 1.48);
-      lean = lean.add(dir.mul(bend).mul(silhouette.mul(.095)));
+      tone = tone.add(silhouette.sub(.29).mul(.16)).clamp(.50, 1.50);
+      lean = lean.add(dir.mul(bend).mul(silhouette.mul(.115)));
     }
   }
   return { tone, lean: vec3(lean.x, 0, lean.y), soilGaps: ground.mul(.18).add(.008).min(.13) };
