@@ -20,6 +20,8 @@ html, body {
   touch-action: none;
 }
 canvas.viewport { display: block; width: 100%; height: 100%; }
+#viewport-root.look-enabled { cursor: grab; }
+#viewport-root.look-enabled:active { cursor: grabbing; }
 #hud-root {
   position: fixed;
   top: max(6px, env(safe-area-inset-top));

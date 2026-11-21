@@ -10,6 +10,7 @@ import { attachSunShadows } from '../render/shadows';
 import { COAST_DIM, SEAFLOOR_DIM } from '../world/seaFloor';
 import { createRenderer, warmUp, whenDeviceLost, type RendererHandle } from '../render/renderer';
 import { Hud, downloadJson } from '../ui/hud';
+import { CameraLook } from './cameraLook';
 import { CAMERAS, GrassTestWalk, resolveCamera, resolveSodCamera, type ResolvedCamera } from './cameras';
 import { GpuTimer } from './gpuTimer';
 import { Observer } from './observability';
@@ -55,6 +56,7 @@ export class App {
   private readonly hud: Hud;
   private readonly eye: ResolvedCamera = { x: 0, y: 0, z: 0, targetX: 0, targetY: 0, targetZ: 0, fovDeg: 55 };
   private readonly grassWalk = new GrassTestWalk();
+  private readonly look: CameraLook;
   private readonly bufferSize = new Vector2();
   private handle!: RendererHandle;
   private gpuTimer!: GpuTimer;
@@ -67,6 +69,7 @@ export class App {
 
   private constructor(private readonly options: AppOptions) {
     const { params, tier } = options;
+    this.look = new CameraLook(options.viewportRoot, this.camera);
     const lite = tier.name === 'low';
     this.memory = new MemoryRegistry(tier.memoryBudgetMiB);
     this.dyn = new DynamicResolution({ ...DEFAULT_DYNAMIC_RESOLUTION, maxScale: tier.maxScale, initialScale: tier.maxScale });
@@ -92,7 +95,7 @@ export class App {
     this.hud = new Hud(options.hudRoot, {
       setCamera: (index) => this.setCamera(index),
       exportReport: () => downloadJson(`world-unbound-telemetry-${Date.now()}.json`, this.report()),
-    }, params.hud, CAMERAS.map((c) => c.name));
+    }, params.hud, CAMERAS);
     this.state = createAppState(tier, params, options.recoveredFromCrash, this.clock.lutMs, VARIANT_BUDGET[tier.name]);
   }
 
@@ -228,6 +231,7 @@ export class App {
 
   setCamera(index: number): void {
     const spec = CAMERAS[index] ?? CAMERAS[0];
+    this.look.reset(spec.allowLook === true);
     const { params } = this.options;
     const sodView = spec === CAMERAS[2] ? params.sodView : null;
     resolveCamera(spec, this.eye);
@@ -236,7 +240,7 @@ export class App {
     this.state.cameraIndex = CAMERAS.indexOf(spec);
     this.state.cameraName = sodView ? `sod-master-${sodView}` : spec.name;
     this.camera.fov = this.eye.fovDeg;
-    this.camera.near = sodView ? 0.025 : 0.3;
+    this.camera.near = sodView ? 0.025 : spec.nearM ?? 0.3;
     this.camera.updateProjectionMatrix();
     // The camera stays at the origin; the world is translated around it.
     this.camera.position.set(0, 0, 0);

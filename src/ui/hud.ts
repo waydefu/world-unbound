@@ -13,21 +13,25 @@ export interface HudActions {
   exportReport(): void;
 }
 
+interface HudCamera {
+  readonly name: string;
+  readonly label?: string;
+}
+
 export class Hud {
   private readonly panel: HTMLPreElement;
   private readonly status: HTMLDivElement;
   private visible: boolean;
 
-  /** `cameraNames` labels the camera buttons; the HUD does not depend on the app's camera table. */
-  constructor(parent: HTMLElement, actions: HudActions, visible: boolean, cameraNames: readonly string[]) {
+  constructor(parent: HTMLElement, actions: HudActions, visible: boolean, cameras: readonly HudCamera[]) {
     this.visible = visible;
     const bar = document.createElement('div');
     bar.className = 'hud-bar';
     const toggle = button('HUD', () => this.setVisible(!this.visible));
     toggle.title = 'Toggle telemetry (H)';
     bar.append(toggle);
-    cameraNames.forEach((name, index) => {
-      const b = button(String(index), () => actions.setCamera(index));
+    cameras.forEach(({ name, label }, index) => {
+      const b = button(label ?? String(index), () => actions.setCamera(index));
       b.title = name;
       bar.append(b);
     });
@@ -51,7 +55,9 @@ export class Hud {
 
     window.addEventListener('keydown', (event) => {
       if (event.key === 'h' || event.key === 'H') this.setVisible(!this.visible);
-      else if (event.key >= '0' && event.key <= '5') actions.setCamera(Number(event.key));
+      else if (event.key.length === 1 && event.key >= '0' && event.key <= '9' && Number(event.key) < cameras.length) {
+        actions.setCamera(Number(event.key));
+      }
     });
   }
 

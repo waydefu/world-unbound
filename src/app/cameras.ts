@@ -4,13 +4,14 @@ import type { Weather } from '../env/weather';
 import type { SodView } from './params';
 
 /**
- * The six fixed acceptance cameras at Hellesylt. Positions are plain constants
+ * The fixed test cameras at Hellesylt. Positions are plain constants
  * read off the baked terrain (the village shore faces north-east: the flat
  * ground lies south-west of the waterline); heights are given relative to the
  * authoritative ground (or the sea surface when over water).
  */
 export interface CameraSpec {
   readonly name: string;
+  readonly label?: string;
   readonly x: number;
   readonly z: number;
   /** Eye height above ground/sea in metres. */
@@ -19,6 +20,8 @@ export interface CameraSpec {
   readonly targetZ: number;
   readonly targetLift: number;
   readonly fovDeg: number;
+  readonly nearM?: number;
+  readonly allowLook?: boolean;
   /** Used when the URL does not pin ?hour / ?wx. */
   readonly hour?: number;
   readonly weather?: Weather;
@@ -45,6 +48,11 @@ export const CAMERAS: readonly CameraSpec[] = [
   },
   // South-west of the village, ~230 m above its ground, looking over the harbour and up the fjord.
   { name: 'town-harbour-overview', x: -100, z: 60, lift: 170, targetX: 350, targetZ: -400, targetLift: 0, fovDeg: 50 },
+  // Same patch as camera 2, looking down to the roots in the live sward.
+  {
+    name: 'grass-closeup', label: '6 Grass', x: 20, z: -40, lift: 0.16,
+    targetX: 19.73, targetZ: -39.68, targetLift: 0, fovDeg: 50, nearM: 0.035, allowLook: true,
+  },
 ];
 
 export interface ResolvedCamera {
