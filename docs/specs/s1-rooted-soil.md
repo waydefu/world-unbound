@@ -35,6 +35,10 @@ node tools/turf-capture.mjs out/turf webgl2 slope lowland highland
 
 所有場景的畫質與手機 WebGPU 效能仍依全域驗收標準確認。
 
+![試玩密度修正後的實拍。左為 4 × 4 m 原模對照，右為全域試玩。由上而下為坡地貼地、河谷貼地、河谷站姿、坡地抬升。](s1-world-turf-trial.jpg)
+
+Chromium 156／SwiftShader WebGL2，400 × 225、Medium、固定渲染比例 1.0、13:00 晴天。畫面記錄撤除稀疏草簇後的第一次取樣。貼地可見完整葉形。站姿仍可看出向遠景草層的過渡，抬升仍缺草毯質感，均待驗收。
+
 ## 表土與水
 
 - Hellesylt 地表母質採 © Norges geologiske undersøkelse (NGU) 區域鬆散沉積物分類。按 EPSG:25832 裁切為現有地形邊界，重柵格化為 16 m 採樣。NGU 來源尺度為約 1:100,000–1:500,000。cam 1（6.872755° E、62.084569° N）為河流沉積物，cam 2（6.870350° E、62.083365° N）為崩塌堆積；16 m 是遊戲運算格距。六個測試點在 NIBIO 查不到可用的表土或排水資料。[NGU 資料集](https://data.norge.no/en/datasets/4c8bdb99-68e3-317c-922f-a77d1f21e309/losmasser-regionalt) · [NLOD 1.0](https://data.norge.no/nlod/en/1.0) · [NIBIO Kilden](https://kilden.nibio.no/)
