@@ -87,6 +87,8 @@ Chromium 156／SwiftShader 的 80 × 240 高地廣角 WebGL2 窄視野測試完�
 
 同一個高地向外鏡頭以 WebGL2 取啟動後 16 幀，原試玩、20 m、30 m 的幀間隔中位數分別約 0.63、1.23、1.27 秒。這是 SwiftShader 軟體渲染的同機對照，包含啟動樣本和半透明重疊成本。手機須另測幀時間、轉身與移動，才能評估透明像素和重建草片清單的代價。
 
+[10–13 m 原模、簡化葉片及立體草層的實測入口](s1-turf-rendering-experiment.md)
+
 ## 表土與水
 
 - Hellesylt 地表母質採 © Norges geologiske undersøkelse (NGU) 區域鬆散沉積物分類。按 EPSG:25832 裁切為現有地形邊界，重柵格化為 16 m 採樣。NGU 來源尺度為約 1:100,000–1:500,000。cam 1（6.872755° E、62.084569° N）為河流沉積物，cam 2（6.870350° E、62.083365° N）為崩塌堆積；16 m 是遊戲運算格距。六個測試點在 NIBIO 查不到可用的表土或排水資料。[NGU 資料集](https://data.norge.no/en/datasets/4c8bdb99-68e3-317c-922f-a77d1f21e309/losmasser-regionalt) · [NLOD 1.0](https://data.norge.no/nlod/en/1.0) · [NIBIO Kilden](https://kilden.nibio.no/)
