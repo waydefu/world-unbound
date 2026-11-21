@@ -1,8 +1,9 @@
 /** URL debug parameters (pure parsing; invalid values fall back to defaults). */
 import { WEATHERS, type Weather } from '../env/weather';
 import type { BackendChoice } from '../render/renderer';
-import { CAMERAS } from './cameras';
+import { CAMERAS, type TurfSite, type TurfView } from './cameras';
 import type { SoilPreview } from './soilRuntime';
+import type { TurfBenchmark } from '../world/turfPopulation';
 
 export type { BackendChoice, Weather };
 export type QualityName = 'low' | 'med' | 'high';
@@ -34,6 +35,13 @@ export interface DebugParams {
   grass: boolean;
   /** The grass sod on CDLOD. Use ?sward=0 to restore the previous procedural grass. */
   sward: boolean;
+  worldTurf: boolean;
+  turfStats: boolean;
+  turfBench: TurfBenchmark | null;
+  turfLod: 20 | 30 | null;
+  turfSite: TurfSite | null;
+  turfView: TurfView;
+  turfReference: boolean;
   /** ?sod=full compares the complete high-poly tile on camera 2. */
   sodView: SodView | null;
   /** Deterministic soil moisture states for fixed-light A/B captures. */
@@ -62,14 +70,21 @@ export function parseParams(search: string): DebugParams {
   const day = numberIn(p.get('day'), 0, 32);
   const view = p.get('sodView');
   const soil = p.get('soil');
+  const turfSite = p.get('turfSite');
+  const turfView = p.get('turfView');
   const terrain = p.get('terrain') === 'chunks' ? 'chunks' : 'cdlod';
   const grass = p.get('grass') !== '0';
   const sodView = p.get('sod') === 'full' && grass && terrain === 'cdlod'
     ? (view === 'standing' || view === 'elevated' || view === 'backlight' ? view : 'edge') : null;
+  const worldTurf = p.get('sward') === 'world' && grass && terrain === 'cdlod' && sodView === null;
+  const rawBench = p.get('turfBench');
+  const turfBench = worldTurf ? (rawBench === 'all' ? 'all' : numberIn(rawBench, 0, 64)) : null;
+  const turfReference = worldTurf && turfBench === null && p.get('turfReference') === '1';
+  const lod = p.get('turfLod');
   return {
     cam: cam === null ? (sodView === null ? 5 : 2) : Math.floor(cam),
     backend: backend === 'webgpu' || backend === 'webgl2' ? backend : 'auto',
-    quality: q !== null && QUALITIES.includes(q) ? q : null,
+    quality: turfBench !== null ? (q === 'high' ? 'high' : 'med') : q !== null && QUALITIES.includes(q) ? q : null,
     scale: numberIn(p.get('scale'), 0.5, 1.5),
     hour: hour === null ? 13 : hour % 24,
     weather: wx !== null && WEATHERS.includes(wx) ? wx : 'clear',
@@ -82,6 +97,13 @@ export function parseParams(search: string): DebugParams {
     terrain,
     grass,
     sward: p.get('sward') !== '0',
+    worldTurf,
+    turfStats: p.get('turfStats') === '1',
+    turfBench,
+    turfLod: worldTurf && turfBench === null && !turfReference ? (lod === '30' ? 30 : lod === '20' ? 20 : null) : null,
+    turfSite: turfSite === 'slope' || turfSite === 'lowland' || turfSite === 'highland' || turfSite === 'seam' ? turfSite : null,
+    turfView: turfView === 'standing' || turfView === 'raised' || turfView === 'wide' ? turfView : 'close',
+    turfReference,
     sodView,
     soilPreview: soil === 'dry' || soil === 'rain' || soil === 'drained' ? soil : null,
     walk: p.get('walk') === '1',

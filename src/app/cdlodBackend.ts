@@ -7,6 +7,7 @@ import { CdlodTerrain } from '../render/cdlodTerrain';
 import { createGrassWind } from '../render/grassWind';
 import { WindTexture } from '../render/windTexture';
 import { createGrassCoverTexture } from '../render/noiseTextures';
+import { loadTurfCanopy } from '../render/worldTurfAssets';
 import { cascadeCameras, type CascadeCamera } from '../render/shadows';
 import { createTerrainTextures, type TerrainTextures } from '../render/terrainTextures';
 import { LEVELS } from '../world/cdlodPyramid';
@@ -67,6 +68,9 @@ export class CdlodBackend implements TerrainBackend {
     private readonly sward = false,
     private readonly soilPreview: SoilPreview | null = null,
     private readonly removeGrass = false,
+    private readonly worldTurf = false,
+    private readonly turfBenchmark = false,
+    private readonly turfRelief = false,
   ) {
     this.root.name = 'terrain-root';
     // The low tier keeps the material texture at 4 m texels (1025 squared): a quarter of the memory.
@@ -91,7 +95,9 @@ export class CdlodBackend implements TerrainBackend {
    * @amortized once at start-up
    */
   async prepare(): Promise<void> {
-    const [data, sod, soilAssets] = await Promise.all([this.textures, this.sward ? loadSodAtlas() : null, loadSoilAssets()]);
+    const [data, sod, soilAssets, depth] = await Promise.all([
+      this.textures, this.sward && !this.worldTurf ? loadSodAtlas() : null, loadSoilAssets(), this.worldTurf && !this.turfBenchmark ? loadTurfCanopy() : null,
+    ]);
     const textures = createTerrainTextures(data);
     this.data = data;
     this.gpu = textures;
@@ -105,12 +111,17 @@ export class CdlodBackend implements TerrainBackend {
       + (masks ? masks.vegetation.byteLength + masks.wetness.byteLength + masks.windChannel.byteLength + masks.openness.byteLength : 0));
     this.uploads.add(performance.now(), textures.uploadBytes + textures.normalUploadBytes + textures.vegetationUploadBytes);
     const lite = this.tier.name === 'low';
-    const grassCover = lite && !sod ? null : createGrassCoverTexture(sod);
+    const grassCover = this.turfBenchmark || depth || (lite && !sod) ? null : createGrassCoverTexture(sod);
     if (this.sward && masks) this.carpetWind = new WindTexture(masks.windChannel);
     if (grassCover) {
       memory.add(MemoryPartition.Gpu, grassCover.gpuBytes);
       memory.add(MemoryPartition.CpuRetained, grassCover.uploadBytes);
       this.uploads.add(performance.now(), grassCover.uploadBytes);
+    }
+    if (depth) {
+      memory.add(MemoryPartition.Gpu, Math.round(depth.bytes * 4 / 3));
+      memory.add(MemoryPartition.CpuRetained, depth.bytes);
+      this.uploads.add(performance.now(), depth.bytes);
     }
     this.soil = new SoilRuntime(data, soilAssets, this.soilPreview, memory, this.uploads);
     this.soil.setWeather(this.weather);
@@ -125,7 +136,7 @@ export class CdlodBackend implements TerrainBackend {
       grassCover: grassCover?.texture ?? null,
       soil: this.soil.textures,
       exposeSoil: this.removeGrass && this.soilPreview !== null,
-      carpet: this.carpetWind ? { map: this.carpetWind.texture, motion: this.carpetMotion } : null,
+      carpet: this.carpetWind ? { map: this.carpetWind.texture, motion: this.carpetMotion, depth: depth?.textures, relief: this.turfRelief } : null,
     });
     terrain.account(memory);
     this.root.add(terrain.root);

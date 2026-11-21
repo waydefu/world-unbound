@@ -52,11 +52,15 @@ async function loadTile(col: number, row: number): Promise<Int16Array> {
 }
 
 /** Loads, verifies and installs the terrain; resolves with the elapsed milliseconds. Rejects on any failure. */
-export async function loadAndInstallTerrain(): Promise<number> {
+export async function loadAndInstallTerrain(onTile?: (loaded: number, total: number) => void): Promise<number> {
   const start = performance.now();
   const jobs: Promise<Int16Array>[] = [];
+  let loaded = 0;
   for (let t = 0; t < TERRAIN_TILE_COUNT; t++) {
-    jobs.push(loadTile(t % TERRAIN_TILES_PER_SIDE, Math.floor(t / TERRAIN_TILES_PER_SIDE)));
+    jobs.push(loadTile(t % TERRAIN_TILES_PER_SIDE, Math.floor(t / TERRAIN_TILES_PER_SIDE)).then(tile => {
+      onTile?.(++loaded, TERRAIN_TILE_COUNT);
+      return tile;
+    }));
   }
   installTerrain(await Promise.all(jobs));
   return performance.now() - start;

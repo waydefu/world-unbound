@@ -4,6 +4,7 @@ import type { MemoryRegistry } from '../perf/memoryRegistry';
 import type { CapabilityReport } from '../platform/capabilities';
 import { TERRAIN_VERSION } from '../world/constants';
 import type { SoilWaterGrid } from '../world/soilWater';
+import type { WorldTurfMetrics } from '../render/worldTurf';
 import type { DebugParams } from './params';
 
 /** Live values the app exposes for the HUD and the exported report. */
@@ -110,6 +111,7 @@ export interface AppState {
   grassSodCrowns: number;
   grassDensityM2: number;
   grassMs: number;
+  worldTurf: WorldTurfMetrics | null;
   windUpdates: number;
   soilSample: ReturnType<SoilWaterGrid['sample']>;
   soilWorker: boolean;
@@ -206,7 +208,7 @@ export function buildReport(
       grass: {
         enabled: state.grassEnabled, cells: state.grassCells, blades: state.grassBlades, cards: state.grassCards,
         triangles: state.grassTris, sodTiles: state.grassSodTiles, sodTriangles: state.grassSodTris, ms: round(state.grassMs, 3),
-        sodCrowns: state.grassSodCrowns, targetLeavesPerM2: state.grassDensityM2,
+        sodCrowns: state.grassSodCrowns, targetLeavesPerM2: state.grassDensityM2, worldTurf: state.worldTurf,
       },
       wind: { texels: 64, bytes: 64 * 64 * 8, refreshes: state.windUpdates },
       soil: { worker: state.soilWorker, updates: state.soilUpdates, atEye: state.soilSample },

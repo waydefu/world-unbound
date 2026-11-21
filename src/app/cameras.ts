@@ -61,6 +61,31 @@ export interface ResolvedCamera {
   fovDeg: number;
 }
 
+export const TURF_SITES = {
+  slope: { x: 20, z: -40 }, lowland: { x: 684, z: 444 }, highland: { x: -660, z: 492 },
+  seam: { x: 0, z: -40 },
+} as const;
+export type TurfSite = keyof typeof TURF_SITES;
+export type TurfView = 'close' | 'standing' | 'raised' | 'wide';
+
+export function placeTurfCamera(eye: ResolvedCamera, site: TurfSite, view: TurfView): void {
+  const { x, z } = TURF_SITES[site];
+  eye.x = x;
+  eye.z = z;
+  eye.y = heightAt(x, z) + (view === 'close' ? .16 : view === 'standing' ? 1.2 : 7.2);
+  eye.targetX = x - .64;
+  eye.targetZ = z + .77;
+  eye.targetY = eye.y - (view === 'raised' ? 2.55 : view === 'wide' ? .34 : .42);
+  eye.fovDeg = 50;
+}
+
+export function turfWalkCamera(eye: ResolvedCamera, spec: CameraSpec): CameraSpec {
+  return {
+    ...spec, x: eye.x, z: eye.z, targetX: eye.targetX, targetZ: eye.targetZ,
+    lift: eye.y - heightAt(eye.x, eye.z),
+  };
+}
+
 export function resolveCamera(spec: CameraSpec, out: ResolvedCamera): ResolvedCamera {
   out.x = spec.x;
   out.z = spec.z;
