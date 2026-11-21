@@ -5,6 +5,8 @@ import { HEIGHT_DIM, materialDim, type TerrainTextureData } from './terrainTextu
 
 export const TURF_CROWN_PADDING_M = .14;
 export const TURF_CROWN_SPACING_M = 1 / Math.sqrt(SOD_CROWNS_PER_M2);
+export const TURF_NATIVE_FADE_START_M = 10;
+export const TURF_NATIVE_FADE_END_M = 13;
 const SUBTREES = 64;
 const MASTER_SIDE = Math.sqrt(SOD_CROWNS_PER_M2);
 export type TurfBenchmark = number | 'all';
@@ -66,7 +68,8 @@ export function turfVisible(planes: Float32Array, x: number, y: number, z: numbe
 }
 
 /** Stable world positions before fine frustum compaction, measured against actual triangle surface area. */
-export function collectTurfRoots(terrain: TerrainTextureData, bounds: TurfWindow, out: Float32Array, uv: Float64Array): number {
+export function collectTurfRoots(terrain: TerrainTextureData, bounds: TurfWindow, out: Float32Array, uv: Float64Array,
+  nextBatch?: () => Float32Array): number {
   const { x, y, z, reach, reference, hull, hullMargin = 0 } = bounds;
   const centreX = reference?.x ?? x;
   const centreZ = reference?.z ?? z;
@@ -77,6 +80,7 @@ export function collectTurfRoots(terrain: TerrainTextureData, bounds: TurfWindow
   const maxZ = Math.min(HEIGHT_DIM - 2, Math.floor((centreZ + range - WORLD_MIN) / 2));
   const h = terrain.height;
   let used = 0;
+  let completed = 0;
   for (let iz = minZ; iz <= maxZ; iz++) for (let ix = minX; ix <= maxX; ix++) {
     const i = iz * HEIGHT_DIM + ix;
     const a = h[i]; const b = h[i + 1]; const c = h[i + HEIGHT_DIM]; const d = h[i + HEIGHT_DIM + 1];
@@ -108,7 +112,13 @@ export function collectTurfRoots(terrain: TerrainTextureData, bounds: TurfWindow
           if (reference ? Math.abs(wx - centreX) >= 2 || Math.abs(wz - centreZ) >= 2
             : (wx - x) ** 2 + (wy - y) ** 2 + (wz - z) ** 2 >= reach * reach) continue;
           if (wy <= .08 || !turfEligible(terrain, wx, wz)) continue;
-          if (used === out.length) return -1;
+          if (nextBatch && hull && !turfVisible(hull, wx - x, wy - y, wz - z, hullMargin)) continue;
+          if (used === out.length) {
+            if (!nextBatch) return -1;
+            completed += used;
+            out = nextBatch();
+            used = 0;
+          }
           const key = sodHash(seed ^ Math.imul(k, 0x9e3779b1));
           out[used++] = wx;
           out[used++] = wy;
@@ -118,5 +128,5 @@ export function collectTurfRoots(terrain: TerrainTextureData, bounds: TurfWindow
       }
     }
   }
-  return used / 4;
+  return (completed + used) / 4;
 }

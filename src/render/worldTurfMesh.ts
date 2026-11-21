@@ -8,6 +8,7 @@ import {
 } from 'three/tsl';
 import { WORLD_MAX, WORLD_MIN } from '../world/constants';
 import { SOD_LEAVES_PER_CROWN, SOD_ROOT_INSET_M } from '../world/sodRoots';
+import { TURF_NATIVE_FADE_END_M, TURF_NATIVE_FADE_START_M } from '../world/turfPopulation';
 import { grassCarpetColour, seasonal } from './grassPalette';
 import { grassGust, type GrassWindUniforms } from './grassWind';
 import { terrainHeightNode } from './terrainHeightNode';
@@ -35,11 +36,15 @@ export interface TurfMeshOptions {
   eye: UniformNode<'vec3', Vector3>; season: UniformNode<'vec3', Vector3>; reach: UniformNode<'float', number>;
   wind: GrassWindUniforms; reference: boolean; shadows: boolean;
   unfaded: boolean;
-  blendCanopy?: boolean;
+  ribbonHandoff?: boolean;
+}
+
+export function nativeTurfCoverage(distance: Node<'float'>) {
+  return smoothstep(TURF_NATIVE_FADE_START_M, TURF_NATIVE_FADE_END_M, distance).oneMinus();
 }
 
 export function worldTurfMesh(geometry: InstancedBufferGeometry, root: Node<'vec4'>, options: TurfMeshOptions): Mesh {
-  const { master, height, water, eye, season, reach, wind, reference, unfaded, blendCanopy } = options;
+  const { master, height, water, eye, season, reach, wind, reference, unfaded, ribbonHandoff } = options;
   const material = new MeshSSSNodeMaterial({ side: DoubleSide, roughness: .49, specularIntensity: .26, alphaHash: !unfaded });
   const pigment = varyingProperty('vec3', 'worldTurfPigment');
   const normal = varyingProperty('vec3', 'worldTurfNormal');
@@ -47,7 +52,7 @@ export function worldTurfMesh(geometry: InstancedBufferGeometry, root: Node<'vec
   const moisture = varyingProperty('float', 'worldTurfMoisture');
   const visibility = varyingProperty('float', 'worldTurfVisibility');
   const normalDetail = varyingProperty('float', 'worldTurfNormalDetail');
-  const canopyBlend = blendCanopy ? varyingProperty('float', 'worldTurfCanopyBlend') : null;
+  const canopyBlend = ribbonHandoff ? varyingProperty('float', 'worldTurfCanopyBlend') : null;
   const tables = master.map(tex => texture(tex));
   const terrainY = terrainHeightNode(height);
   const address = (i: Node<'float'>) => ivec2(i.mod(MASTER_WIDTH).toInt(), floor(i.div(MASTER_WIDTH)).toInt());
@@ -70,9 +75,9 @@ export function worldTurfMesh(geometry: InstancedBufferGeometry, root: Node<'vec
     const distance = length(r.xyz.sub(eye)).max(.01);
     const combined = smoothstep(.85, 2.35, distance);
     canopyBlend?.assign(combined);
-    const coverage = unfaded ? float(1) : smoothstep(.72, 1.25, reach.div(distance));
+    const coverage = unfaded ? float(1) : ribbonHandoff ? nativeTurfCoverage(distance) : smoothstep(.72, 1.25, reach.div(distance));
     visibility.assign(coverage);
-    normalDetail.assign(reference ? float(1) : mix(1, blendCanopy ? .13 : .44, smoothstep(.65, 2.55, distance)));
+    normalDetail.assign(reference ? float(1) : mix(1, ribbonHandoff ? .13 : .44, smoothstep(.65, 2.55, distance)));
     const h = p.y.sub(leaf.y);
     bladeHeight.assign(h);
     const gust = grassGust(base, phase, wind);

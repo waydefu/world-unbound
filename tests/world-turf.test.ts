@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { TURF_SITES } from '../src/app/cameras';
+import { Group, PerspectiveCamera, type InstancedBufferGeometry, type Mesh } from 'three/webgpu';
+import { placeTurfCamera, resolveCamera, CAMERAS, TURF_SITES } from '../src/app/cameras';
 import { parseParams } from '../src/app/params';
+import { BUDGET_BALANCED, MemoryRegistry } from '../src/perf/memoryRegistry';
+import { createGrassWind } from '../src/render/grassWind';
+import type { RendererHandle } from '../src/render/renderer';
+import { WorldTurf } from '../src/render/worldTurf';
 import { CROWN_VERTICES, decodeTurfCanopy, decodeTurfMaster, MASTER_HEIGHT, MASTER_WIDTH, turfMasterOrigins } from '../src/render/worldTurfAssets';
 import { worldTurfGeometry } from '../src/render/worldTurfMesh';
 import { graphicsUrl } from '../src/ui/graphics';
@@ -85,7 +90,7 @@ describe('world turf', () => {
     expect(parseParams('?sward=world&turfLod=30&turfReference=1').turfLod).toBeNull();
   });
 
-  it('counts native blade roots in 256 actual one-square-metre terrain windows', async () => {
+  it('preserves native roots across real terrain samples and the 13 m draw batches', async () => {
     const terrain = buildTerrainTextures(1);
     const { pages: assets, origins } = await readMaster();
     const lo = assets[0].image.data as Uint8Array, hi = assets[1].image.data as Uint8Array;
@@ -94,6 +99,40 @@ describe('world turf', () => {
     expect(collectTurfMasterReference(terrain, origin, origins, roots)).toBe(SOD_CROWNS_PER_M2 * 16);
     expect(roots[0]).toBeCloseTo(origin.x - 1.5 + origins[0], 4);
     const uv = new Float64Array(2);
+    const scene = new Group();
+    const turf = new WorldTurf(scene, terrain, { master: assets, height: assets[0], water: assets[0],
+      wind: createGrassWind(), shadows: false, ribbonHandoff: true }, null, false, null, new MemoryRegistry(BUDGET_BALANCED));
+    // The CPU path only needs the backend name when constructing and populating its meshes.
+    turf.attach({ backend: 'webgl2' } as RendererHandle);
+    const view = resolveCamera(CAMERAS[6], { x: 0, y: 0, z: 0, targetX: 0, targetY: 0, targetZ: 0, fovDeg: 50 });
+    placeTurfCamera(view, 'lowland', 'standing');
+    const camera = new PerspectiveCamera(50, 480 / 270, .035, 18000);
+    camera.lookAt(view.targetX - view.x, view.targetY - view.y, view.targetZ - view.z);
+    camera.updateMatrixWorld(true);
+    turf.update(0, view.x, view.y, view.z, camera, 270);
+    const render = turf.metrics();
+    expect(render).toMatchObject({ overflow: false, nativeFade: { startM: 10, endM: 13 } });
+    expect(render.residentBatches).toBeGreaterThan(1);
+    expect(render.candidateCrowns).toBeGreaterThan(524_288);
+    expect(render.drawCalls).toBeGreaterThan(1);
+    let farRoots = 0;
+    let farthest = 0;
+    for (const child of scene.children) {
+      const geometry = (child as Mesh<InstancedBufferGeometry>).geometry;
+      const positions = geometry.getAttribute('worldTurfRoot').array;
+      for (let i = 0; i < geometry.instanceCount * 4; i += 4) {
+        const distance = Math.hypot(positions[i] - view.x, positions[i + 1] - view.y, positions[i + 2] - view.z);
+        if (distance > 10) farRoots++;
+        farthest = Math.max(farthest, distance);
+      }
+    }
+    expect(farRoots).toBeGreaterThan(0);
+    expect(farthest).toBeLessThanOrEqual(13);
+    console.log('13 m standing turf draw', JSON.stringify({ crowns: render.submittedCrowns, batches: render.residentBatches, farRoots }));
+    camera.lookAt(0, 1, 0);
+    camera.updateMatrixWorld(true);
+    turf.update(10, view.x, view.y, view.z, camera, 270);
+    expect(turf.metrics()).toMatchObject({ submittedCrowns: 0, drawCalls: 0 });
     const sites = Object.values(TURF_SITES);
     const results: { x: number; z: number; min: number; max: number }[] = [];
     for (const site of sites) {

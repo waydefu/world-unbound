@@ -1,13 +1,15 @@
 import {
   DynamicDrawUsage, IndirectStorageBufferAttribute, InstancedBufferAttribute, Matrix4, type PerspectiveCamera,
-  StorageBufferAttribute, Vector3, Vector4, type Group, type Mesh, type UniformNode, type WebGPURenderer,
+  StorageBufferAttribute, Vector3, Vector4, type Group, type Mesh, type UniformNode,
 } from 'three/webgpu';
 import { atomicAdd, atomicStore, attribute, dot, Fn, If, instanceIndex, length, storage, uint, uniform, uniformArray } from 'three/tsl';
+import { MemoryPartition, type MemoryRegistry } from '../perf/memoryRegistry';
 import { frustumPlanes } from '../world/cdlodMath';
 import { WORLD_MAX, WORLD_MIN } from '../world/constants';
 import { SOD_LEAVES_PER_CROWN } from '../world/sodRoots';
 import { HEIGHT_DIM, type TerrainTextureData } from '../world/terrainTextures';
-import { collectTurfMasterReference, collectTurfRoots, TURF_CROWN_PADDING_M, TURF_CROWN_SPACING_M, turfEligible, turfVisible, type TurfBenchmark } from '../world/turfPopulation';
+import { collectTurfMasterReference, collectTurfRoots, TURF_CROWN_PADDING_M, TURF_CROWN_SPACING_M,
+  TURF_NATIVE_FADE_END_M, TURF_NATIVE_FADE_START_M, turfEligible, turfVisible, type TurfBenchmark } from '../world/turfPopulation';
 import type { RendererHandle } from './renderer';
 import { worldTurfGeometry, worldTurfMesh, type TurfMeshOptions } from './worldTurfMesh';
 
@@ -17,10 +19,19 @@ const WINDOW_SLACK = .44;
 const WINDOW_TURN = Math.cos(10 * Math.PI / 180);
 
 interface GpuRoots {
-  renderer: WebGPURenderer;
   input: StorageBufferAttribute;
   args: IndirectStorageBufferAttribute;
   run(count: number): void;
+}
+
+interface TurfBatch {
+  candidates: Float32Array;
+  mesh: Mesh;
+  instance: InstancedBufferAttribute | null;
+  gpu: GpuRoots | null;
+  cpuBytes: number;
+  gpuBytes: number;
+  count: number;
 }
 
 export interface WorldTurfMetrics {
@@ -39,16 +50,17 @@ export interface WorldTurfMetrics {
   gpuSampleAgeMs: number | null;
   benchmark: { radius: TurfBenchmark; candidateCapacity: number; frustumGrassAreaEstimateM2: number | null } | null;
   ribbonLod: { rangeM: number; cells: number; triangles: number; rebuildMs: number } | null;
+  nativeFade: { startM: number; endM: number } | null;
+  residentBatches: number;
 }
 
 export class WorldTurf {
   readonly eye = uniform(new Vector3());
   readonly season: UniformNode<'vec3', Vector3> = uniform(new Vector3(1, 0, 0));
-  readonly reach = uniform(1);
-  readonly cpuBytes: number;
-  readonly gpuBytes: number;
-  private readonly candidates = new Float32Array(CAPACITY * 4);
-  private readonly cpuRoots = new Float32Array(CAPACITY * 4);
+  private readonly reach = uniform(1);
+  private readonly drawLimit = uniform(1);
+  private readonly batches: TurfBatch[] = [];
+  private handle: RendererHandle | null = null;
   private readonly uv = new Float64Array(2);
   private readonly planes = new Float32Array(24);
   private readonly vectors = Array.from({ length: 6 }, () => new Vector4());
@@ -59,9 +71,6 @@ export class WorldTurf {
   private readonly anchorDirection = new Vector3();
   private lastReach = -1;
   private lastAspectScale = 0;
-  private mesh: Mesh | null = null;
-  private instance: InstancedBufferAttribute | null = null;
-  private gpu: GpuRoots | null = null;
   private count = 0;
   private drawn: number | null = null;
   private sampling = false;
@@ -75,35 +84,45 @@ export class WorldTurf {
   constructor(private readonly root: Group, private readonly terrain: TerrainTextureData,
     private readonly options: Omit<TurfMeshOptions, 'eye' | 'season' | 'reach' | 'reference' | 'unfaded'>,
     private readonly reference: { readonly x: number; readonly z: number; readonly origins: Float32Array } | null,
-    private readonly diagnostic: boolean, private readonly benchmark: TurfBenchmark | null) {
-    this.cpuBytes = this.candidates.byteLength + this.cpuRoots.byteLength;
-    this.gpuBytes = this.candidates.byteLength + CAPACITY * 4;
-  }
+    private readonly diagnostic: boolean, private readonly benchmark: TurfBenchmark | null, private readonly memory: MemoryRegistry) {}
 
   attach(handle: RendererHandle): void {
-    if (this.mesh) {
-      this.root.remove(this.mesh);
-      this.mesh.geometry.dispose();
-      if (!Array.isArray(this.mesh.material)) this.mesh.material.dispose();
+    for (const { mesh, cpuBytes, gpuBytes } of this.batches) {
+      this.root.remove(mesh);
+      mesh.geometry.dispose();
+      if (!Array.isArray(mesh.material)) mesh.material.dispose();
+      this.memory.remove(MemoryPartition.CpuRetained, cpuBytes);
+      this.memory.remove(MemoryPartition.Gpu, gpuBytes);
     }
-    this.gpu = null;
-    this.instance = null;
+    this.batches.length = 0;
+    this.handle = handle;
     this.drawn = null;
     this.gpuComputeMs = null;
     this.lastCountAt = -Infinity;
+    this.lastSample = -Infinity;
+    this.sampling = false;
     this.lastProjection.fill(NaN);
     this.lastReach = -1;
+    this.addBatch(handle);
+  }
+
+  /** @amortized A retained batch keeps indirect dispatch within device limits while preserving every crown. */
+  private addBatch(handle: RendererHandle): TurfBatch {
+    const candidates = new Float32Array(CAPACITY * 4);
     const geometry = worldTurfGeometry();
     const common = { ...this.options, eye: this.eye, season: this.season, reach: this.reach,
       reference: this.reference !== null, unfaded: this.reference !== null || this.benchmark !== null };
-    const capacity = this.candidates.length / 4;
+    let mesh: Mesh;
+    let gpu: GpuRoots | null = null;
+    let instance: InstancedBufferAttribute | null = null;
+    let gpuBytes: number;
     if (handle.backend === 'webgpu') {
-      const input = new StorageBufferAttribute(this.candidates, 4).setUsage(DynamicDrawUsage);
-      const source = storage(input, 'vec4', capacity).toReadOnly();
-      const visible = storage(new StorageBufferAttribute(new Uint32Array(capacity), 1), 'uint', capacity);
+      const input = new StorageBufferAttribute(candidates, 4).setUsage(DynamicDrawUsage);
+      const source = storage(input, 'vec4', CAPACITY).toReadOnly();
+      const visible = storage(new StorageBufferAttribute(new Uint32Array(CAPACITY), 1), 'uint', CAPACITY);
       const args = new IndirectStorageBufferAttribute(new Uint32Array([geometry.index?.count ?? 0, 0, 0, 0, 0]), 1);
       geometry.setIndirect(args);
-      geometry.instanceCount = capacity;
+      geometry.instanceCount = CAPACITY;
       const indirect = storage(args, 'uint', 5).toAtomic();
       const size = uniform(0, 'uint');
       const clear = Fn(() => { atomicStore(indirect.element(1), 0); })().compute(1).setName('World turf reset');
@@ -113,8 +132,7 @@ export class WorldTurf {
           const offset = source.element(id).xyz.sub(this.eye).toVar();
           const visibleRoot = uint(1).toVar();
           if (!this.reference && this.benchmark !== 'all') {
-            const limit = this.benchmark === null ? this.reach.div(.72).add(TURF_CROWN_PADDING_M) : this.reach;
-            If(length(offset).greaterThan(limit), () => { visibleRoot.assign(0); });
+            If(length(offset).greaterThan(this.drawLimit), () => { visibleRoot.assign(0); });
           }
           for (let plane = 0; plane < 6; plane++) {
             const p = this.planeNodes.element(plane);
@@ -126,28 +144,38 @@ export class WorldTurf {
           });
         });
       })().computeKernel([WORKGROUP]).setName('World turf frustum compact');
-      this.gpu = {
-        renderer: handle.renderer, input, args,
+      gpu = {
+        input, args,
         run: count => {
           size.value = count;
           handle.renderer.compute(clear);
           if (count) handle.renderer.compute(compact, [Math.ceil(count / WORKGROUP), 1, 1]);
         },
       };
-      this.mesh = worldTurfMesh(geometry, source.element(visible.element(instanceIndex)), common);
+      mesh = worldTurfMesh(geometry, source.element(visible.element(instanceIndex)), common);
+      gpuBytes = candidates.byteLength + CAPACITY * 4 + args.array.byteLength;
     } else {
-      this.instance = new InstancedBufferAttribute(this.cpuRoots, 4).setUsage(DynamicDrawUsage);
-      geometry.setAttribute('worldTurfRoot', this.instance);
-      this.mesh = worldTurfMesh(geometry, attribute('worldTurfRoot', 'vec4'), common);
+      instance = new InstancedBufferAttribute(new Float32Array(candidates.length), 4).setUsage(DynamicDrawUsage);
+      geometry.setAttribute('worldTurfRoot', instance);
+      mesh = worldTurfMesh(geometry, attribute('worldTurfRoot', 'vec4'), common);
+      gpuBytes = instance.array.byteLength;
     }
-    this.root.add(this.mesh);
+    const cpuBytes = gpu ? gpuBytes : candidates.byteLength + gpuBytes;
+    const batch = { candidates, mesh, instance, gpu, cpuBytes, gpuBytes, count: 0 };
+    this.batches.push(batch);
+    this.memory.add(MemoryPartition.CpuRetained, cpuBytes);
+    this.memory.add(MemoryPartition.Gpu, gpuBytes);
+    this.root.add(mesh);
+    return batch;
   }
 
   /** @hot Reuse the candidate window while looking around, then compact against the current view. */
   update(now: number, x: number, y: number, z: number, camera: PerspectiveCamera, bufferHeight: number): void {
-    if (!this.mesh) return;
+    const handle = this.handle;
+    if (!handle) return;
     const projected = Math.max(bufferHeight, 1) * camera.projectionMatrix.elements[5] * .5 * TURF_CROWN_SPACING_M;
-    const reach = this.benchmark === 'all' ? Infinity : this.benchmark ?? Math.min(3.0, Math.max(2.35, projected));
+    const reach = this.benchmark === 'all' ? Infinity : this.benchmark
+      ?? (this.options.ribbonHandoff ? TURF_NATIVE_FADE_END_M : Math.min(3.0, Math.max(2.35, projected)));
     this.projection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     const p = this.projection.elements;
     const eye = this.eye.value;
@@ -157,6 +185,7 @@ export class WorldTurf {
       this.lastProjection.set(p);
       eye.set(x, y, z);
       this.reach.value = reach;
+      this.drawLimit.value = this.benchmark === null && !this.options.ribbonHandoff ? reach / .72 + TURF_CROWN_PADDING_M : reach;
       frustumPlanes(p, this.planes);
       const matrix = camera.matrixWorld.elements;
       const aspectScale = camera.projectionMatrix.elements[0];
@@ -165,30 +194,42 @@ export class WorldTurf {
       if (this.lastReach !== reach || ((!this.reference) && (grow || turn || aspectScale !== this.lastAspectScale))) {
         this.anchorDirection.set(matrix[8], matrix[9], matrix[10]);
         this.lastAspectScale = aspectScale;
-        this.rebuild(x, y, z, reach);
+        this.rebuild(handle, x, y, z, reach);
       } else this.collectMs = 0;
       this.select(x, y, z);
     }
-    if (this.diagnostic && this.gpu && !this.sampling && now - this.lastSample >= 1000) this.readGpu(now, this.gpu);
+    if (this.diagnostic && handle.backend === 'webgpu' && !this.sampling && now - this.lastSample >= 1000) this.readGpu(now, handle);
   }
 
   /** @amortized Rebuild only after leaving the current resident window. */
-  private rebuild(x: number, y: number, z: number, reach: number): void {
+  private rebuild(handle: RendererHandle, x: number, y: number, z: number, reach: number): void {
     const start = performance.now();
     this.anchor.set(x, y, z);
     this.lastReach = reach;
-    const radius = (this.benchmark === null ? reach / .72 + TURF_CROWN_PADDING_M : reach) + WINDOW_SLACK;
-    const count = this.reference ? collectTurfMasterReference(this.terrain, this.reference, this.reference.origins, this.candidates) : collectTurfRoots(this.terrain, {
+    const radius = this.drawLimit.value + WINDOW_SLACK;
+    const first = this.batches[0].candidates;
+    let next = 1;
+    const nextBatch = this.options.ribbonHandoff ? () => {
+      const batch = this.batches[next] ?? this.addBatch(handle);
+      next++;
+      return batch.candidates;
+    } : undefined;
+    const count = this.reference ? collectTurfMasterReference(this.terrain, this.reference, this.reference.origins, first) : collectTurfRoots(this.terrain, {
       x, y, z, reach: radius, reference: null, hull: this.planes,
       // A plane can rotate by ten degrees before the window is rebuilt. Also cover eye translation and complete blades.
       hullMargin: this.benchmark === 'all' ? TURF_CROWN_PADDING_M : radius * .20 + WINDOW_SLACK + TURF_CROWN_PADDING_M,
-    }, this.candidates, this.uv);
+    }, first, this.uv, nextBatch);
     this.overflow = count < 0;
     this.count = Math.max(0, count);
-    if (this.gpu && this.count) {
-      this.gpu.input.clearUpdateRanges();
-      this.gpu.input.addUpdateRange(0, this.count * 4);
-      this.gpu.input.needsUpdate = true;
+    let remaining = this.count;
+    for (const batch of this.batches) {
+      batch.count = Math.min(CAPACITY, remaining);
+      remaining -= batch.count;
+      if (batch.gpu && batch.count) {
+        batch.gpu.input.clearUpdateRanges();
+        batch.gpu.input.addUpdateRange(0, batch.count * 4);
+        batch.gpu.input.needsUpdate = true;
+      }
     }
     this.collectMs = performance.now() - start;
   }
@@ -196,42 +237,55 @@ export class WorldTurf {
   /** @hot */
   private select(x: number, y: number, z: number): void {
     const start = performance.now();
-    if (this.gpu) {
+    if (this.handle?.backend === 'webgpu') {
       for (let i = 0; i < 6; i++) this.vectors[i].fromArray(this.planes, i * 4);
-      this.gpu.run(this.count);
-    } else if (this.instance && this.mesh) {
-      const limit = (this.benchmark === null ? this.reach.value / .72 + TURF_CROWN_PADDING_M : this.reach.value) ** 2;
-      let size = 0;
-      for (let i = 0; i < this.count * 4; i += 4) {
-        const dx = this.candidates[i] - x, dy = this.candidates[i + 1] - y, dz = this.candidates[i + 2] - z;
-        if ((!this.reference && dx * dx + dy * dy + dz * dz > limit) || !turfVisible(this.planes, dx, dy, dz, TURF_CROWN_PADDING_M)) continue;
-        this.cpuRoots[size++] = this.candidates[i];
-        this.cpuRoots[size++] = this.candidates[i + 1];
-        this.cpuRoots[size++] = this.candidates[i + 2];
-        this.cpuRoots[size++] = this.candidates[i + 3];
+      for (let b = 0; b < this.batches.length; b++) {
+        const batch = this.batches[b];
+        batch.mesh.visible = batch.count !== 0;
+        if (batch.count) batch.gpu?.run(batch.count);
       }
-      this.drawn = size / 4;
-      (this.mesh.geometry as ReturnType<typeof worldTurfGeometry>).instanceCount = this.drawn;
-      if (size) {
-        this.instance.clearUpdateRanges();
-        this.instance.addUpdateRange(0, size);
-        this.instance.needsUpdate = true;
+    } else {
+      const limit = this.drawLimit.value ** 2;
+      this.drawn = 0;
+      for (let b = 0; b < this.batches.length; b++) {
+        const { mesh, instance, candidates, count } = this.batches[b];
+        if (!instance) continue;
+        const roots = instance.array;
+        let size = 0;
+        for (let i = 0; i < count * 4; i += 4) {
+          const dx = candidates[i] - x, dy = candidates[i + 1] - y, dz = candidates[i + 2] - z;
+          if ((!this.reference && dx * dx + dy * dy + dz * dz > limit) || !turfVisible(this.planes, dx, dy, dz, TURF_CROWN_PADDING_M)) continue;
+          roots[size++] = candidates[i];
+          roots[size++] = candidates[i + 1];
+          roots[size++] = candidates[i + 2];
+          roots[size++] = candidates[i + 3];
+        }
+        this.drawn += size / 4;
+        (mesh.geometry as ReturnType<typeof worldTurfGeometry>).instanceCount = size / 4;
+        mesh.visible = size !== 0;
+        if (size) {
+          instance.clearUpdateRanges();
+          instance.addUpdateRange(0, size);
+          instance.needsUpdate = true;
+        }
       }
     }
     this.selectMs = performance.now() - start;
   }
 
   /** @amortized Optional once-per-second diagnostics. */
-  private readGpu(now: number, gpu: GpuRoots): void {
+  private readGpu(now: number, handle: RendererHandle): void {
     this.lastSample = now;
     this.sampling = true;
-    void gpu.renderer.getArrayBufferAsync(gpu.args).then(bytes => {
-      if (this.gpu !== gpu) return;
-      this.drawn = new Uint32Array(bytes)[1];
+    const { renderer } = handle;
+    const counts = this.batches.flatMap(batch => batch.gpu && batch.count ? [renderer.getArrayBufferAsync(batch.gpu.args)] : []);
+    void Promise.all(counts).then(results => {
+      if (this.handle !== handle) return;
+      this.drawn = results.reduce((sum, bytes) => sum + new Uint32Array(bytes)[1], 0);
       this.lastCountAt = performance.now();
-    }).catch(() => undefined).finally(() => { this.sampling = false; });
-    if (gpu.renderer.hasFeature('timestamp-query')) {
-      void gpu.renderer.resolveTimestampsAsync('compute').then(ms => { if (gpu === this.gpu) this.gpuComputeMs = ms ?? null; }).catch(() => undefined);
+    }).catch(() => undefined).finally(() => { if (this.handle === handle) this.sampling = false; });
+    if (renderer.hasFeature('timestamp-query')) {
+      void renderer.resolveTimestampsAsync('compute').then(ms => { if (this.handle === handle) this.gpuComputeMs = ms ?? null; }).catch(() => undefined);
     }
   }
 
@@ -252,20 +306,24 @@ export class WorldTurf {
   }
 
   metrics(): WorldTurfMetrics {
-    const drawCalls = Number(!!this.gpu || (this.drawn ?? 0) > 0);
+    const gpu = this.handle?.backend === 'webgpu';
+    const drawCalls = this.batches.reduce((sum, batch) => sum + Number(batch.mesh.visible && batch.count > 0), 0);
     return {
-      mode: this.gpu ? 'gpu-indirect' : 'cpu-instanced', reference: this.reference !== null,
+      mode: gpu ? 'gpu-indirect' : 'cpu-instanced', reference: this.reference !== null,
       submittedCrowns: this.drawn, submittedLeaves: this.drawn === null ? null : this.drawn * SOD_LEAVES_PER_CROWN,
       submittedTriangles: this.drawn === null ? null : this.drawn * SOD_LEAVES_PER_CROWN * 22,
       candidateCrowns: this.count, overflow: this.overflow, collectMs: this.collectMs, selectMs: this.selectMs,
       gpuComputeMs: this.gpuComputeMs,
-      proxyFrustumAreaEstimateM2: this.diagnostic && this.benchmark === null ? this.frustumArea(this.reach.value / .72) : null,
+      proxyFrustumAreaEstimateM2: this.diagnostic && this.benchmark === null
+        ? this.frustumArea(this.options.ribbonHandoff ? this.drawLimit.value : this.reach.value / .72) : null,
       benchmark: this.benchmark === null ? null : {
         radius: this.benchmark, candidateCapacity: CAPACITY,
         frustumGrassAreaEstimateM2: this.benchmark === 'all' ? this.frustumArea(0) : null,
       },
       ribbonLod: null,
-      drawCalls, gpuSampleAgeMs: this.gpu && this.drawn !== null ? Math.round(performance.now() - this.lastCountAt) : null,
+      nativeFade: this.options.ribbonHandoff ? { startM: TURF_NATIVE_FADE_START_M, endM: TURF_NATIVE_FADE_END_M } : null,
+      residentBatches: this.batches.length,
+      drawCalls, gpuSampleAgeMs: gpu && this.drawn !== null ? Math.round(performance.now() - this.lastCountAt) : null,
     };
   }
 }

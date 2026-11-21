@@ -142,11 +142,11 @@ export class VegetationBackend {
       this.worldTurf = new WorldTurf(terrain.root, terrain.data, {
         master: master.textures, height: terrain.gpu.height, water: terrain.soil.textures.water,
         wind: terrain.carpetMotion, shadows: this.options.shadows && tier.name !== 'low',
-        blendCanopy: this.options.turfLod !== null,
-      }, this.options.turfReference ? { ...this.options.turfReference, origins: master.origins } : null, this.options.turfStats, this.options.turfBench);
+        ribbonHandoff: this.options.turfLod !== null,
+      }, this.options.turfReference ? { ...this.options.turfReference, origins: master.origins } : null, this.options.turfStats, this.options.turfBench, memory);
       this.worldTurf.season.value.fromArray(this.seasonWeights);
-      memory.add(MemoryPartition.Gpu, master.bytes + this.worldTurf.gpuBytes);
-      memory.add(MemoryPartition.CpuRetained, master.bytes + this.worldTurf.cpuBytes);
+      memory.add(MemoryPartition.Gpu, master.bytes);
+      memory.add(MemoryPartition.CpuRetained, master.bytes);
       uploads.add(performance.now(), master.bytes);
       if (this.options.turfLod !== null) {
         const lod = await TurfRibbonLod.load(terrain.gpu.height, terrain.data, this.options.turfLod, this.worldTurf,

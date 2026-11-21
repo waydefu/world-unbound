@@ -7,6 +7,7 @@ import { chromium } from 'playwright';
 const [dir = 'out/turf', backend = 'webgl2', ...sites] = process.argv.slice(2);
 const origin = process.env.WU_BASE ?? 'http://127.0.0.1:4174/world-unbound/';
 const width = Number(process.env.WU_TURF_WIDTH ?? 640);
+const height = Number(process.env.WU_TURF_HEIGHT ?? Math.round(width * 9 / 16));
 const views = process.env.WU_TURF_VIEWS?.split(',') ?? ['close', 'standing', 'raised'];
 const variant = process.env.WU_TURF_COMPARE;
 const references = variant === 'trial' ? [false] : variant === 'reference' ? [true] : [true, false];
@@ -21,7 +22,7 @@ try {
   for (const site of sites.length ? sites : ['slope', 'lowland', 'highland']) {
     for (const view of views) for (const reference of references) {
       const name = [reference ? 'reference' : 'trial', site, view, backend].join('-');
-      const page = await browser.newPage({ viewport: { width, height: Math.round(width * 9 / 16) } });
+      const page = await browser.newPage({ viewport: { width, height } });
       const problems = [];
       page.on('pageerror', error => problems.push(error.message));
       page.on('console', message => { if (message.type() === 'error') problems.push(message.text()); });

@@ -9,11 +9,12 @@ import { WORLD_MAX, WORLD_MIN } from '../world/constants';
 import { heightAt } from '../world/heightField';
 import { sodHash } from '../world/sodRoots';
 import type { TerrainTextureData } from '../world/terrainTextures';
-import { turfEligible, turfVisible } from '../world/turfPopulation';
+import { TURF_NATIVE_FADE_START_M, turfEligible, turfVisible } from '../world/turfPopulation';
 import { grassCarpetColour } from './grassPalette';
 import { grassGust, type GrassWindUniforms } from './grassWind';
 import { terrainHeightNode } from './terrainHeightNode';
 import type { WorldTurf } from './worldTurf';
+import { nativeTurfCoverage } from './worldTurfMesh';
 
 const STEP_M = .145;
 const PADDING_M = .32;
@@ -69,7 +70,7 @@ export class TurfRibbonLod {
     const root = attribute('ribbonRoot', 'vec4');
     const atlasSample = texture(atlas, uv());
     const d = root.xyz.sub(native.eye).length().max(.01);
-    const near = smoothstep(.72, 1.25, native.reach.div(d)).oneMinus();
+    const near = nativeTurfCoverage(d).oneMinus();
     const far = smoothstep(range * .75, range, d).oneMinus();
     const material = new MeshPhysicalNodeMaterial({ side: DoubleSide, roughness: .88, specularIntensity: .12,
       transparent: true, depthWrite: false, alphaTest: .035, forceSinglePass: true });
@@ -127,6 +128,7 @@ export class TurfRibbonLod {
     const back = Math.ceil(Math.max(WORLD_MIN, z - radius) / STEP_M);
     const front = Math.floor(Math.min(WORLD_MAX, z + radius) / STEP_M);
     const r2 = radius ** 2;
+    const hidden2 = (TURF_NATIVE_FADE_START_M - CAMERA_SLACK_M) ** 2;
     const roots = this.roots.array;
     let at = 0;
     for (let iz = back; iz <= front; iz++) for (let ix = left; ix <= right; ix++) {
@@ -138,7 +140,8 @@ export class TurfRibbonLod {
       if (xz2 >= r2 || !turfEligible(this.terrain, wx, wz)) continue;
       const h = heightAt(wx, wz);
       const dy = h - y;
-      if (h <= .08 || xz2 + dy * dy >= r2 || !turfVisible(this.planes, dx, dy, dz, padding)) continue;
+      const distance2 = xz2 + dy * dy;
+      if (h <= .08 || distance2 >= r2 || distance2 <= hidden2 || !turfVisible(this.planes, dx, dy, dz, padding)) continue;
       roots[at++] = wx;
       roots[at++] = h;
       roots[at++] = wz;
