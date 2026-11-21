@@ -15,6 +15,12 @@ Every PR that changes what the game looks like (rendering, materials, terrain, s
 - When the owner asks to use the approved master directly, first render its complete geometry and authored attributes in the game. Capture it at the master’s scale and camera angles, and record the differences in lighting and materials. Keep that runtime capture as the benchmark for evaluating any later optimization.
 - Capture the runtime result at the same scale, camera, light and wind settings as the approved model wherever practical. Label references with unmatched shooting conditions and list visible losses. Keep image preference, realism relative to photos, and device frame time as separate results.
 
+### Worldwide turf acceptance
+
+For changes to grass across the world, apply the [approved worldwide turf standard](../specs/s1-rooted-soil.md#全域草毯驗收). Use the complete one-square-metre master at **79,524 leaves/m²** as the density and close-up reference. Assess grass in normal gameplay at multiple locations, from root level through standing and elevated views, and during movement across detail and streaming boundaries.
+
+A visible ring of dense blades, bare-looking flat green beyond it, a sharp density drop or a streaming seam is a blocker for worldwide acceptance. Treat a single master capture, the reported target density, and automated checks as supporting evidence. Record the actual gameplay comparison and the owner's visual result before declaring worldwide turf accepted. Record device frame times separately and verify any optimization against the same reference views.
+
 ### Runtime review
 
 1. After the visual audit passes, render the six test cameras at 1280×720 with the HUD off (`?cam=N&hud=0&q=high&scale=1`, WebGL2 in the container) plus any extra views the change targets (e.g. `wx=storm`, a dusk hour). Name files `<cam>-<name>-<hour>-<weather>.png` in one folder in the scratchpad.
