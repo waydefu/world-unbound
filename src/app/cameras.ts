@@ -21,6 +21,7 @@ export interface CameraSpec {
   readonly targetLift: number;
   readonly fovDeg: number;
   readonly nearM?: number;
+  readonly allowLook?: boolean;
   /** Used when the URL does not pin ?hour / ?wx. */
   readonly hour?: number;
   readonly weather?: Weather;
@@ -50,7 +51,7 @@ export const CAMERAS: readonly CameraSpec[] = [
   // Same patch as camera 2, looking down to the roots in the live sward.
   {
     name: 'grass-closeup', label: '6 Grass', x: 20, z: -40, lift: 0.16,
-    targetX: 19.73, targetZ: -39.68, targetLift: 0, fovDeg: 50, nearM: 0.035,
+    targetX: 19.73, targetZ: -39.68, targetLift: 0, fovDeg: 50, nearM: 0.035, allowLook: true,
   },
 ];
 
