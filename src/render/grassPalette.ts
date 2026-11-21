@@ -48,7 +48,9 @@ export function grassCarpetWeight(meadow: Node<'float'>): Node<'float'> {
 }
 
 export function grassCarpetColour(season: Node<'vec3'>): Node<'vec3'> {
-  return seasonal(vec3(0.094, 0.212, 0.041), season);
+  // The approved master has a mean linear RGB of .120/.258/.032 above 35 mm.
+  // Integrate its leaf-light response into the ground-plane canopy proxy.
+  return seasonal(vec3(0.037, 0.105, 0.010), season);
 }
 
 /** World-fixed crown relief shared by the drawn tufts and ground between them.

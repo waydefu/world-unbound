@@ -3,6 +3,7 @@ import { HISTORY_WINDOW_MS, type FrameStats, type Percentiles } from '../perf/fr
 import type { MemoryRegistry } from '../perf/memoryRegistry';
 import type { CapabilityReport } from '../platform/capabilities';
 import { TERRAIN_VERSION } from '../world/constants';
+import type { SoilWaterGrid } from '../world/soilWater';
 import type { DebugParams } from './params';
 
 /** Live values the app exposes for the HUD and the exported report. */
@@ -104,8 +105,15 @@ export interface AppState {
   grassBlades: number;
   grassCards: number;
   grassTris: number;
+  grassSodTiles: number;
+  grassSodTris: number;
+  grassSodCrowns: number;
+  grassDensityM2: number;
   grassMs: number;
   windUpdates: number;
+  soilSample: ReturnType<SoilWaterGrid['sample']>;
+  soilWorker: boolean;
+  soilUpdates: number;
 }
 
 const scratch: Percentiles = { p50: 0, p95: 0, p99: 0, mean: 0 };
@@ -197,9 +205,11 @@ export function buildReport(
       shadowCasterNodes: state.terrainRender === 'cdlod' ? state.shadowCasterNodes : null,
       grass: {
         enabled: state.grassEnabled, cells: state.grassCells, blades: state.grassBlades, cards: state.grassCards,
-        triangles: state.grassTris, ms: round(state.grassMs, 3),
+        triangles: state.grassTris, sodTiles: state.grassSodTiles, sodTriangles: state.grassSodTris, ms: round(state.grassMs, 3),
+        sodCrowns: state.grassSodCrowns, targetLeavesPerM2: state.grassDensityM2,
       },
       wind: { texels: 64, bytes: 64 * 64 * 8, refreshes: state.windUpdates },
+      soil: { worker: state.soilWorker, updates: state.soilUpdates, atEye: state.soilSample },
       drawCalls: state.drawCalls,
       bundledDraws: state.bundledDraws,
       triangles: state.triangles,

@@ -4,7 +4,7 @@ For any coding agent taking over WORLD UNBOUND (written at the handover from Cla
 
 ## How a step is done
 
-1. **Spec first.** Every feature step has a written spec in `docs/specs/` (why, ground rules, phases with exact files and numbers, checks, evidence, out of scope). The owner approves the plan in chat; quote the approval in the spec's status line. Architectural changes get an ADR in `docs/adr/`.
+1. **Spec first.** Every feature step has a written spec in `docs/specs/` (why, ground rules, phases with exact files and numbers, checks, evidence, out of scope). The owner approves the plan in chat; quote the approval in the spec's status line. Architectural changes get an ADR in `docs/adr/`. For real-world objects, record the [physical reference and approved sample](visual-review.md#real-world-reference) before deriving the runtime assets.
 2. **Implement in phases, commit after each phase.** Sessions can be cut off (container restarts, usage limits); uncommitted work is lost. Keep module layers (`scripts/audit.mjs`): `world`, `perf`, `env` are pure; `render` may import world/perf/env/platform; `app` wires everything; files ≤ 350 lines; `@hot` / `@amortized` tags; no allocation in `@hot` paths.
 3. **Never weaken checks.** Do not change existing test assertions, audit thresholds or snapshots to get green; list intentional baseline changes in the PR. Do not touch `governance/`, `.github/`, `scripts/` or `AGENTS.md` without a task-scoped owner authorisation.
 4. **Render-only blind review** for anything visual ([visual review](visual-review.md)): render the six cameras (`tools/render.mjs`), give only the images to a reviewer that has not seen the code or spec (a separate agent/model run), fix P0/P1 findings or list them as deferred in the PR.

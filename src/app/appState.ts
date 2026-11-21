@@ -18,6 +18,7 @@ export function createAppState(
     hour: params.hour, day: params.day, season: '', weather: params.weather, sunAltitudeDeg: 0,
     moonIllumination: 0, exposure: 1, atmosphereLutMs, backgroundSuspends: 0,
     gpuPassSumP50Ms: null, gpuPassSumP95Ms: null, gpuSamples: null, gpuPassesPerFrame: null,
+    soilSample: null, soilWorker: false, soilUpdates: 0,
     ...initialObserved(),
     ...initialVegetationState(),
   };

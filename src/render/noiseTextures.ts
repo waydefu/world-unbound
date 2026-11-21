@@ -1,5 +1,5 @@
 import { DataTexture, LinearMipmapLinearFilter, LinearFilter, RedFormat, RGBAFormat, RepeatWrapping, UnsignedByteType } from 'three/webgpu';
-import { GRASS_COVER_DIM, SWARD_COVER_DIM, buildGrassCover, buildSwardCover } from '../world/grassCover';
+import { GRASS_COVER_DIM, SWARD_COVER_DIM, buildGrassCover } from '../world/grassCover';
 import { NOISE_TILE_SIZE, generateNoiseTile } from '../world/noiseTile';
 
 /** The shared tileable noise texture and its GPU footprint (with the full mip chain). */
@@ -31,9 +31,11 @@ export function createNoiseTexture(): NoiseTexture {
 }
 
 /** Canopy map for the CDLOD meadow or directional grass carpet. @amortized once at startup */
-export function createGrassCoverTexture(sward = false): NoiseTexture & { readonly uploadBytes: number } {
-  const data = sward ? buildSwardCover() : buildGrassCover();
+export function createGrassCoverTexture(sod: Uint8Array | null = null): NoiseTexture & { readonly uploadBytes: number } {
+  const sward = sod !== null;
+  const data = sod ?? buildGrassCover();
   const dim = sward ? SWARD_COVER_DIM : GRASS_COVER_DIM;
+  if (data.byteLength !== dim * dim * (sward ? 4 : 1)) throw new Error('Invalid grass canopy atlas size');
   const texture = new DataTexture(data, dim, dim, sward ? RGBAFormat : RedFormat, UnsignedByteType);
   texture.name = 'grass-canopy';
   repeatMipmapped(texture);

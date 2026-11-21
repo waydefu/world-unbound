@@ -39,6 +39,7 @@ export function sampleQuantized(ix: number, iz: number): number {
 /**
  * Interpolates one lattice cell. Each cell is split along the (1,0)-(0,1)
  * diagonal; terrain meshes must index their triangles the same way.
+ * @hot
  */
 export function interpolateCell(h00: number, h10: number, h01: number, h11: number, fx: number, fz: number): number {
   if (fx + fz <= 1) return h00 + (h10 - h00) * fx + (h01 - h00) * fz;

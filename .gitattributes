@@ -1,4 +1,6 @@
 # Large source assets should use Git LFS; small optimized runtime files can stay in Git.
+assets/grass/*.bin binary
+assets/soil/*.bin binary
 *.blend filter=lfs diff=lfs merge=lfs -text
 *.fbx filter=lfs diff=lfs merge=lfs -text
 *.glb filter=lfs diff=lfs merge=lfs -text

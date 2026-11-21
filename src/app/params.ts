@@ -1,9 +1,11 @@
 /** URL debug parameters (pure parsing; invalid values fall back to defaults). */
 import { WEATHERS, type Weather } from '../env/weather';
 import type { BackendChoice } from '../render/renderer';
+import type { SoilPreview } from './soilRuntime';
 
 export type { BackendChoice, Weather };
 export type QualityName = 'low' | 'med' | 'high';
+export type SodView = 'edge' | 'standing' | 'elevated' | 'backlight';
 
 export interface DebugParams {
   /** Fixed test camera 0..5. */
@@ -29,8 +31,12 @@ export interface DebugParams {
   terrain: 'cdlod' | 'chunks';
   /** Grass; ?grass=0 turns it off for A/B comparisons (CDLOD only). */
   grass: boolean;
-  /** Opt into the measured-density grass prototype on med/high CDLOD. */
+  /** The grass sod on CDLOD. Use ?sward=0 to restore the previous procedural grass. */
   sward: boolean;
+  /** ?sod=full compares the complete high-poly tile on camera 2. */
+  sodView: SodView | null;
+  /** Deterministic soil moisture states for fixed-light A/B captures. */
+  soilPreview: SoilPreview | null;
   /** Repeat the eye-height grass test path on camera 1 or 2. */
   walk: boolean;
 }
@@ -54,8 +60,14 @@ export function parseParams(search: string): DebugParams {
   const wx = p.get('wx') as Weather | null;
   const hour = numberIn(p.get('hour'), 0, 24);
   const day = numberIn(p.get('day'), 0, 32);
+  const view = p.get('sodView');
+  const soil = p.get('soil');
+  const terrain = p.get('terrain') === 'chunks' ? 'chunks' : 'cdlod';
+  const grass = p.get('grass') !== '0';
+  const sodView = p.get('sod') === 'full' && grass && terrain === 'cdlod'
+    ? (view === 'standing' || view === 'elevated' || view === 'backlight' ? view : 'edge') : null;
   return {
-    cam: cam === null ? 5 : Math.floor(cam),
+    cam: cam === null ? (sodView === null ? 5 : 2) : Math.floor(cam),
     backend: backend === 'webgpu' || backend === 'webgl2' ? backend : 'auto',
     quality: q !== null && QUALITIES.includes(q) ? q : null,
     scale: numberIn(p.get('scale'), 0.5, 1.5),
@@ -67,9 +79,11 @@ export function parseParams(search: string): DebugParams {
     dayExplicit: day !== null,
     shadows: p.get('shadows') !== '0',
     hud: p.get('hud') !== '0',
-    terrain: p.get('terrain') === 'chunks' ? 'chunks' : 'cdlod',
-    grass: p.get('grass') !== '0',
-    sward: p.get('sward') === '1',
+    terrain,
+    grass,
+    sward: p.get('sward') !== '0',
+    sodView,
+    soilPreview: soil === 'dry' || soil === 'rain' || soil === 'drained' ? soil : null,
     walk: p.get('walk') === '1',
   };
 }

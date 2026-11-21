@@ -1,6 +1,7 @@
 import { SEA_LEVEL } from '../world/constants';
 import { heightAt } from '../world/heightField';
 import type { Weather } from '../env/weather';
+import type { SodView } from './params';
 
 /**
  * The six fixed acceptance cameras at Hellesylt. Positions are plain constants
@@ -61,6 +62,33 @@ export function resolveCamera(spec: CameraSpec, out: ResolvedCamera): ResolvedCa
   out.targetY = Math.max(heightAt(spec.targetX, spec.targetZ), SEA_LEVEL) + spec.targetLift;
   out.fovDeg = spec.fovDeg;
   return out;
+}
+
+/** A nearly level 2 m terrain cell near camera 2; the rigid 1 m tile spans less than 1 cm of relief here. */
+export const SOD_ORIGIN = { x: 31, z: -49 } as const;
+
+export function sodBaseY(): number {
+  return heightAt(SOD_ORIGIN.x, SOD_ORIGIN.z) + 0.032;
+}
+
+// The master camera positions and lenses from tools/build-sod.py, converted from Blender Z-up to game Y-up.
+const SOD_CAMERAS = {
+  edge: { eye: [0.27, 0.115, 0.84], target: [0.085, 0.018, 0.43], lens: 66, aspect: 1100 / 800 },
+  standing: { eye: [0.35, 1.62, 1.58], target: [0.01, 0.013, 0.04], lens: 54, aspect: 1060 / 810 },
+  elevated: { eye: [0.12, 2.5, 0.34], target: [0, 0.013, 0], lens: 71, aspect: 1060 / 950 },
+  backlight: { eye: [0.065, 0.188, 0.73], target: [-0.07, 0.039, 0.029], lens: 68, aspect: 1160 / 790 },
+} as const;
+
+export function resolveSodCamera(view: SodView, out: ResolvedCamera): void {
+  const { eye, target, lens, aspect } = SOD_CAMERAS[view];
+  const y = sodBaseY();
+  out.x = SOD_ORIGIN.x + eye[0];
+  out.y = y + eye[1];
+  out.z = SOD_ORIGIN.z + eye[2];
+  out.targetX = SOD_ORIGIN.x + target[0];
+  out.targetY = y + target[1];
+  out.targetZ = SOD_ORIGIN.z + target[2];
+  out.fovDeg = 360 / Math.PI * Math.atan(36 / (2 * lens * aspect));
 }
 
 const WALK_METRES = 8.4;

@@ -1,6 +1,6 @@
 import { DoubleSide, MeshLambertNodeMaterial, type DataTexture, type Node } from 'three/webgpu';
 import {
-  Fn, attribute, cos, float, length, mix, normalGeometry, normalize, positionGeometry, sin, smoothstep,
+  Fn, attribute, cos, dot, float, length, mix, normalGeometry, normalize, positionGeometry, sin, smoothstep,
   texture, transformNormalToView, uv, varyingProperty, vec2, vec3,
 } from 'three/tsl';
 import { FLOWER_CELL_M, SPECIMEN_CELL_M } from '../world/grassCells';
@@ -55,12 +55,14 @@ export function createSpecimenMaterial(kind: GrassKind, inputs: GrassInputs, u: 
     const base = grassCarpetColour(u.season);
     const tint = tuft ? base : seasonal(attribute('specimenColour', 'vec3'), u.season);
     const wet = float(1).sub(u.wetness.mul(0.45));
-    const lift = flower ? float(1) : mix(0.79, 1.22, smoothstep(0.006, 0.071, local.y));
+    const lift = flower ? float(1) : mix(tuft ? 0.94 : 0.79, tuft ? 1.09 : 1.22, smoothstep(0.006, 0.071, local.y));
     const crowns = flower ? float(1) : grassCrownField(inputs.noise, field.root.xz, field.macro).level(float(0)).a.sub(0.5).mul(0.16).add(1);
     colour.assign(mix(base, tint, flower ? 1 : 0.78)
       .mul(field.rnd(15).mul(0.12).add(0.96)).mul(wet).mul(lift).mul(crowns));
     const soil = field.root.y.add(field.rootInset).sub(0.005);
-    return vec3(field.root.x.add(offset.x), soil.add(lifted), field.root.z.add(offset.y));
+    // Fit the whole 27 cm side projection to the ground slope so seams stay in the sward.
+    const baseHeight = tuft ? soil.add(dot(offset, field.rootSlope)) : soil;
+    return vec3(field.root.x.add(offset.x), baseHeight.add(lifted), field.root.z.add(offset.y));
   });
   const material = new MeshLambertNodeMaterial({ side: DoubleSide });
   material.name = flower ? 'grass-flowering-specimens' : tuft ? 'grass-fescue-tufts' : 'grass-fescue-mesh';
@@ -70,7 +72,7 @@ export function createSpecimenMaterial(kind: GrassKind, inputs: GrassInputs, u: 
     material.opacityNode = leaf.r.mul(tuftCoverage);
     material.alphaTest = 0.31;
     material.alphaToCoverage = true;
-    const leafLight = leaf.g.mul(0.8).add(0.42);
+    const leafLight = leaf.g.mul(0.42).add(0.63);
     material.colorNode = colour.mul(mix(1, leafLight, tuftCoverage));
   } else {
     material.colorNode = colour;

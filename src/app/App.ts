@@ -10,7 +10,7 @@ import { attachSunShadows } from '../render/shadows';
 import { COAST_DIM, SEAFLOOR_DIM } from '../world/seaFloor';
 import { createRenderer, warmUp, whenDeviceLost, type RendererHandle } from '../render/renderer';
 import { Hud, downloadJson } from '../ui/hud';
-import { CAMERAS, GrassTestWalk, resolveCamera, type ResolvedCamera } from './cameras';
+import { CAMERAS, GrassTestWalk, resolveCamera, resolveSodCamera, type ResolvedCamera } from './cameras';
 import { GpuTimer } from './gpuTimer';
 import { Observer } from './observability';
 import { createAppState } from './appState';
@@ -81,10 +81,10 @@ export class App {
     this.clock = new EnvironmentClock(this.environment);
     this.terrain = params.terrain === 'chunks'
       ? new ChunkBackend(this.memory, noise.texture, this.environment.ocean.floorTexture, tier, this.observer.uploads)
-      : new CdlodBackend(this.memory, noise.texture, tier, this.observer.uploads, params.shadows ? tier.shadows.cascades : 0, params.sward && params.grass);
+      : new CdlodBackend(this.memory, noise.texture, tier, this.observer.uploads, params.shadows ? tier.shadows.cascades : 0, params.sward && params.grass, params.soilPreview, !params.grass);
     this.vegetation = new VegetationBackend({
       ocean: this.environment.ocean, sun: this.environment.sun, terrain: this.terrain, tier, memory: this.memory,
-      uploads: this.observer.uploads, noise: noise.texture, grass: params.grass, sward: params.sward, shadows: params.shadows,
+      uploads: this.observer.uploads, noise: noise.texture, grass: params.grass, sward: params.sward, shadows: params.shadows, fullSod: params.sodView !== null,
     });
     this.observer.setMeshes(this.environment.sky.mesh, this.environment.ocean.mesh, this.terrain.farMesh);
     this.terrain.attachSun(this.environment.sun);
@@ -122,7 +122,7 @@ export class App {
     });
     // CDLOD: the worker has been building the terrain textures since construction; they are needed before warm-up.
     await this.terrain.prepare();
-    this.vegetation.prepare();
+    await this.vegetation.prepare();
     this.placeWorld(0);
     this.attachRenderer();
     try {
@@ -229,11 +229,14 @@ export class App {
   setCamera(index: number): void {
     const spec = CAMERAS[index] ?? CAMERAS[0];
     const { params } = this.options;
+    const sodView = spec === CAMERAS[2] ? params.sodView : null;
     resolveCamera(spec, this.eye);
-    this.grassWalk.reset(params.walk && (index === 1 || index === 2) ? spec : null);
+    if (sodView) resolveSodCamera(sodView, this.eye);
+    this.grassWalk.reset(!sodView && params.walk && (index === 1 || index === 2) ? spec : null);
     this.state.cameraIndex = CAMERAS.indexOf(spec);
-    this.state.cameraName = spec.name;
-    this.camera.fov = spec.fovDeg;
+    this.state.cameraName = sodView ? `sod-master-${sodView}` : spec.name;
+    this.camera.fov = this.eye.fovDeg;
+    this.camera.near = sodView ? 0.025 : 0.3;
     this.camera.updateProjectionMatrix();
     // The camera stays at the origin; the world is translated around it.
     this.camera.position.set(0, 0, 0);

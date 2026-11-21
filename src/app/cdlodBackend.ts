@@ -1,6 +1,7 @@
 import { type Camera, type DataTexture, type DirectionalLight, Group, type Mesh, type PerspectiveCamera } from 'three/webgpu';
 import { MemoryPartition, type MemoryRegistry } from '../perf/memoryRegistry';
 import type { SlidingRate } from '../perf/slidingRate';
+import type { Weather } from '../env/weather';
 import type { FrustumSource } from '../render/chunkStats';
 import { CdlodTerrain } from '../render/cdlodTerrain';
 import { createGrassWind } from '../render/grassWind';
@@ -15,6 +16,19 @@ import type { QualityTier } from './quality';
 import type { AppState } from './report';
 import type { TerrainBackend } from './terrainBackend';
 import { TerrainClient } from './terrainClient';
+import { loadSoilAssets, type SoilPreview, SoilRuntime } from './soilRuntime';
+
+const sodAtlases = import.meta.glob<string>('../../assets/grass/sod-top.bin', {
+  query: '?url&no-inline', import: 'default', eager: true,
+});
+
+async function loadSodAtlas(): Promise<Uint8Array> {
+  const url = sodAtlases['../../assets/grass/sod-top.bin'];
+  if (!url) throw new Error('Missing grass canopy atlas');
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Grass canopy atlas: HTTP ${response.status}`);
+  return new Uint8Array(await response.arrayBuffer());
+}
 
 /**
  * GPU height texture + CDLOD (ADR-0003, the default). The worker builds the textures while the renderer starts;
@@ -38,6 +52,8 @@ export class CdlodBackend implements TerrainBackend {
   readonly carpetMotion = createGrassWind();
   private updates = 0;
   private wetness = 0;
+  private weather: Weather = 'clear';
+  soil: SoilRuntime | null = null;
   private sun: DirectionalLight | null = null;
   private cascadeCams: readonly CascadeCamera[] = [];
 
@@ -49,6 +65,8 @@ export class CdlodBackend implements TerrainBackend {
     /** Shadow cascades to cull casters for; 0 when shadows are off. */
     private readonly cascades: number,
     private readonly sward = false,
+    private readonly soilPreview: SoilPreview | null = null,
+    private readonly removeGrass = false,
   ) {
     this.root.name = 'terrain-root';
     // The low tier keeps the material texture at 4 m texels (1025 squared): a quarter of the memory.
@@ -73,7 +91,7 @@ export class CdlodBackend implements TerrainBackend {
    * @amortized once at start-up
    */
   async prepare(): Promise<void> {
-    const data = await this.textures;
+    const [data, sod, soilAssets] = await Promise.all([this.textures, this.sward ? loadSodAtlas() : null, loadSoilAssets()]);
     const textures = createTerrainTextures(data);
     this.data = data;
     this.gpu = textures;
@@ -87,13 +105,15 @@ export class CdlodBackend implements TerrainBackend {
       + (masks ? masks.vegetation.byteLength + masks.wetness.byteLength + masks.windChannel.byteLength + masks.openness.byteLength : 0));
     this.uploads.add(performance.now(), textures.uploadBytes + textures.normalUploadBytes + textures.vegetationUploadBytes);
     const lite = this.tier.name === 'low';
-    const grassCover = lite ? null : createGrassCoverTexture(this.sward);
-    if (this.sward && !lite && masks) this.carpetWind = new WindTexture(masks.windChannel);
+    const grassCover = lite && !sod ? null : createGrassCoverTexture(sod);
+    if (this.sward && masks) this.carpetWind = new WindTexture(masks.windChannel);
     if (grassCover) {
       memory.add(MemoryPartition.Gpu, grassCover.gpuBytes);
       memory.add(MemoryPartition.CpuRetained, grassCover.uploadBytes);
       this.uploads.add(performance.now(), grassCover.uploadBytes);
     }
+    this.soil = new SoilRuntime(data, soilAssets, this.soilPreview, memory, this.uploads);
+    this.soil.setWeather(this.weather);
     const terrain = new CdlodTerrain({
       textures,
       pyramid: data.pyramid,
@@ -103,6 +123,8 @@ export class CdlodBackend implements TerrainBackend {
       cascades: this.cascades,
       lite,
       grassCover: grassCover?.texture ?? null,
+      soil: this.soil.textures,
+      exposeSoil: this.removeGrass && this.soilPreview !== null,
       carpet: this.carpetWind ? { map: this.carpetWind.texture, motion: this.carpetMotion } : null,
     });
     terrain.account(memory);
@@ -121,9 +143,10 @@ export class CdlodBackend implements TerrainBackend {
   invalidate(): void {}
 
   /** @hot */
-  update(_now: number, eye: ResolvedCamera, camera: PerspectiveCamera): void {
+  update(now: number, eye: ResolvedCamera, camera: PerspectiveCamera): void {
     const terrain = this.terrain;
     if (terrain === null) return;
+    this.soil?.update(now);
     camera.updateMatrixWorld();
     // The cascade light cameras exist after the first shadowed frame; look for them until they do.
     if (this.cascadeCams.length === 0 && this.sun !== null && (this.updates & 15) === 0) this.cascadeCams = cascadeCameras(this.sun);
@@ -139,6 +162,11 @@ export class CdlodBackend implements TerrainBackend {
   setWetness(wetness: number): void {
     this.terrain?.setWetness(wetness);
     this.wetness = wetness;
+  }
+
+  setWeather(weather: Weather): void {
+    this.weather = weather;
+    this.soil?.setWeather(weather);
   }
 
   /** Season weights of the grass colour (fresh, summer, straw). */
@@ -164,6 +192,9 @@ export class CdlodBackend implements TerrainBackend {
     state.terrainMasksMs = this.masksMs;
     state.terrainMode = this.client.mode;
     state.terrainWorkerLoadMs = this.client.workerLoadMs;
+    state.soilWorker = this.soil?.workerActive ?? false;
+    state.soilUpdates = this.soil?.updates ?? 0;
+    state.soilSample = this.soil?.model.sample(-this.root.position.x, -this.root.position.z) ?? null;
     if (!sel || !this.terrain) return;
     state.nodesSelected = sel.count;
     state.nodesCulled = sel.culled;

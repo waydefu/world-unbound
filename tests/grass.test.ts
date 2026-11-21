@@ -1,11 +1,15 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { Matrix4, PerspectiveCamera } from 'three/webgpu';
-import { CAMERAS, GrassTestWalk, resolveCamera, type ResolvedCamera } from '../src/app/cameras';
+import { CAMERAS, GrassTestWalk, resolveCamera, type ResolvedCamera, resolveSodCamera, sodBaseY } from '../src/app/cameras';
 import { QUALITY } from '../src/app/quality';
 import { parseParams } from '../src/app/params';
 import { frustumPlanes } from '../src/world/cdlod';
 import { WORLD_MIN } from '../src/world/constants';
-import { buildSwardCover, SWARD_COVER_DIM } from '../src/world/grassCover';
+import { SWARD_COVER_DIM } from '../src/world/grassCover';
+import { createGrassCoverTexture } from '../src/render/noiseTextures';
+import { decodeFullSod, decodeSodPatch } from '../src/render/fullSod';
 import { CELL_M, GrassCells, MAX_CARD_CELLS, MAX_DENSE_CELLS, MAX_THIN_CELLS, WORLD_CELLS } from '../src/world/grassCells';
 import { HEIGHT_DIM, buildTerrainTextures, materialDim } from '../src/world/terrainTextures';
 import { createTerrainTextures } from '../src/render/terrainTextures';
@@ -241,13 +245,14 @@ describe('grass layer on the Hellesylt terrain', () => {
 });
 
 describe('measured-density grass prototype', () => {
-  it('keeps the approved fescue leaf arcs in the detailed mesh and uses leaf cutouts for the carpet', () => {
+  it('preserves real-size leaf arcs from the approved sod master at the existing mesh budget', () => {
     const dense = createSpecimenGeometry('dense', 1, new Float32Array(4));
     expect(dense.trianglesPerInstance).toBe(126);
     const high = dense.geometry.attributes.position;
-    // Leaf 2 drops from its crest to a tip only 18 mm above its root.
-    expect(high.getY(25)).toBeGreaterThan(high.getY(31) + 0.025);
-    expect(high.getY(31)).toBeCloseTo(0.01885, 5);
+    // The first sampled leaf arches 34 mm above its restrained tip.
+    const crest = Math.max(...Array.from({ length: 15 }, (_, index) => high.getY(index)));
+    expect(crest).toBeGreaterThan(high.getY(15) + 0.03);
+    expect(high.getY(15)).toBeCloseTo(0.036, 3);
     const tuft = createFescueTuftGeometry(new Float32Array(4));
     expect(tuft.trianglesPerInstance).toBe(TUFT_GRID ** 2 * 4);
     const texture = createFescueTuftTexture();
@@ -259,19 +264,50 @@ describe('measured-density grass prototype', () => {
     expect(flower.geometry.attributes.position.count).toBe(506 + 869);
   });
 
-  it('bakes a deterministic fibre map with at least 99% grass canopy coverage', () => {
-    const cover = buildSwardCover();
+  it('loads the deterministic sod bake with at least 99% grass canopy coverage', () => {
+    const sod = readFileSync(fileURLToPath(new URL('../assets/grass/sod-top.bin', import.meta.url)));
+    const { texture, uploadBytes } = createGrassCoverTexture(sod);
+    const cover = texture.image.data as Uint8Array;
     expect(cover).toHaveLength(SWARD_COVER_DIM ** 2 * 4);
-    expect(cover).toEqual(buildSwardCover());
+    expect(uploadBytes).toBe(cover.byteLength);
+    expect(texture.generateMipmaps).toBe(true);
     const texels = SWARD_COVER_DIM ** 2;
     const covered = cover.filter((height, i) => i % 4 === 1 && height > 0).length;
     expect(covered / texels).toBeGreaterThanOrEqual(0.99);
     expect(covered).toBeLessThan(texels);
     expect(cover.some((height, i) => i % 4 === 1 && height >= 180)).toBe(true);
+    texture.dispose();
   });
 
-  it('opts in from the URL and repeats the same 8.4 m test path', () => {
-    expect(parseParams('?cam=2')).toMatchObject({ sward: false, walk: false });
+  it('preserves all master vertices, leaf faces and float pigment in the full mesh path', async () => {
+    const archive = readFileSync(fileURLToPath(new URL('../assets/grass/sod-full.bin', import.meta.url)));
+    const stream = new Blob([archive.slice().buffer]).stream().pipeThrough(new DecompressionStream('gzip'));
+    const { geometry, soil, leaves, triangles } = decodeFullSod(await new Response(stream).arrayBuffer());
+    const { position, normal, color } = geometry.attributes;
+    expect(leaves).toBe(79_524);
+    expect(triangles).toBe(1_749_528);
+    expect(position.count).toBe(1_510_956);
+    expect(normal.count).toBe(position.count);
+    expect(Array.from(position.array.slice(-3))).toEqual([0.531430721282959, 0.020583376288414, -0.4534603953361511]);
+    expect(Array.from(color.array.slice(-3))).toEqual([0.09001520276069641, 0.21786624193191528, 0.024205153807997704]);
+    expect(Array.from(geometry.index?.array.slice(-6) ?? [])).toEqual([1_510_952, 1_510_955, 1_510_953, 1_510_953, 1_510_955, 1_510_954]);
+    expect(soil.attributes.position.count).toBe(10_601);
+    expect(soil.index?.count).toBe(62_400);
+    geometry.dispose();
+    soil.dispose();
+    expect(parseParams('?sod=full&sodView=standing')).toMatchObject({ cam: 2, sodView: 'standing' });
+    expect(parseParams('?sod=full&sodView=other')).toMatchObject({ sodView: 'edge' });
+    expect(parseParams('?sod=full&grass=0')).toMatchObject({ sodView: null });
+    expect(parseParams('?sod=full&terrain=chunks')).toMatchObject({ sodView: null });
+    const eye: ResolvedCamera = { x: 0, y: 0, z: 0, targetX: 0, targetY: 0, targetZ: 0, fovDeg: 60 };
+    resolveSodCamera('standing', eye);
+    expect(eye.y - sodBaseY()).toBeCloseTo(1.62);
+    expect(eye.fovDeg).toBeCloseTo(28.58, 1);
+  });
+
+  it('loads sod by default, accepts the old path as a fallback, and repeats the same 8.4 m test path', () => {
+    expect(parseParams('?cam=2')).toMatchObject({ sward: true, walk: false });
+    expect(parseParams('?cam=2&sward=0')).toMatchObject({ sward: false });
     expect(parseParams('?cam=2&sward=1&walk=1')).toMatchObject({ sward: true, walk: true });
     const spec = CAMERAS[2];
     const eye: ResolvedCamera = { x: 0, y: 0, z: 0, targetX: 0, targetY: 0, targetZ: 0, fovDeg: 60 };
@@ -287,5 +323,20 @@ describe('measured-density grass prototype', () => {
     expect(eye.x).toBeCloseTo(start.x);
     expect(eye.y).toBeCloseTo(start.y);
     expect(eye.z).toBeCloseTo(start.z);
+  });
+
+  it('retains every leaf root and arch inside the native quarter-metre crop', async () => {
+    const archive = readFileSync(fileURLToPath(new URL('../assets/grass/sod-patch.bin', import.meta.url)));
+    const stream = new Blob([archive.slice().buffer]).stream().pipeThrough(new DecompressionStream('gzip'));
+    const { geometry, leaves, triangles } = decodeSodPatch(await new Response(stream).arrayBuffer());
+    expect(leaves).toBe(5_010);
+    expect(triangles).toBe(110_220);
+    const position = geometry.getAttribute('position');
+    for (let leaf = 0; leaf < leaves; leaf++) {
+      const root = leaf * 19 + 1;
+      if (Math.abs(position.getX(root)) > 0.125 || Math.abs(position.getZ(root)) > 0.125) throw new Error('Leaf root outside native crop');
+    }
+    expect(geometry.boundingSphere?.radius).toBeGreaterThan(0.125 * Math.SQRT2);
+    geometry.dispose();
   });
 });
