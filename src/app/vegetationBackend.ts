@@ -1,4 +1,4 @@
-import type { Camera, DataTexture, DirectionalLight } from 'three/webgpu';
+import type { DataTexture, DirectionalLight, PerspectiveCamera } from 'three/webgpu';
 import { DAYS_PER_YEAR, normaliseDay } from '../env/calendar';
 import {
   type ClimateState, computeClimate, createClimateState, temperatureAtAltitude, vegetationSeason, windFromDeg,
@@ -12,9 +12,14 @@ import { loadFullSod } from '../render/fullSod';
 import { GUST_WAVELENGTH_M } from '../render/grassWind';
 import { GroundSod } from '../render/groundSod';
 import type { Ocean } from '../render/ocean';
+import type { RendererHandle } from '../render/renderer';
+import { TurfRibbonLod } from '../render/turfRibbonLod';
+import { WorldTurf } from '../render/worldTurf';
+import { loadTurfMaster } from '../render/worldTurfAssets';
 import { WIND_BYTES, WindTexture } from '../render/windTexture';
 import { WORLD_SEED } from '../world/constants';
 import { SOD_LEAVES_PER_M2 } from '../world/sodRoots';
+import type { TurfBenchmark } from '../world/turfPopulation';
 import { CdlodBackend } from './cdlodBackend';
 import { type ResolvedCamera, SOD_ORIGIN, sodBaseY } from './cameras';
 import type { QualityTier } from './quality';
@@ -24,11 +29,11 @@ import type { TerrainBackend } from './terrainBackend';
 /** Climate and grass fields of AppState before the first tick. */
 export function initialVegetationState(): Pick<
   AppState, 'windDirDeg' | 'windSpeedMs' | 'temperatureC' | 'season01' | 'grassEnabled' | 'grassCells' | 'grassBlades'
-  | 'grassCards' | 'grassTris' | 'grassMs' | 'grassSodTiles' | 'grassSodTris' | 'grassSodCrowns' | 'grassDensityM2' | 'windUpdates'
+  | 'grassCards' | 'grassTris' | 'grassMs' | 'grassSodTiles' | 'grassSodTris' | 'grassSodCrowns' | 'grassDensityM2' | 'windUpdates' | 'worldTurf'
 > {
   return {
     windDirDeg: 0, windSpeedMs: 0, temperatureC: 0, season01: 0, grassEnabled: false, grassCells: 0, grassBlades: 0,
-    grassCards: 0, grassTris: 0, grassMs: 0, grassSodTiles: 0, grassSodTris: 0, grassSodCrowns: 0, grassDensityM2: 0, windUpdates: 0,
+    grassCards: 0, grassTris: 0, grassMs: 0, grassSodTiles: 0, grassSodTris: 0, grassSodCrowns: 0, grassDensityM2: 0, windUpdates: 0, worldTurf: null,
   };
 }
 
@@ -44,6 +49,11 @@ export interface VegetationOptions {
   readonly grass: boolean;
   readonly sward?: boolean;
   readonly fullSod: boolean;
+  readonly worldTurf: boolean;
+  readonly turfStats: boolean;
+  readonly turfBench: TurfBenchmark | null;
+  readonly turfLod: 20 | 30 | null;
+  readonly turfReference: { x: number; z: number } | null;
   /** Sun shadows are on (blades receive them on the med and high tiers). */
   readonly shadows: boolean;
 }
@@ -57,6 +67,8 @@ export class VegetationBackend {
   private grass: GrassLayer | null = null;
   private fullSod: { leaves: number; triangles: number } | null = null;
   private groundSod: GroundSod | null = null;
+  private worldTurf: WorldTurf | null = null;
+  private turfRibbonLod: TurfRibbonLod | null = null;
   private wind: WindTexture | null = null;
   private day = 0;
   private hour = 12;
@@ -79,6 +91,7 @@ export class VegetationBackend {
     this.options.terrain.setSeason(w[0], w[1], w[2]);
     this.grass?.setSeason(w[0], w[1], w[2]);
     this.groundSod?.setSeason(w[0], w[1], w[2]);
+    this.worldTurf?.season.value.set(w[0], w[1], w[2]);
     this.grass?.setWetness(WEATHER_WETNESS[weather]);
   }
 
@@ -124,7 +137,26 @@ export class VegetationBackend {
       grass.setWetness(WEATHER_WETNESS[this.weather]);
       terrain.root.add(grass.root);
     }
-    if (sward && !canopyOnly && terrain.carpetWind && terrain.soil) {
+    if (this.options.worldTurf && (!canopyOnly || this.options.turfReference) && terrain.soil) {
+      const master = await loadTurfMaster();
+      this.worldTurf = new WorldTurf(terrain.root, terrain.data, {
+        master: master.textures, height: terrain.gpu.height, water: terrain.soil.textures.water,
+        wind: terrain.carpetMotion, shadows: this.options.shadows && tier.name !== 'low',
+        blendCanopy: this.options.turfLod !== null,
+      }, this.options.turfReference ? { ...this.options.turfReference, origins: master.origins } : null, this.options.turfStats, this.options.turfBench);
+      this.worldTurf.season.value.fromArray(this.seasonWeights);
+      memory.add(MemoryPartition.Gpu, master.bytes + this.worldTurf.gpuBytes);
+      memory.add(MemoryPartition.CpuRetained, master.bytes + this.worldTurf.cpuBytes);
+      uploads.add(performance.now(), master.bytes);
+      if (this.options.turfLod !== null) {
+        const lod = await TurfRibbonLod.load(terrain.gpu.height, terrain.data, this.options.turfLod, this.worldTurf,
+          terrain.carpetMotion, this.options.shadows);
+        terrain.root.add(lod.mesh);
+        this.turfRibbonLod = lod;
+        memory.add(MemoryPartition.CpuRetained, lod.cpuBytes);
+        memory.add(MemoryPartition.Gpu, lod.gpuBytes);
+      }
+    } else if (!this.options.worldTurf && sward && !canopyOnly && terrain.carpetWind && terrain.soil) {
       this.groundSod = await GroundSod.load(terrain.data, terrain.gpu.height, terrain.soil.textures.water,
         tier.name === 'high', terrain.carpetMotion, this.options.shadows);
       this.groundSod.setSeason(this.seasonWeights[0], this.seasonWeights[1], this.seasonWeights[2]);
@@ -140,6 +172,10 @@ export class VegetationBackend {
     this.grass = grass;
   }
 
+  setRenderer(handle: RendererHandle): void {
+    this.worldTurf?.attach(handle);
+  }
+
   /**
    * Game time: the calendar day and hour of the camera preset plus the real seconds since it was set, so the
    * wind keeps evolving while the sky stays at the preset hour.
@@ -151,7 +187,7 @@ export class VegetationBackend {
   }
 
   /** @hot */
-  update(nowMs: number, eye: ResolvedCamera, camera: Camera): void {
+  update(nowMs: number, eye: ResolvedCamera, camera: PerspectiveCamera, bufferHeight: number): void {
     const { ocean, sun, uploads } = this.options;
     const climate = computeClimate(WORLD_SEED, this.gameTimeSeconds(nowMs), this.weather, this.day + this.hour / 24, this.climate);
     const dirX = windDirX(climate.windDirRad);
@@ -163,6 +199,8 @@ export class VegetationBackend {
     const wind = this.wind;
     if (wind === null) return;
     if (wind.update(nowMs, eye.x, eye.z, climate)) uploads.add(nowMs, WIND_BYTES);
+    this.worldTurf?.update(nowMs, eye.x, eye.y, eye.z, camera, bufferHeight);
+    this.turfRibbonLod?.update(eye.x, eye.y, eye.z, camera);
     if (grass === null) {
       if (this.options.sward === true && this.options.tier.name === 'low' && this.options.terrain instanceof CdlodBackend) {
         const motion = this.options.terrain.carpetMotion;
@@ -194,6 +232,8 @@ export class VegetationBackend {
     const grass = this.grass;
     state.grassEnabled = this.wind !== null || this.fullSod !== null;
     state.grassDensityM2 = state.grassEnabled && this.options.sward ? SOD_LEAVES_PER_M2 : 0;
+    state.worldTurf = this.worldTurf?.metrics() ?? null;
+    if (state.worldTurf) state.worldTurf.ribbonLod = this.turfRibbonLod?.metrics() ?? null;
     state.windUpdates = this.wind?.updates ?? 0;
     if (this.fullSod) {
       state.grassCells = 1;
@@ -206,12 +246,12 @@ export class VegetationBackend {
     const sod = this.groundSod;
     const sparse = sod?.sparse.mesh.geometry.instanceCount ?? 0;
     const dense = sod?.dense.mesh.geometry.instanceCount ?? 0;
-    state.grassSodCrowns = sparse + dense;
-    state.grassSodTris = sod ? sparse * sod.sparse.triangles + dense * sod.dense.triangles : 0;
+    state.grassSodCrowns = state.worldTurf?.submittedCrowns ?? sparse + dense;
+    state.grassSodTris = state.worldTurf?.submittedTriangles ?? (sod ? sparse * sod.sparse.triangles + dense * sod.dense.triangles : 0);
     state.grassCells = grass.stats.cells;
     state.grassBlades = grass.stats.blades + state.grassSodTris / 22;
     state.grassCards = grass.stats.cards;
-    state.grassTris = grass.stats.triangles + state.grassSodTris;
+    state.grassTris = grass.stats.triangles + state.grassSodTris + (state.worldTurf?.ribbonLod?.triangles ?? 0);
     state.grassMs = grass.stats.ms;
   }
 }

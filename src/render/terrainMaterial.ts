@@ -10,6 +10,7 @@ import { canopyShade, grassCarpetColour, grassCarpetWeight, groundCover, meadowT
 import { triplanarChannel, triplanarSlope } from './noiseSampling';
 import { soilColour } from './soilPalette';
 import { soilSurface, type SoilSurfaceTextures } from './soilSurface';
+import { worldTurfCanopy } from './worldTurfCanopy';
 
 /**
  * Procedural PBR terrain material (G1.3). The chunk colour attribute carries
@@ -119,9 +120,17 @@ export function createTerrainMaterial(noise: DataTexture, lite = false, surface:
   const grassDetail = float(1).add(tipNoise.mul(mix(1.55, 0.85, tips)).mul(veg.r));
   const baseGrass = groundCover(macro, wet01, veg, season).mul(canopyShade(veg.r, grassDist, grassRange))
     .mul(surface && !lite ? tipColour.mul(grassDetail) : float(1));
-  const carpet = surface?.carpet && surface.grassCover
+  const depth = surface?.carpet?.depth;
+  const carpet = depth && surface?.carpet
+    ? worldTurfCanopy(depth, noise, surface.carpet.map, surface.carpet.motion, pW.xz, grassDist, nGeo, macro, surface.carpet.relief)
+    : surface?.carpet && surface.grassCover
     ? grassCanopy(surface.grassCover, noise, surface.carpet, pW.xz, grassDist, nGeo, macro, lite) : null;
-  const carpetWeight = carpet ? grassCarpetWeight(veg.r.add(veg.g).min(1)) : float(0);
+  const vegetationCell = depth && surfaceUv && surface
+    ? texture(surface.vegetation).load(surfaceUv.mul(surface.materialDim).floor().clamp(0, surface.materialDim - 1).toIVec2()) : null;
+  const carpetWeight = vegetationCell
+    ? vegetationCell.r.add(vegetationCell.g).greaterThanEqual(123 / 255).and(vegetationCell.a.lessThan(130 / 255))
+      .and(y.greaterThan(.08)).select(float(1), float(0))
+    : carpet ? grassCarpetWeight(veg.r.add(veg.g).min(1)) : float(0);
   const organic = smoothstep(0.12, 0.48, veg.a).mul(float(1).sub(smoothstep(0.39, 0.80, rockShare)))
     .mul(smoothstep(0.5, 2.8, y)).mul(0.67);
   const soil = surface?.soil ? soilSurface(surface.soil, pW.xz, dist) : null;
