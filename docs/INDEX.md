@@ -30,6 +30,8 @@ Where everything is. Read the protected [AGENTS.md](../AGENTS.md) before acting;
 | [reference/game-spec-v1.md](reference/game-spec-v1.md) | Game specification v1.0 (owner's source document) |
 | [reference/aegis-v2.md](reference/aegis-v2.md) | AEGIS ∞ v2.0 governance specification (owner's source document) |
 | [process/visual-review.md](process/visual-review.md) | Blind visual critic step for every visual PR (`wu-critic` subagent) |
+| [Environment production and acceptance](process/visual-review.md#environment-production-and-acceptance) | Real-world references, approved masters and full-scene verification for environment systems |
+| [Worldwide turf acceptance](specs/s1-rooted-soil.md#全域草毯驗收) | Approved master density, map-wide visual standard and acceptance evidence |
 | [process/agent-workflow.md](process/agent-workflow.md) | Tool-neutral workflow, commands, environment and token-saving notes for any agent (handover) |
 | [process/subagents.md](process/subagents.md) | Which subagent and model for which job; parallel fan-outs use Haiku |
 | [research/environment-systems.md](research/environment-systems.md) | Environment systems research overview (fields, weather, sky, water, ecology, surface, audio) and proposed order |
