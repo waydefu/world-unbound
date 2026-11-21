@@ -63,6 +63,7 @@ export interface ResolvedCamera {
 
 export const TURF_SITES = {
   slope: { x: 20, z: -40 }, lowland: { x: 684, z: 444 }, highland: { x: -660, z: 492 },
+  seam: { x: 0, z: -40 },
 } as const;
 export type TurfSite = keyof typeof TURF_SITES;
 export type TurfView = 'close' | 'standing' | 'raised';

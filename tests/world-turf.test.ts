@@ -57,17 +57,13 @@ function areaInside(x: number, z: number, endZ: number): number {
 
 describe('world turf', () => {
   it('keeps the entire master and three directional depth layers', async () => {
-    const { pages: master, origins } = await readMaster();
+    const { pages: master } = await readMaster();
     expect(master).toHaveLength(3);
     expect(master[0].image.width * master[0].image.height).toBeGreaterThanOrEqual(SOD_CROWNS_PER_M2 * CROWN_VERTICES);
     expect(master[0].image.width).toBe(MASTER_WIDTH);
     expect(master[0].image.height).toBe(MASTER_HEIGHT);
     expect(decodeTurfCanopy(asBuffer(asset('sod-world-canopy'))).every(texture => texture.generateMipmaps)).toBe(true);
     expect(worldTurfGeometry().index?.count).toBe(9 * 22 * 3);
-    const reference = new Float32Array(SOD_CROWNS_PER_M2 * 16 * 4);
-    const origin = TURF_SITES.slope;
-    expect(collectTurfMasterReference(buildTerrainTextures(1), origin, origins, reference)).toBe(SOD_CROWNS_PER_M2 * 16);
-    expect(reference[0]).toBeCloseTo(origin.x - 1.5 + origins[0], 4);
   });
 
   it('preserves the scene in the graphics menu and keeps world turf opt-in', () => {
@@ -82,11 +78,14 @@ describe('world turf', () => {
 
   it('counts native blade roots in 256 actual one-square-metre terrain windows', async () => {
     const terrain = buildTerrainTextures(1);
-    const { pages: assets } = await readMaster();
+    const { pages: assets, origins } = await readMaster();
     const lo = assets[0].image.data as Uint8Array, hi = assets[1].image.data as Uint8Array;
     const roots = new Float32Array(200_000 * 4);
+    const origin = TURF_SITES.slope;
+    expect(collectTurfMasterReference(terrain, origin, origins, roots)).toBe(SOD_CROWNS_PER_M2 * 16);
+    expect(roots[0]).toBeCloseTo(origin.x - 1.5 + origins[0], 4);
     const uv = new Float64Array(2);
-    const sites = [...Object.values(TURF_SITES), { x: -548, z: -564 }];
+    const sites = Object.values(TURF_SITES);
     const results: { x: number; z: number; min: number; max: number }[] = [];
     for (const site of sites) {
       const { x, z } = site;
@@ -110,7 +109,7 @@ describe('world turf', () => {
       }
       let min = Infinity, max = -Infinity;
       for (let i = 0; i < 64; i++) {
-        const startX = x - 1.38 + ((i * 37) % 64) / 64 * 1.70;
+        const startX = site === TURF_SITES.seam ? x - .95 + ((i * 37) % 64) / 64 * .85 : x - 1.38 + ((i * 37) % 64) / 64 * 1.70;
         const startZ = z - 1.38 + ((i * 19 + 11) % 64) / 64 * 1.70;
         let lowest = startZ, highest = startZ + 1;
         for (let j = 0; j < 18; j++) {

@@ -8,32 +8,36 @@ const [dir = 'out/turf', backend = 'webgl2', ...sites] = process.argv.slice(2);
 const origin = process.env.WU_BASE ?? 'http://127.0.0.1:4174/world-unbound/';
 const width = Number(process.env.WU_TURF_WIDTH ?? 640);
 const views = process.env.WU_TURF_VIEWS?.split(',') ?? ['close', 'standing', 'raised'];
+const variant = process.env.WU_TURF_COMPARE;
+const references = variant === 'trial' ? [false] : variant === 'reference' ? [true] : [true, false];
+const stats = process.env.WU_TURF_STATS === '1';
 const args = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'];
 if (backend === 'webgpu') args.push('--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-vulkan=swiftshader');
 await mkdir(dir, { recursive: true });
 const browser = await chromium.launch({ executablePath: process.env.WU_CHROMIUM, args });
 try {
   for (const site of sites.length ? sites : ['slope', 'lowland', 'highland']) {
-    for (const view of views) for (const reference of [true, false]) {
+    for (const view of views) for (const reference of references) {
       const name = [reference ? 'reference' : 'trial', site, view, backend].join('-');
       const page = await browser.newPage({ viewport: { width, height: Math.round(width * 9 / 16) } });
       const problems = [];
       page.on('pageerror', error => problems.push(error.message));
       page.on('console', message => { if (message.type() === 'error') problems.push(message.text()); });
-      await page.addInitScript(() => {
+      await page.addInitScript(waitForCounts => {
         const next = window.requestAnimationFrame.bind(window);
         window.requestAnimationFrame = callback => next(function tick(time) {
           if (window.__turfFrame) return;
           callback(time);
-          if (window.__wu?.ready()) {
+          if (window.__wu?.ready() && (!waitForCounts || window.__wu.report().world.grass.worldTurf?.submittedCrowns !== null)) {
             window.__turfFrame = document.querySelector('#viewport-root canvas').toDataURL('image/png');
           }
         });
-      });
+      }, stats);
       const url = new URL(origin);
       url.search = new URLSearchParams({
         backend, q: 'med', cam: '6', hud: '0', hour: '13', wx: 'clear', scale: '1', sward: 'world',
         turfSite: site, turfView: view, turfReference: reference ? '1' : '0',
+        turfStats: stats ? '1' : '0',
       });
       await page.goto(url.href);
       await page.waitForFunction(() => window.__turfFrame || document.querySelector('#boot-message')?.textContent.startsWith('Could not start'), null, { timeout: 220_000, polling: 250 });

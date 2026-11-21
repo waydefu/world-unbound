@@ -73,6 +73,7 @@ export function parseParams(search: string): DebugParams {
   const grass = p.get('grass') !== '0';
   const sodView = p.get('sod') === 'full' && grass && terrain === 'cdlod'
     ? (view === 'standing' || view === 'elevated' || view === 'backlight' ? view : 'edge') : null;
+  const worldTurf = p.get('sward') === 'world' && grass && terrain === 'cdlod' && sodView === null;
   return {
     cam: cam === null ? (sodView === null ? 5 : 2) : Math.floor(cam),
     backend: backend === 'webgpu' || backend === 'webgl2' ? backend : 'auto',
@@ -89,11 +90,11 @@ export function parseParams(search: string): DebugParams {
     terrain,
     grass,
     sward: p.get('sward') !== '0',
-    worldTurf: p.get('sward') === 'world' && grass && terrain === 'cdlod' && sodView === null,
+    worldTurf,
     turfStats: p.get('turfStats') === '1',
-    turfSite: turfSite === 'slope' || turfSite === 'lowland' || turfSite === 'highland' ? turfSite : null,
+    turfSite: turfSite === 'slope' || turfSite === 'lowland' || turfSite === 'highland' || turfSite === 'seam' ? turfSite : null,
     turfView: turfView === 'standing' || turfView === 'raised' ? turfView : 'close',
-    turfReference: p.get('turfReference') === '1',
+    turfReference: worldTurf && p.get('turfReference') === '1',
     sodView,
     soilPreview: soil === 'dry' || soil === 'rain' || soil === 'drained' ? soil : null,
     walk: p.get('walk') === '1',

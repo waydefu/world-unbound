@@ -35,8 +35,13 @@ export function worldTurfCanopy(
     .add(root.pass.oneMinus().mul(tip.pass).mul(middle.pass).mul(root.green.mul(.68)));
   const crowns = grassCrownField(noise, xz, macro);
   const grazing = smoothstep(.09, .45, incidence).oneMinus();
-  const tone = light.div(ground.oneMinus().max(.15)).mul(4.55).add(grazing.mul(.24))
-    .add(crowns.a.sub(.5).mul(.054)).add(dot(dir, sight.xz).mul(bend).mul(.13)).clamp(.65, 1.65);
+  // Retain aggregated canopy relief after the individual leaf mips average out.
+  const patchUv = uv.sub(dir.mul(bend).mul(.047)).mul(.31);
+  const foliage = texture(layers[2], patchUv).grad(dX.mul(.31), dY.mul(.31));
+  const patch = length(foliage.rgb).mul(CANOPY_AREA_RANGE).min(1.25);
+  const tone = light.div(ground.oneMinus().max(.15)).mul(3.74).add(grazing.mul(.18))
+    .add(patch.sub(.26).mul(.17)).add(crowns.a.sub(.5).mul(.054))
+    .add(dot(dir, sight.xz).mul(bend).mul(.13)).clamp(.54, 1.45);
   const lean = dir.mul(bend).mul(.091).sub(crowns.rg.mul(2).sub(1).mul(mix(.037, .021, smoothstep(6, 23, dist))));
   return { tone, lean: vec3(lean.x, 0, lean.y), soilGaps: ground.mul(.18).add(.008).min(.13) };
 }

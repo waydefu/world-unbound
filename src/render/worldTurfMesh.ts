@@ -9,7 +9,7 @@ import {
 import { WORLD_MAX, WORLD_MIN } from '../world/constants';
 import { SOD_LEAVES_PER_CROWN, SOD_ROOT_INSET_M } from '../world/sodRoots';
 import { HEIGHT_DIM } from '../world/terrainTextures';
-import { grassCarpetColour, seasonal } from './grassPalette';
+import { seasonal } from './grassPalette';
 import { grassGust, type GrassWindUniforms } from './grassWind';
 import { CROWN_VERTICES, LEAF_VERTICES, MASTER_WIDTH } from './worldTurfAssets';
 
@@ -44,6 +44,7 @@ export function worldTurfMesh(geometry: InstancedBufferGeometry, root: Node<'vec
   const bladeHeight = varyingProperty('float', 'worldTurfHeight');
   const moisture = varyingProperty('float', 'worldTurfMoisture');
   const visibility = varyingProperty('float', 'worldTurfVisibility');
+  const normalDetail = varyingProperty('float', 'worldTurfNormalDetail');
   const tables = master.map(tex => texture(tex));
   const ground = texture(height);
   const terrainY = (x: Node<'float'>, z: Node<'float'>) =>
@@ -77,6 +78,7 @@ export function worldTurfMesh(geometry: InstancedBufferGeometry, root: Node<'vec
     const distance = length(r.xyz.sub(eye)).max(.01);
     const coverage = reference ? float(1) : smoothstep(.72, 1.25, reach.div(distance));
     visibility.assign(coverage);
+    normalDetail.assign(reference ? float(1) : mix(1, .44, smoothstep(.65, 2.55, distance)));
     const h = p.y.sub(leaf.y);
     bladeHeight.assign(h);
     const gust = grassGust(base, phase, wind);
@@ -93,10 +95,10 @@ export function worldTurfMesh(geometry: InstancedBufferGeometry, root: Node<'vec
   })();
   const native = seasonal(pigment.mul(vec3(.26, .34, .19)), season);
   const contact = mix(.60, 1, smoothstep(.006, .076, bladeHeight));
-  material.colorNode = mix(grassCarpetColour(season), native, visibility).mul(contact)
+  material.colorNode = native.mul(contact)
     .mul(mix(1, .91, smoothstep(.45, .95, moisture)));
   if (!reference) material.opacityNode = visibility;
-  material.normalNode = transformNormalToView(normal);
+  material.normalNode = transformNormalToView(normalize(mix(vec3(0, 1, 0), normal, normalDetail)));
   material.aoNode = mix(.44, 1, smoothstep(0, .065, bladeHeight));
   material.thicknessColorNode = pigment.mul(vec3(.27, .30, .13));
   material.thicknessAttenuationNode = visibility.mul(.29);
