@@ -22,8 +22,18 @@ declare global {
 async function boot(): Promise<void> {
   const bootScreen = document.getElementById('boot') as HTMLElement;
   const bootMessage = document.getElementById('boot-message') as HTMLElement;
+  const bootProgress = document.getElementById('boot-progress') as HTMLProgressElement;
+  const retry = document.getElementById('boot-retry') as HTMLButtonElement;
   const viewportRoot = document.getElementById('viewport-root') as HTMLElement;
   const hudRoot = document.getElementById('hud-root') as HTMLElement;
+  retry.addEventListener('click', () => location.reload());
+  let failed = false;
+  const progress = (percent: number, message: string): void => {
+    if (failed) return;
+    bootProgress.value = Math.max(bootProgress.value, percent);
+    bootMessage.textContent = message;
+    if (percent === 100) bootScreen.hidden = true;
+  };
   try {
     const params = parseParams(location.search);
     const session = beginSession();
@@ -31,6 +41,7 @@ async function boot(): Promise<void> {
     if (!capabilities.webgl2 && !capabilities.webgpu.adapter) {
       throw new Error('This browser offers neither WebGPU nor WebGL2.');
     }
+    progress(5, 'Loading terrain');
     const quality = chooseQuality(params.quality, {
       mobile: capabilities.mobile,
       recoveredFromCrash: session.recoveredFromCrash,
@@ -43,6 +54,7 @@ async function boot(): Promise<void> {
       recoveredFromCrash: session.recoveredFromCrash,
       viewportRoot,
       hudRoot,
+      progress,
     });
     window.__wu = {
       ready: () => app.ready,
@@ -50,10 +62,11 @@ async function boot(): Promise<void> {
       setCamera: (index) => app.setCamera(index),
       simulateDeviceLost: () => app.recoverFromDeviceLoss(),
     };
-    bootScreen.hidden = true;
   } catch (err) {
+    failed = true;
     console.error(err);
     bootMessage.textContent = `Could not start: ${err instanceof Error ? err.message : String(err)}`;
+    retry.hidden = false;
   }
 }
 

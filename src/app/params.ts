@@ -1,7 +1,7 @@
 /** URL debug parameters (pure parsing; invalid values fall back to defaults). */
 import { WEATHERS, type Weather } from '../env/weather';
 import type { BackendChoice } from '../render/renderer';
-import { CAMERAS } from './cameras';
+import { CAMERAS, type TurfSite, type TurfView } from './cameras';
 import type { SoilPreview } from './soilRuntime';
 
 export type { BackendChoice, Weather };
@@ -34,6 +34,11 @@ export interface DebugParams {
   grass: boolean;
   /** The grass sod on CDLOD. Use ?sward=0 to restore the previous procedural grass. */
   sward: boolean;
+  worldTurf: boolean;
+  turfStats: boolean;
+  turfSite: TurfSite | null;
+  turfView: TurfView;
+  turfReference: boolean;
   /** ?sod=full compares the complete high-poly tile on camera 2. */
   sodView: SodView | null;
   /** Deterministic soil moisture states for fixed-light A/B captures. */
@@ -62,6 +67,8 @@ export function parseParams(search: string): DebugParams {
   const day = numberIn(p.get('day'), 0, 32);
   const view = p.get('sodView');
   const soil = p.get('soil');
+  const turfSite = p.get('turfSite');
+  const turfView = p.get('turfView');
   const terrain = p.get('terrain') === 'chunks' ? 'chunks' : 'cdlod';
   const grass = p.get('grass') !== '0';
   const sodView = p.get('sod') === 'full' && grass && terrain === 'cdlod'
@@ -82,6 +89,11 @@ export function parseParams(search: string): DebugParams {
     terrain,
     grass,
     sward: p.get('sward') !== '0',
+    worldTurf: p.get('sward') === 'world' && grass && terrain === 'cdlod' && sodView === null,
+    turfStats: p.get('turfStats') === '1',
+    turfSite: turfSite === 'slope' || turfSite === 'lowland' || turfSite === 'highland' ? turfSite : null,
+    turfView: turfView === 'standing' || turfView === 'raised' ? turfView : 'close',
+    turfReference: p.get('turfReference') === '1',
     sodView,
     soilPreview: soil === 'dry' || soil === 'rain' || soil === 'drained' ? soil : null,
     walk: p.get('walk') === '1',

@@ -13,6 +13,28 @@
 
 [核准的 1 m² 原模與遊戲對照](g2.1-real-turf-field.md#原模直接繪製) · [視覺審查流程](../process/visual-review.md#worldwide-turf-acceptance)
 
+## 全域草毯試玩
+
+以 `?sward=world&cam=6&q=med` 進入試玩。`?sward=baseline` 回到現行草地，`?sward=0` 使用舊程序草。`?sod=full` 查看完整母版。
+
+- `turfSite=slope|lowland|highland` 固定驗收地點，世界座標依序為 (20, −40)、(684, 444)、(−660, 492)。`turfView=close|standing|raised` 指定離地 0.16、1.2、7.2 m 的角度。`turfReference=1` 在 4 × 4 m 的展示範圍內繪製全部原模草葉，保留原始根位排列及分簇，逐葉貼地。普通試玩可用 `walk=1` 沿測試路線移動或在 6 號鏡頭拖曳。
+- `Graphics` 可選 Auto、Low、Medium、High 及自動或固定 100% 渲染比例。套用會在目前場景網址重載。開始畫面的進度由裝置偵測、已驗證的 16 塊地形、場景、暖機和首張可用畫面推進。
+- 母版打包全部 8,836 簇，各含九葉。葉片拓撲維持 22 個三角形，位置以約 4.9 μm 量化，法線和葉色也使用量化格式。連續世界座標讓相鄰的根取用母版相鄰的葉形及色彩，保留這些細節在母版上的局部關聯。根位遵循真實坡面，幾何與材質共用植被格線遮罩。
+- 近處至站姿腳邊使用全密度、完整拓撲，依草簇的螢幕投影漸退，葉片保持高度。過渡以世界座標雜湊做覆蓋率，在真機移動中仍需檢查閃爍。遠景由母版三角形烘出三層的投影葉面積與葉色，在地形材質沿視線積分並隨風位移。Low 使用這套草層。試玩版的幾何投影距離參數暫限 2.35–3.0 m，半徑外的表面效果仍需驗收。
+- WebGPU 用 TSL 收集可見實例並間接繪製。WebGL2 用 CPU 篩選同一份世界座標資料。`turfStats=1` 開啟 GPU 間接計數非同步採樣與 16 m 網格的遠景視錐面積估算。面積包含可能被近處地形遮擋的地面。效能測試移除診斷參數，整幀時間以 JSON 的 frame intervals 為準。
+
+以現有完整母版重建兩個資產並擷取試玩前後對照。
+
+```sh
+python3 tools/bake-world-turf.py assets/grass/sod-full.bin assets/grass
+npm run build
+npm run preview -- --port 4174
+# 在另一個終端機
+node tools/turf-capture.mjs out/turf webgl2 slope lowland highland
+```
+
+所有場景的畫質與手機 WebGPU 效能仍依全域驗收標準確認。
+
 ## 表土與水
 
 - Hellesylt 地表母質採 © Norges geologiske undersøkelse (NGU) 區域鬆散沉積物分類。按 EPSG:25832 裁切為現有地形邊界，重柵格化為 16 m 採樣。NGU 來源尺度為約 1:100,000–1:500,000。cam 1（6.872755° E、62.084569° N）為河流沉積物，cam 2（6.870350° E、62.083365° N）為崩塌堆積；16 m 是遊戲運算格距。六個測試點在 NIBIO 查不到可用的表土或排水資料。[NGU 資料集](https://data.norge.no/en/datasets/4c8bdb99-68e3-317c-922f-a77d1f21e309/losmasser-regionalt) · [NLOD 1.0](https://data.norge.no/nlod/en/1.0) · [NIBIO Kilden](https://kilden.nibio.no/)

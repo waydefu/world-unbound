@@ -4,6 +4,7 @@
  * mobile compositing cheap.
  */
 import { fullscreenSupported, toggleFullscreen, watchFullscreen } from './fullscreen';
+import { graphicsButton } from './graphics';
 
 /** Terrain attribution required by the CC BY 4.0 licence of the Kartverket data; always on screen. */
 export const TERRAIN_CREDIT = 'Terrain © Kartverket (CC BY 4.0), modified';
@@ -11,6 +12,7 @@ export const TERRAIN_CREDIT = 'Terrain © Kartverket (CC BY 4.0), modified';
 export interface HudActions {
   setCamera(index: number): void;
   exportReport(): void;
+  graphics(): { camera: number; tier: string; scale: number };
 }
 
 interface HudCamera {
@@ -36,6 +38,7 @@ export class Hud {
       bar.append(b);
     });
     bar.append(button('JSON', () => actions.exportReport()));
+    bar.append(graphicsButton(parent, actions.graphics));
     if (fullscreenSupported()) {
       const full = button('⛶', () => toggleFullscreen());
       full.setAttribute('aria-label', 'Fullscreen');
