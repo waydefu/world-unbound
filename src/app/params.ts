@@ -3,7 +3,7 @@ import { WEATHERS, type Weather } from '../env/weather';
 import type { BackendChoice } from '../render/renderer';
 import { CAMERAS, type TurfSite, type TurfView } from './cameras';
 import type { SoilPreview } from './soilRuntime';
-import type { TurfBenchmark } from '../world/turfPopulation';
+import type { TurfBenchmark, TurfTrial } from '../world/turfPopulation';
 
 export type { BackendChoice, Weather };
 export type QualityName = 'low' | 'med' | 'high';
@@ -39,6 +39,7 @@ export interface DebugParams {
   turfStats: boolean;
   turfBench: TurfBenchmark | null;
   turfLod: 20 | 30 | null;
+  turfTrial: TurfTrial | null;
   turfSite: TurfSite | null;
   turfView: TurfView;
   turfReference: boolean;
@@ -81,6 +82,8 @@ export function parseParams(search: string): DebugParams {
   const turfBench = worldTurf ? (rawBench === 'all' ? 'all' : numberIn(rawBench, 0, 64)) : null;
   const turfReference = worldTurf && turfBench === null && p.get('turfReference') === '1';
   const lod = p.get('turfLod');
+  const trial = p.get('turfTrial');
+  const turfLod = worldTurf && turfBench === null && !turfReference ? (lod === '30' ? 30 : lod === '20' ? 20 : null) : null;
   return {
     cam: cam === null ? (sodView === null ? 5 : 2) : Math.floor(cam),
     backend: backend === 'webgpu' || backend === 'webgl2' ? backend : 'auto',
@@ -100,7 +103,8 @@ export function parseParams(search: string): DebugParams {
     worldTurf,
     turfStats: p.get('turfStats') === '1',
     turfBench,
-    turfLod: worldTurf && turfBench === null && !turfReference ? (lod === '30' ? 30 : lod === '20' ? 20 : null) : null,
+    turfLod,
+    turfTrial: turfLod !== null && (trial === 'mesh' || trial === 'canopy') ? trial : null,
     turfSite: turfSite === 'slope' || turfSite === 'lowland' || turfSite === 'highland' || turfSite === 'seam' ? turfSite : null,
     turfView: turfView === 'standing' || turfView === 'raised' || turfView === 'wide' ? turfView : 'close',
     turfReference,

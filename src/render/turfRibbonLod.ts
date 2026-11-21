@@ -3,7 +3,7 @@ import {
   LinearFilter, LinearMipmapLinearFilter, Matrix4, Mesh, MeshPhysicalNodeMaterial, RGFormat, UnsignedByteType, Vector3,
   type PerspectiveCamera,
 } from 'three/webgpu';
-import { attribute, cos, Fn, mix, positionGeometry, sin, smoothstep, texture, transformNormalToView, uv, vec2, vec3 } from 'three/tsl';
+import { abs, attribute, cos, Fn, mix, positionGeometry, positionWorld, sin, smoothstep, texture, transformNormalToView, uv, vec2, vec3 } from 'three/tsl';
 import { frustumPlanes } from '../world/cdlodMath';
 import { WORLD_MAX, WORLD_MIN } from '../world/constants';
 import { heightAt } from '../world/heightField';
@@ -55,7 +55,7 @@ export class TurfRibbonLod {
   readonly gpuBytes: number;
 
   private constructor(atlas: DataTexture, height: DataTexture, private readonly terrain: TerrainTextureData,
-    private readonly range: number, native: WorldTurf, wind: GrassWindUniforms, shadows: boolean) {
+    private readonly range: number, native: WorldTurf, wind: GrassWindUniforms, shadows: boolean, private readonly proxy: boolean) {
     const geometry = new InstancedBufferGeometry();
     geometry.setAttribute('position', new BufferAttribute(new Float32Array([
       -.5, 0, 0, .5, 0, 0, -.5, 1, 0, .5, 1, 0,
@@ -70,7 +70,7 @@ export class TurfRibbonLod {
     const root = attribute('ribbonRoot', 'vec4');
     const atlasSample = texture(atlas, uv());
     const d = root.xyz.sub(native.eye).length().max(.01);
-    const near = nativeTurfCoverage(d).oneMinus();
+    const near = proxy ? smoothstep(native.detailReach.x, native.detailReach.y, d) : nativeTurfCoverage(d).oneMinus();
     const far = smoothstep(range * .75, range, d).oneMinus();
     const material = new MeshPhysicalNodeMaterial({ side: DoubleSide, roughness: .88, specularIntensity: .12,
       transparent: true, depthWrite: false, alphaTest: .035, forceSinglePass: true });
@@ -89,7 +89,15 @@ export class TurfRibbonLod {
     })();
     material.normalNode = transformNormalToView(vec3(0, 1, 0));
     material.colorNode = grassCarpetColour(native.season).mul(mix(.78, 1.06, atlasSample.g)).mul(mix(.94, 1.07, uv().y));
-    material.opacityNode = atlasSample.r.mul(smoothstep(0, .23, uv().y)).mul(near).mul(far);
+    const alpha = atlasSample.r.mul(smoothstep(0, .23, uv().y));
+    // Split the atlas opacity between crossed projections in optical-depth space.
+    if (proxy) {
+      // Side silhouettes are strongest at grazing angles; the three ground layers cover overhead views.
+      const sideWeight = mix(.5, .13, smoothstep(.35, .86, abs(positionWorld.normalize().y)));
+      material.opacityNode = alpha.min(.999).oneMinus().pow(near.mul(far).mul(sideWeight)).oneMinus();
+    } else {
+      material.opacityNode = alpha.mul(near).mul(far);
+    }
     const mesh = new Mesh(geometry, material);
     mesh.frustumCulled = false;
     mesh.receiveShadow = shadows;
@@ -99,8 +107,8 @@ export class TurfRibbonLod {
     this.gpuBytes = this.roots.array.byteLength + Math.ceil(ATLAS_BYTES * 4 / 3);
   }
 
-  static async load(height: DataTexture, terrain: TerrainTextureData, range: number, native: WorldTurf, wind: GrassWindUniforms, shadows: boolean) {
-    return new TurfRibbonLod(await loadSideAtlas(), height, terrain, range, native, wind, shadows);
+  static async load(height: DataTexture, terrain: TerrainTextureData, range: number, native: WorldTurf, wind: GrassWindUniforms, shadows: boolean, proxy: boolean) {
+    return new TurfRibbonLod(await loadSideAtlas(), height, terrain, range, native, wind, shadows, proxy);
   }
 
   /** @hot Update only after leaving the padded view window. */
@@ -128,13 +136,14 @@ export class TurfRibbonLod {
     const back = Math.ceil(Math.max(WORLD_MIN, z - radius) / STEP_M);
     const front = Math.floor(Math.min(WORLD_MAX, z + radius) / STEP_M);
     const r2 = radius ** 2;
-    const hidden2 = (TURF_NATIVE_FADE_START_M - CAMERA_SLACK_M) ** 2;
+    const hidden2 = this.proxy ? 0 : (TURF_NATIVE_FADE_START_M - CAMERA_SLACK_M) ** 2;
     const roots = this.roots.array;
     let at = 0;
+    const jitter = this.proxy ? STEP_M : .11;
     for (let iz = back; iz <= front; iz++) for (let ix = left; ix <= right; ix++) {
       const seed = sodHash(Math.imul(ix, 73856093) ^ Math.imul(iz, 19349663));
-      const wx = ix * STEP_M + ((seed & 255) / 255 - .5) * .11;
-      const wz = iz * STEP_M + ((seed >>> 8 & 255) / 255 - .5) * .11;
+      const wx = ix * STEP_M + ((seed & 255) / 255 - .5) * jitter;
+      const wz = iz * STEP_M + ((seed >>> 8 & 255) / 255 - .5) * jitter;
       const dx = wx - x, dz = wz - z;
       const xz2 = dx * dx + dz * dz;
       if (xz2 >= r2 || !turfEligible(this.terrain, wx, wz)) continue;

@@ -69,6 +69,9 @@ describe('world turf', () => {
     expect(master[0].image.height).toBe(MASTER_HEIGHT);
     expect(decodeTurfCanopy(asBuffer(asset('sod-world-canopy'))).every(texture => texture.generateMipmaps)).toBe(true);
     expect(worldTurfGeometry().index?.count).toBe(9 * 22 * 3);
+    const reduced = worldTurfGeometry(true).index;
+    expect(reduced?.count).toBe(9 * 10 * 3);
+    expect(new Set(reduced?.array).size).toBe(9 * 10);
   });
 
   it('preserves the scene in the graphics menu and keeps world turf opt-in', () => {
@@ -88,6 +91,12 @@ describe('world turf', () => {
     expect(parseParams('?sward=world&turfLod=20').turfLod).toBe(20);
     expect(parseParams('?sward=world&turfLod=30&turfBench=all').turfLod).toBeNull();
     expect(parseParams('?sward=world&turfLod=30&turfReference=1').turfLod).toBeNull();
+    expect(parseParams('?sward=world&turfLod=30&turfTrial=canopy').turfTrial).toBe('canopy');
+    expect(parseParams('?sward=world&turfLod=20&turfTrial=mesh').turfTrial).toBe('mesh');
+    for (const query of ['', '&turfStats=1']) {
+      expect(parseParams(`?sward=world&turfTrial=canopy${query}`).turfTrial).toBeNull();
+    }
+    expect(parseParams('?sward=world&turfLod=30&turfTrial=mesh&turfBench=all').turfTrial).toBeNull();
   });
 
   it('preserves native roots across real terrain samples and the 13 m draw batches', async () => {
@@ -128,7 +137,27 @@ describe('world turf', () => {
     }
     expect(farRoots).toBeGreaterThan(0);
     expect(farthest).toBeLessThanOrEqual(13);
-    console.log('13 m standing turf draw', JSON.stringify({ crowns: render.submittedCrowns, batches: render.residentBatches, farRoots }));
+    const selectTrial = (trial: 'mesh' | 'canopy') => {
+      const root = new Group();
+      const options = { master: assets, height: assets[0], water: assets[0],
+        wind: createGrassWind(), shadows: false, ribbonHandoff: true };
+      const memory = new MemoryRegistry(BUDGET_BALANCED);
+      const original = new WorldTurf(root, terrain, options, null, false, null, memory, trial);
+      const reduced = new WorldTurf(root, terrain, options, null, false, null, memory, trial, true);
+      for (const layer of [original, reduced]) {
+        layer.attach({ backend: 'webgl2' } as RendererHandle);
+        layer.update(0, view.x, view.y, view.z, camera, 270);
+        expect(layer.metrics().overflow).toBe(false);
+      }
+      return { original: original.metrics(), reduced: reduced.metrics() };
+    };
+    const mesh = selectTrial('mesh');
+    const canopy = selectTrial('canopy');
+    expect((mesh.original.submittedCrowns ?? 0) + (mesh.reduced.submittedCrowns ?? 0)).toBe(render.submittedCrowns);
+    expect(canopy.original.submittedCrowns).toBe(mesh.original.submittedCrowns);
+    expect(canopy.reduced.submittedCrowns).toBeGreaterThan(0);
+    expect(canopy.reduced.submittedCrowns).toBeLessThan((mesh.reduced.submittedCrowns ?? 0) / 20);
+    expect(canopy.reduced.submittedTriangles).toBe((canopy.reduced.submittedCrowns ?? 0) * 9 * 10);
     camera.lookAt(0, 1, 0);
     camera.updateMatrixWorld(true);
     turf.update(10, view.x, view.y, view.z, camera, 270);

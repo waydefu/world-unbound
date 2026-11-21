@@ -1,13 +1,14 @@
 # Handoff
 
-Snapshot: 2026-11-21, based on merged rooted turf and soil PR #39 and grass close-up PR #40. Read [AGENTS.md](../AGENTS.md) first (binding), then this handoff, then [INDEX.md](INDEX.md). For tools, environment and token-efficient discovery, see [process/agent-workflow.md](process/agent-workflow.md). Confirm open Issues and latest `main` before planning.
+Snapshot: 2026-11-21, based on merged global turf trial PR #42. Read [AGENTS.md](../AGENTS.md) first (binding), then this handoff, then [INDEX.md](INDEX.md). For tools, environment and token-efficient discovery, see [process/agent-workflow.md](process/agent-workflow.md). Confirm open Issues and latest `main` before planning.
 
-Base main: f8f4579cc613c1523fa5f18d8510e1a8e959e4f4
+Base main: 1e9eb1026507fd8863ba629b3bd17a2f5f227e3a
 
 ## 30-second resume (verify GitHub state before acting)
 
 - **Accepted baseline:** PRs #28–#32 merged at this snapshot; do not redo their grass/wind implementation.
 - **Current grass build:** [PR #39](https://github.com/waydefu/world-unbound/pull/39) integrated rooted turf and soil. [PR #40](https://github.com/waydefu/world-unbound/pull/40) added the rotatable `?cam=6&q=med` view. The complete master is available at `?sod=full&sodView=edge`.
+- **Turf performance experiment:** the [opt-in mesh and canopy trials](specs/s1-turf-rendering-experiment.md) compare against the merged 10–13 m handoff. Visual acceptance and the owner’s phone results are pending.
 - **Worldwide turf acceptance is pending.** The owner identified a visible ring of dense blades and flat green grass beyond it. Use the [worldwide turf standard](specs/s1-rooted-soil.md#全域草毯驗收) when changing or reviewing grass across the map.
 - **Environment work follows the same production process.** Use [environment production and acceptance](process/visual-review.md#environment-production-and-acceptance) to record the real-world reference, approve the master, and verify the result across the applicable playable area.
 - **Evidence:** prior phone/CDLOD gate passed; **latest grass WebGPU p95 and 10-minute thermal gate are not yet verified**. Headless SwiftShader is not device proof.

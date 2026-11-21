@@ -10,6 +10,16 @@ export const TURF_NATIVE_FADE_END_M = 13;
 const SUBTREES = 64;
 const MASTER_SIDE = Math.sqrt(SOD_CROWNS_PER_M2);
 export type TurfBenchmark = number | 'all';
+export type TurfTrial = 'mesh' | 'canopy';
+
+export const TURF_PROXY_CROWN_DIVISOR = 24;
+
+/** @hot Begin exchanging full topology when a 90th-percentile leaf width projects below 0.78 px. */
+export function turfDetailStart(focalPixels: number): number {
+  return Math.max(.9, Math.min(2, focalPixels * .00105 / .78));
+}
+
+export const TURF_DETAIL_BLEND = 1.52;
 
 /** Sample neighbours of the authored turf together, across a continuously warped world field. */
 function authoredVariant(x: number, z: number): number {
@@ -45,6 +55,7 @@ export interface TurfWindow {
   reference: { readonly x: number; readonly z: number } | null;
   hull?: Float32Array;
   hullMargin?: number;
+  crownDivisor?: number;
 }
 
 /** Shared grass eligibility for the world-root and material paths (RGBA8 vegetation lattice). */
@@ -70,7 +81,7 @@ export function turfVisible(planes: Float32Array, x: number, y: number, z: numbe
 /** Stable world positions before fine frustum compaction, measured against actual triangle surface area. */
 export function collectTurfRoots(terrain: TerrainTextureData, bounds: TurfWindow, out: Float32Array, uv: Float64Array,
   nextBatch?: () => Float32Array): number {
-  const { x, y, z, reach, reference, hull, hullMargin = 0 } = bounds;
+  const { x, y, z, reach, reference, hull, hullMargin = 0, crownDivisor = 1 } = bounds;
   const centreX = reference?.x ?? x;
   const centreZ = reference?.z ?? z;
   const range = reference ? 2 : reach;
@@ -93,10 +104,10 @@ export function collectTurfRoots(terrain: TerrainTextureData, bounds: TurfWindow
       const start = upper ? d : a;
       const dx = upper ? c - d : b - a;
       const dz = upper ? b - d : c - a;
-      const count = sodCrownCount(dx, dz);
+      const count = Math.ceil(sodCrownCount(dx, dz) / crownDivisor);
       const seed = sodTriangleSeed(ix, iz, upper);
       const slack = .36 + .18 * (Math.abs(dx) + Math.abs(dz));
-      for (let branch = 0; branch < SUBTREES; branch++) {
+      for (let branch = 0; branch < Math.min(SUBTREES, count); branch++) {
         sodBarycentric(branch, seed, uv, 3);
         const bx = sodWorldAxis(ix, uv[0], upper);
         const bz = sodWorldAxis(iz, uv[1], upper);

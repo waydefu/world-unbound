@@ -14,17 +14,24 @@ import { grassGust, type GrassWindUniforms } from './grassWind';
 import { terrainHeightNode } from './terrainHeightNode';
 import { CROWN_VERTICES, LEAF_VERTICES, MASTER_WIDTH } from './worldTurfAssets';
 
-export function worldTurfGeometry(): InstancedBufferGeometry {
+export const TURF_REDUCED_TRIANGLES_PER_LEAF = 10;
+const REDUCED_ROWS = [0, 2, 3] as const;
+const FULL_ROWS = [0, 1, 2, 3, 4, 5] as const;
+
+export function worldTurfGeometry(reduced = false): InstancedBufferGeometry {
   const geometry = new InstancedBufferGeometry();
   geometry.setAttribute('position', new BufferAttribute(new Float32Array(CROWN_VERTICES * 3), 3));
   const indices: number[] = [];
+  const rows = reduced ? REDUCED_ROWS : FULL_ROWS;
   for (let leaf = 0; leaf < SOD_LEAVES_PER_CROWN; leaf++) {
     const base = leaf * LEAF_VERTICES;
-    for (let row = 0; row < 5; row++) {
-      const a = base + row * 3;
-      indices.push(a, a + 3, a + 4, a, a + 4, a + 1, a + 1, a + 4, a + 5, a + 1, a + 5, a + 2);
+    for (let row = 1; row < rows.length; row++) {
+      const a = base + rows[row - 1] * 3;
+      const b = base + rows[row] * 3;
+      indices.push(a, b, b + 1, a, b + 1, a + 1, a + 1, b + 1, b + 2, a + 1, b + 2, a + 2);
     }
-    indices.push(base + 15, base + 18, base + 16, base + 16, base + 18, base + 17);
+    const last = base + rows[rows.length - 1] * 3;
+    indices.push(last, base + 18, last + 1, last + 1, base + 18, last + 2);
   }
   geometry.setIndex(new BufferAttribute(new Uint16Array(indices), 1));
   geometry.instanceCount = 0;
@@ -37,6 +44,7 @@ export interface TurfMeshOptions {
   wind: GrassWindUniforms; reference: boolean; shadows: boolean;
   unfaded: boolean;
   ribbonHandoff?: boolean;
+  proxyLeaf?: boolean;
 }
 
 export function nativeTurfCoverage(distance: Node<'float'>) {
@@ -44,7 +52,7 @@ export function nativeTurfCoverage(distance: Node<'float'>) {
 }
 
 export function worldTurfMesh(geometry: InstancedBufferGeometry, root: Node<'vec4'>, options: TurfMeshOptions): Mesh {
-  const { master, height, water, eye, season, reach, wind, reference, unfaded, ribbonHandoff } = options;
+  const { master, height, water, eye, season, reach, wind, reference, unfaded, ribbonHandoff, proxyLeaf } = options;
   const material = new MeshSSSNodeMaterial({ side: DoubleSide, roughness: .49, specularIntensity: .26, alphaHash: !unfaded });
   const pigment = varyingProperty('vec3', 'worldTurfPigment');
   const normal = varyingProperty('vec3', 'worldTurfNormal');
@@ -94,7 +102,8 @@ export function worldTurfMesh(geometry: InstancedBufferGeometry, root: Node<'vec
   })();
   const native = seasonal(pigment.mul(vec3(.26, .34, .19)), season);
   const contact = mix(.60, 1, smoothstep(.006, .076, bladeHeight));
-  const colour = canopyBlend ? mix(native.mul(contact), grassCarpetColour(season).mul(mix(.85, 1.04, pigment.g)), canopyBlend) : native.mul(contact);
+  const canopy = grassCarpetColour(season).mul(proxyLeaf ? mix(.72, .90, pigment.g) : mix(.85, 1.04, pigment.g));
+  const colour = canopyBlend ? mix(native.mul(contact), canopy, canopyBlend) : native.mul(contact);
   material.colorNode = colour
     .mul(mix(1, .91, smoothstep(.45, .95, moisture)));
   if (!unfaded) material.opacityNode = visibility;
@@ -103,10 +112,10 @@ export function worldTurfMesh(geometry: InstancedBufferGeometry, root: Node<'vec
   material.aoNode = canopyBlend ? mix(ao, .94, canopyBlend) : ao;
   if (canopyBlend) {
     material.roughnessNode = mix(.49, .87, canopyBlend);
-    material.specularIntensityNode = mix(.26, .12, canopyBlend);
+    material.specularIntensityNode = mix(.26, proxyLeaf ? .045 : .12, canopyBlend);
   }
   material.thicknessColorNode = pigment.mul(vec3(.27, .30, .13));
-  material.thicknessAttenuationNode = visibility.mul(.29);
+  material.thicknessAttenuationNode = visibility.mul(proxyLeaf ? .12 : .29);
   material.thicknessAmbientNode = float(0);
   const mesh = new Mesh(geometry, material);
   mesh.frustumCulled = false;

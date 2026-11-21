@@ -16,10 +16,11 @@ import type { RendererHandle } from '../render/renderer';
 import { TurfRibbonLod } from '../render/turfRibbonLod';
 import { WorldTurf } from '../render/worldTurf';
 import { loadTurfMaster } from '../render/worldTurfAssets';
+import { combineWorldTurfMetrics } from '../render/worldTurfMetrics';
 import { WIND_BYTES, WindTexture } from '../render/windTexture';
 import { WORLD_SEED } from '../world/constants';
 import { SOD_LEAVES_PER_M2 } from '../world/sodRoots';
-import type { TurfBenchmark } from '../world/turfPopulation';
+import type { TurfBenchmark, TurfTrial } from '../world/turfPopulation';
 import { CdlodBackend } from './cdlodBackend';
 import { type ResolvedCamera, SOD_ORIGIN, sodBaseY } from './cameras';
 import type { QualityTier } from './quality';
@@ -53,6 +54,7 @@ export interface VegetationOptions {
   readonly turfStats: boolean;
   readonly turfBench: TurfBenchmark | null;
   readonly turfLod: 20 | 30 | null;
+  readonly turfTrial: TurfTrial | null;
   readonly turfReference: { x: number; z: number } | null;
   /** Sun shadows are on (blades receive them on the med and high tiers). */
   readonly shadows: boolean;
@@ -68,6 +70,7 @@ export class VegetationBackend {
   private fullSod: { leaves: number; triangles: number } | null = null;
   private groundSod: GroundSod | null = null;
   private worldTurf: WorldTurf | null = null;
+  private foldedTurf: WorldTurf | null = null;
   private turfRibbonLod: TurfRibbonLod | null = null;
   private wind: WindTexture | null = null;
   private day = 0;
@@ -92,6 +95,7 @@ export class VegetationBackend {
     this.grass?.setSeason(w[0], w[1], w[2]);
     this.groundSod?.setSeason(w[0], w[1], w[2]);
     this.worldTurf?.season.value.set(w[0], w[1], w[2]);
+    this.foldedTurf?.season.value.set(w[0], w[1], w[2]);
     this.grass?.setWetness(WEATHER_WETNESS[weather]);
   }
 
@@ -139,18 +143,26 @@ export class VegetationBackend {
     }
     if (this.options.worldTurf && (!canopyOnly || this.options.turfReference) && terrain.soil) {
       const master = await loadTurfMaster();
-      this.worldTurf = new WorldTurf(terrain.root, terrain.data, {
+      const meshOptions = {
         master: master.textures, height: terrain.gpu.height, water: terrain.soil.textures.water,
         wind: terrain.carpetMotion, shadows: this.options.shadows && tier.name !== 'low',
         ribbonHandoff: this.options.turfLod !== null,
-      }, this.options.turfReference ? { ...this.options.turfReference, origins: master.origins } : null, this.options.turfStats, this.options.turfBench, memory);
+      };
+      const trial = this.options.turfTrial;
+      this.worldTurf = new WorldTurf(terrain.root, terrain.data, meshOptions,
+        this.options.turfReference ? { ...this.options.turfReference, origins: master.origins } : null,
+        this.options.turfStats, this.options.turfBench, memory, trial);
+      if (trial) {
+        this.foldedTurf = new WorldTurf(terrain.root, terrain.data, meshOptions, null, this.options.turfStats, null, memory, trial, true);
+        this.foldedTurf.season.value.fromArray(this.seasonWeights);
+      }
       this.worldTurf.season.value.fromArray(this.seasonWeights);
       memory.add(MemoryPartition.Gpu, master.bytes);
       memory.add(MemoryPartition.CpuRetained, master.bytes);
       uploads.add(performance.now(), master.bytes);
       if (this.options.turfLod !== null) {
         const lod = await TurfRibbonLod.load(terrain.gpu.height, terrain.data, this.options.turfLod, this.worldTurf,
-          terrain.carpetMotion, this.options.shadows);
+          terrain.carpetMotion, this.options.shadows, trial === 'canopy');
         terrain.root.add(lod.mesh);
         this.turfRibbonLod = lod;
         memory.add(MemoryPartition.CpuRetained, lod.cpuBytes);
@@ -174,6 +186,7 @@ export class VegetationBackend {
 
   setRenderer(handle: RendererHandle): void {
     this.worldTurf?.attach(handle);
+    this.foldedTurf?.attach(handle);
   }
 
   /**
@@ -200,6 +213,7 @@ export class VegetationBackend {
     if (wind === null) return;
     if (wind.update(nowMs, eye.x, eye.z, climate)) uploads.add(nowMs, WIND_BYTES);
     this.worldTurf?.update(nowMs, eye.x, eye.y, eye.z, camera, bufferHeight);
+    this.foldedTurf?.update(nowMs, eye.x, eye.y, eye.z, camera, bufferHeight);
     this.turfRibbonLod?.update(eye.x, eye.y, eye.z, camera);
     if (grass === null) {
       if (this.options.sward === true && this.options.tier.name === 'low' && this.options.terrain instanceof CdlodBackend) {
@@ -232,7 +246,13 @@ export class VegetationBackend {
     const grass = this.grass;
     state.grassEnabled = this.wind !== null || this.fullSod !== null;
     state.grassDensityM2 = state.grassEnabled && this.options.sward ? SOD_LEAVES_PER_M2 : 0;
-    state.worldTurf = this.worldTurf?.metrics() ?? null;
+    const native = this.worldTurf;
+    const folded = this.foldedTurf;
+    state.worldTurf = native?.metrics() ?? null;
+    if (native && state.worldTurf && folded && this.options.turfTrial) {
+      const detail = native.detailReach.value;
+      state.worldTurf = combineWorldTurfMetrics(state.worldTurf, folded.metrics(), this.options.turfTrial, detail.x, detail.y, folded.crownDivisor);
+    }
     if (state.worldTurf) state.worldTurf.ribbonLod = this.turfRibbonLod?.metrics() ?? null;
     state.windUpdates = this.wind?.updates ?? 0;
     if (this.fullSod) {
@@ -249,7 +269,7 @@ export class VegetationBackend {
     state.grassSodCrowns = state.worldTurf?.submittedCrowns ?? sparse + dense;
     state.grassSodTris = state.worldTurf?.submittedTriangles ?? (sod ? sparse * sod.sparse.triangles + dense * sod.dense.triangles : 0);
     state.grassCells = grass.stats.cells;
-    state.grassBlades = grass.stats.blades + state.grassSodTris / 22;
+    state.grassBlades = grass.stats.blades + (state.worldTurf?.submittedLeaves ?? state.grassSodTris / 22);
     state.grassCards = grass.stats.cards;
     state.grassTris = grass.stats.triangles + state.grassSodTris + (state.worldTurf?.ribbonLod?.triangles ?? 0);
     state.grassMs = grass.stats.ms;

@@ -84,11 +84,11 @@ export class App {
     this.clock = new EnvironmentClock(this.environment);
     this.terrain = params.terrain === 'chunks'
       ? new ChunkBackend(this.memory, noise.texture, this.environment.ocean.floorTexture, tier, this.observer.uploads)
-      : new CdlodBackend(this.memory, noise.texture, tier, this.observer.uploads, params.shadows ? tier.shadows.cascades : 0, params.sward && params.grass, params.soilPreview, !params.grass, params.worldTurf, params.turfBench !== null, params.turfLod !== null);
+      : new CdlodBackend(this.memory, noise.texture, tier, this.observer.uploads, params.shadows ? tier.shadows.cascades : 0, params.sward && params.grass, params.soilPreview, !params.grass, params.worldTurf, params.turfBench !== null, params.turfLod !== null, params.turfTrial === 'canopy');
     this.vegetation = new VegetationBackend({
       ocean: this.environment.ocean, sun: this.environment.sun, terrain: this.terrain, tier, memory: this.memory,
       uploads: this.observer.uploads, noise: noise.texture, grass: params.grass, sward: params.sward, shadows: params.shadows, fullSod: params.sodView !== null,
-      worldTurf: params.worldTurf, turfStats: params.turfStats, turfBench: params.turfBench, turfLod: params.turfLod, turfReference: params.turfReference && params.turfSite ? TURF_SITES[params.turfSite] : null,
+      worldTurf: params.worldTurf, turfStats: params.turfStats, turfBench: params.turfBench, turfLod: params.turfLod, turfTrial: params.turfTrial, turfReference: params.turfReference && params.turfSite ? TURF_SITES[params.turfSite] : null,
     });
     this.observer.setMeshes(this.environment.sky.mesh, this.environment.ocean.mesh, this.terrain.farMesh);
     this.terrain.attachSun(this.environment.sun);
@@ -209,10 +209,10 @@ export class App {
       timestampQuery: this.options.capabilities.webgpu.features.includes('timestamp-query'),
     });
     if (old.backend === 'webgpu' && this.handle.backend === 'webgl2' && !this.handle.fallbackReason) {
-      this.handle.fallbackReason = 'WebGPU device lost and no adapter was available';
+      const repeated = this.state.deviceLostCount >= 2;
+      this.handle.fallbackReason = repeated ? 'WebGPU device lost again after recovery' : 'WebGPU device lost and no adapter was available';
     }
     this.attachRenderer();
-    // The new renderer rebuilds every pipeline: all of them count as created after warm-up.
     this.observer.pipelineBaseline = 0;
     this.state.fallbackReason = this.handle.fallbackReason;
     this.updateStatus();

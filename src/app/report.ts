@@ -4,7 +4,7 @@ import type { MemoryRegistry } from '../perf/memoryRegistry';
 import type { CapabilityReport } from '../platform/capabilities';
 import { TERRAIN_VERSION } from '../world/constants';
 import type { SoilWaterGrid } from '../world/soilWater';
-import type { WorldTurfMetrics } from '../render/worldTurf';
+import type { WorldTurfMetrics } from '../render/worldTurfMetrics';
 import type { DebugParams } from './params';
 
 /** Live values the app exposes for the HUD and the exported report. */
