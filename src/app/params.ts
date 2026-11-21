@@ -1,6 +1,7 @@
 /** URL debug parameters (pure parsing; invalid values fall back to defaults). */
 import { WEATHERS, type Weather } from '../env/weather';
 import type { BackendChoice } from '../render/renderer';
+import { CAMERAS } from './cameras';
 import type { SoilPreview } from './soilRuntime';
 
 export type { BackendChoice, Weather };
@@ -8,7 +9,7 @@ export type QualityName = 'low' | 'med' | 'high';
 export type SodView = 'edge' | 'standing' | 'elevated' | 'backlight';
 
 export interface DebugParams {
-  /** Fixed test camera 0..5. */
+  /** Index of a fixed test camera. */
   cam: number;
   backend: BackendChoice;
   /** null = choose automatically from device capabilities. */
@@ -41,7 +42,6 @@ export interface DebugParams {
   walk: boolean;
 }
 
-export const CAMERA_COUNT = 6;
 /** Late spring: long evenings, so the dusk camera gets a real golden hour. */
 export const DEFAULT_DAY = 6;
 const QUALITIES: readonly QualityName[] = ['low', 'med', 'high'];
@@ -54,7 +54,7 @@ function numberIn(raw: string | null, min: number, max: number): number | null {
 
 export function parseParams(search: string): DebugParams {
   const p = new URLSearchParams(search);
-  const cam = numberIn(p.get('cam'), 0, CAMERA_COUNT - 1);
+  const cam = numberIn(p.get('cam'), 0, CAMERAS.length - 1);
   const backend = p.get('backend');
   const q = p.get('q') as QualityName | null;
   const wx = p.get('wx') as Weather | null;

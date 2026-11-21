@@ -92,7 +92,7 @@ export class App {
     this.hud = new Hud(options.hudRoot, {
       setCamera: (index) => this.setCamera(index),
       exportReport: () => downloadJson(`world-unbound-telemetry-${Date.now()}.json`, this.report()),
-    }, params.hud, CAMERAS.map((c) => c.name));
+    }, params.hud, CAMERAS);
     this.state = createAppState(tier, params, options.recoveredFromCrash, this.clock.lutMs, VARIANT_BUDGET[tier.name]);
   }
 
@@ -236,7 +236,7 @@ export class App {
     this.state.cameraIndex = CAMERAS.indexOf(spec);
     this.state.cameraName = sodView ? `sod-master-${sodView}` : spec.name;
     this.camera.fov = this.eye.fovDeg;
-    this.camera.near = sodView ? 0.025 : 0.3;
+    this.camera.near = sodView ? 0.025 : spec.nearM ?? 0.3;
     this.camera.updateProjectionMatrix();
     // The camera stays at the origin; the world is translated around it.
     this.camera.position.set(0, 0, 0);

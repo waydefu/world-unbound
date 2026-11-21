@@ -1,6 +1,7 @@
 import { Frustum, Matrix4, PerspectiveCamera } from 'three/webgpu';
 import { describe, expect, it } from 'vitest';
 import { CAMERAS, resolveCamera, type ResolvedCamera } from '../src/app/cameras';
+import { parseParams } from '../src/app/params';
 import {
   CdlodSelector, EDGE_COARSER, EDGE_FINER, MAX_NODES, edgeState, frustumPlanes, lodRange, morphEnd, morphStart,
 } from '../src/world/cdlod';
@@ -180,6 +181,19 @@ describe('CDLOD selection', () => {
         expect(coverage(sel).every((v) => v === 1)).toBe(true);
       }
     }
+  });
+
+  it('opens the live grass close-up over the same patch as camera 2', () => {
+    expect(parseParams('')).toMatchObject({ cam: 5 });
+    expect(parseParams('?cam=6')).toMatchObject({ cam: 6, sodView: null });
+    const spec = CAMERAS[6];
+    const standing: ResolvedCamera = { x: 0, y: 0, z: 0, targetX: 0, targetY: 0, targetZ: 0, fovDeg: 60 };
+    resolveCamera(CAMERAS[2], standing);
+    const close = resolveCamera(spec, { ...standing });
+    expect(close).toMatchObject({ x: standing.x, z: standing.z });
+    expect(standing.y - close.y).toBeCloseTo(1.04);
+    expect(close.targetY).toBeLessThan(close.y);
+    expect(spec.nearM).toBeLessThan(0.1);
   });
 
   it('is stable: an unchanged eye and frustum report no change, a moved eye does', () => {
