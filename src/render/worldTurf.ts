@@ -7,7 +7,7 @@ import { frustumPlanes } from '../world/cdlodMath';
 import { WORLD_MAX, WORLD_MIN } from '../world/constants';
 import { SOD_LEAVES_PER_CROWN } from '../world/sodRoots';
 import { HEIGHT_DIM, type TerrainTextureData } from '../world/terrainTextures';
-import { collectTurfMasterReference, collectTurfRoots, TURF_CROWN_PADDING_M, TURF_CROWN_SPACING_M, turfEligible, turfVisible } from '../world/turfPopulation';
+import { collectTurfMasterReference, collectTurfRoots, TURF_CROWN_PADDING_M, TURF_CROWN_SPACING_M, turfEligible, turfVisible, type TurfBenchmark } from '../world/turfPopulation';
 import type { RendererHandle } from './renderer';
 import { worldTurfGeometry, worldTurfMesh, type TurfMeshOptions } from './worldTurfMesh';
 
@@ -37,6 +37,7 @@ export interface WorldTurfMetrics {
   proxyFrustumAreaEstimateM2: number | null;
   drawCalls: number;
   gpuSampleAgeMs: number | null;
+  benchmark: { radius: TurfBenchmark; candidateCapacity: number; frustumGrassAreaEstimateM2: number | null } | null;
 }
 
 export class WorldTurf {
@@ -71,8 +72,9 @@ export class WorldTurf {
   private overflow = false;
 
   constructor(private readonly root: Group, private readonly terrain: TerrainTextureData,
-    private readonly options: Omit<TurfMeshOptions, 'eye' | 'season' | 'reach' | 'reference'>,
-    private readonly reference: { readonly x: number; readonly z: number; readonly origins: Float32Array } | null, private readonly diagnostic: boolean) {
+    private readonly options: Omit<TurfMeshOptions, 'eye' | 'season' | 'reach' | 'reference' | 'unfaded'>,
+    private readonly reference: { readonly x: number; readonly z: number; readonly origins: Float32Array } | null,
+    private readonly diagnostic: boolean, private readonly benchmark: TurfBenchmark | null) {
     this.cpuBytes = this.candidates.byteLength + this.cpuRoots.byteLength;
     this.gpuBytes = this.candidates.byteLength + CAPACITY * 4;
   }
@@ -91,7 +93,8 @@ export class WorldTurf {
     this.lastProjection.fill(NaN);
     this.lastReach = -1;
     const geometry = worldTurfGeometry();
-    const common = { ...this.options, eye: this.eye, season: this.season, reach: this.reach, reference: this.reference !== null };
+    const common = { ...this.options, eye: this.eye, season: this.season, reach: this.reach,
+      reference: this.reference !== null, unfaded: this.reference !== null || this.benchmark !== null };
     const capacity = this.candidates.length / 4;
     if (handle.backend === 'webgpu') {
       const input = new StorageBufferAttribute(this.candidates, 4).setUsage(DynamicDrawUsage);
@@ -108,8 +111,9 @@ export class WorldTurf {
         If(id.lessThan(size), () => {
           const offset = source.element(id).xyz.sub(this.eye).toVar();
           const visibleRoot = uint(1).toVar();
-          if (!this.reference) {
-            If(length(offset).greaterThan(this.reach.div(.72).add(TURF_CROWN_PADDING_M)), () => { visibleRoot.assign(0); });
+          if (!this.reference && this.benchmark !== 'all') {
+            const limit = this.benchmark === null ? this.reach.div(.72).add(TURF_CROWN_PADDING_M) : this.reach;
+            If(length(offset).greaterThan(limit), () => { visibleRoot.assign(0); });
           }
           for (let plane = 0; plane < 6; plane++) {
             const p = this.planeNodes.element(plane);
@@ -142,7 +146,7 @@ export class WorldTurf {
   update(now: number, x: number, y: number, z: number, camera: PerspectiveCamera, bufferHeight: number): void {
     if (!this.mesh) return;
     const projected = Math.max(bufferHeight, 1) * camera.projectionMatrix.elements[5] * .5 * TURF_CROWN_SPACING_M;
-    const reach = Math.min(3.0, Math.max(2.35, projected));
+    const reach = this.benchmark === 'all' ? Infinity : this.benchmark ?? Math.min(3.0, Math.max(2.35, projected));
     this.projection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     const p = this.projection.elements;
     const eye = this.eye.value;
@@ -172,11 +176,11 @@ export class WorldTurf {
     const start = performance.now();
     this.anchor.set(x, y, z);
     this.lastReach = reach;
-    const radius = reach / .72 + TURF_CROWN_PADDING_M + WINDOW_SLACK;
+    const radius = (this.benchmark === null ? reach / .72 + TURF_CROWN_PADDING_M : reach) + WINDOW_SLACK;
     const count = this.reference ? collectTurfMasterReference(this.terrain, this.reference, this.reference.origins, this.candidates) : collectTurfRoots(this.terrain, {
       x, y, z, reach: radius, reference: null, hull: this.planes,
       // A plane can rotate by ten degrees before the window is rebuilt. Also cover eye translation and complete blades.
-      hullMargin: radius * .20 + WINDOW_SLACK + TURF_CROWN_PADDING_M,
+      hullMargin: this.benchmark === 'all' ? TURF_CROWN_PADDING_M : radius * .20 + WINDOW_SLACK + TURF_CROWN_PADDING_M,
     }, this.candidates, this.uv);
     this.overflow = count < 0;
     this.count = Math.max(0, count);
@@ -195,7 +199,7 @@ export class WorldTurf {
       for (let i = 0; i < 6; i++) this.vectors[i].fromArray(this.planes, i * 4);
       this.gpu.run(this.count);
     } else if (this.instance && this.mesh) {
-      const limit = (this.reach.value / .72 + TURF_CROWN_PADDING_M) ** 2;
+      const limit = (this.benchmark === null ? this.reach.value / .72 + TURF_CROWN_PADDING_M : this.reach.value) ** 2;
       let size = 0;
       for (let i = 0; i < this.count * 4; i += 4) {
         const dx = this.candidates[i] - x, dy = this.candidates[i + 1] - y, dz = this.candidates[i + 2] - z;
@@ -231,10 +235,8 @@ export class WorldTurf {
   }
 
   /** A frustum estimate from 16 m ground samples. Includes terrain that may be occluded by nearer ground. */
-  private proxyArea(): number | null {
-    if (!this.diagnostic) return null;
+  private frustumArea(reach: number): number {
     const eye = this.eye.value;
-    const reach = this.reach.value / .72;
     const h = this.terrain.height;
     let area = 0;
     for (let z = WORLD_MIN + 8; z < WORLD_MAX; z += 16) for (let x = WORLD_MIN + 8; x < WORLD_MAX; x += 16) {
@@ -255,7 +257,12 @@ export class WorldTurf {
       submittedCrowns: this.drawn, submittedLeaves: this.drawn === null ? null : this.drawn * SOD_LEAVES_PER_CROWN,
       submittedTriangles: this.drawn === null ? null : this.drawn * SOD_LEAVES_PER_CROWN * 22,
       candidateCrowns: this.count, overflow: this.overflow, collectMs: this.collectMs, selectMs: this.selectMs,
-      gpuComputeMs: this.gpuComputeMs, proxyFrustumAreaEstimateM2: this.proxyArea(),
+      gpuComputeMs: this.gpuComputeMs,
+      proxyFrustumAreaEstimateM2: this.diagnostic && this.benchmark === null ? this.frustumArea(this.reach.value / .72) : null,
+      benchmark: this.benchmark === null ? null : {
+        radius: this.benchmark, candidateCapacity: CAPACITY,
+        frustumGrassAreaEstimateM2: this.benchmark === 'all' ? this.frustumArea(0) : null,
+      },
       drawCalls, gpuSampleAgeMs: this.gpu && this.drawn !== null ? Math.round(performance.now() - this.lastCountAt) : null,
     };
   }

@@ -7,6 +7,7 @@ export const TURF_CROWN_PADDING_M = .14;
 export const TURF_CROWN_SPACING_M = 1 / Math.sqrt(SOD_CROWNS_PER_M2);
 const SUBTREES = 64;
 const MASTER_SIDE = Math.sqrt(SOD_CROWNS_PER_M2);
+export type TurfBenchmark = number | 'all';
 
 /** Sample neighbours of the authored turf together, across a continuously warped world field. */
 function authoredVariant(x: number, z: number): number {
@@ -79,6 +80,11 @@ export function collectTurfRoots(terrain: TerrainTextureData, bounds: TurfWindow
   for (let iz = minZ; iz <= maxZ; iz++) for (let ix = minX; ix <= maxX; ix++) {
     const i = iz * HEIGHT_DIM + ix;
     const a = h[i]; const b = h[i + 1]; const c = h[i + HEIGHT_DIM]; const d = h[i + HEIGHT_DIM + 1];
+    if (!Number.isFinite(reach) && hull) {
+      const low = Math.min(a, b, c, d), high = Math.max(a, b, c, d);
+      if (high <= .08 || !turfVisible(hull, WORLD_MIN + ix * 2 + 1 - x, (low + high) * .5 - y,
+        WORLD_MIN + iz * 2 + 1 - z, Math.hypot(1, (high - low) * .5, 1) + hullMargin)) continue;
+    }
     for (let upper = 0; upper < 2; upper++) {
       const start = upper ? d : a;
       const dx = upper ? c - d : b - a;

@@ -34,11 +34,12 @@ export interface TurfMeshOptions {
   master: readonly DataTexture[]; height: DataTexture; water: DataTexture;
   eye: UniformNode<'vec3', Vector3>; season: UniformNode<'vec3', Vector3>; reach: UniformNode<'float', number>;
   wind: GrassWindUniforms; reference: boolean; shadows: boolean;
+  unfaded: boolean;
 }
 
 export function worldTurfMesh(geometry: InstancedBufferGeometry, root: Node<'vec4'>, options: TurfMeshOptions): Mesh {
-  const { master, height, water, eye, season, reach, wind, reference } = options;
-  const material = new MeshSSSNodeMaterial({ side: DoubleSide, roughness: .49, specularIntensity: .26, alphaHash: !reference });
+  const { master, height, water, eye, season, reach, wind, reference, unfaded } = options;
+  const material = new MeshSSSNodeMaterial({ side: DoubleSide, roughness: .49, specularIntensity: .26, alphaHash: !unfaded });
   const pigment = varyingProperty('vec3', 'worldTurfPigment');
   const normal = varyingProperty('vec3', 'worldTurfNormal');
   const bladeHeight = varyingProperty('float', 'worldTurfHeight');
@@ -76,7 +77,7 @@ export function worldTurfMesh(geometry: InstancedBufferGeometry, root: Node<'vec
     const upper = d.add(cc.sub(d).mul(f.x.oneMinus())).add(b.sub(d).mul(f.y.oneMinus()));
     const y = f.x.add(f.y).lessThanEqual(1).select(lower, upper);
     const distance = length(r.xyz.sub(eye)).max(.01);
-    const coverage = reference ? float(1) : smoothstep(.72, 1.25, reach.div(distance));
+    const coverage = unfaded ? float(1) : smoothstep(.72, 1.25, reach.div(distance));
     visibility.assign(coverage);
     normalDetail.assign(reference ? float(1) : mix(1, .44, smoothstep(.65, 2.55, distance)));
     const h = p.y.sub(leaf.y);
@@ -97,7 +98,7 @@ export function worldTurfMesh(geometry: InstancedBufferGeometry, root: Node<'vec
   const contact = mix(.60, 1, smoothstep(.006, .076, bladeHeight));
   material.colorNode = native.mul(contact)
     .mul(mix(1, .91, smoothstep(.45, .95, moisture)));
-  if (!reference) material.opacityNode = visibility;
+  if (!unfaded) material.opacityNode = visibility;
   material.normalNode = transformNormalToView(normalize(mix(vec3(0, 1, 0), normal, normalDetail)));
   material.aoNode = mix(.44, 1, smoothstep(0, .065, bladeHeight));
   material.thicknessColorNode = pigment.mul(vec3(.27, .30, .13));

@@ -41,6 +41,30 @@ Chromium 156／SwiftShader WebGL2，400 × 225、Medium、固定渲染比例 1.0
 
 以 Low、固定渲染比例 1.0 在四個地點各抽八幀，行走時拖曳轉向。這段影片用於檢查場景覆蓋和移動操作，播放速度依固定取樣間隔編排。[四地點 Low 動態抽幀](s1-world-turf-low-motion.mp4)
 
+### 全密度原模效能測試
+
+`?sward=world&turfBench=all&cam=6&turfSite=slope&turfView=standing&q=med&scale=1` 以相機視錐收集完整原模草葉，取消距離上限、草葉淡出和遠景草層。`turfBench=0` 量相同場景的零原模草葉基準，公尺值控制幾何量測範圍。使用 Medium 或 High。單批容量為 524,288 簇，超過時停止該批並標記 `overflow`。遙測的草地面積以 16 m 地表採樣估算，含可能被近處地形遮住的地面。
+
+```sh
+npm run build
+npm run preview -- --port 4174
+# 在另一個終端機
+WU_CHROMIUM=/usr/bin/chromium WU_TURF_FRAMES=8 WU_TURF_TIMEOUT_MS=65000 \
+  node tools/turf-benchmark.mjs out/turf-bench webgl2 slope standing all 0 1.5 2 4
+```
+
+坡地站姿結果取自 Chromium 156.0.8078.79／SwiftShader、2 vCPU、400 × 225、Medium、比例 1.0、13:00 晴天。兩種後端在有限範圍提交相同幾何。WebGPU 測試開啟 `WU_TURF_STATS=1` 讀回提交數。幀間隔取啟動後的 8 至 10 幀，包含首幀。
+
+| 原模範圍 | 實際提交草葉 | 實際提交三角形 | WebGL2 幀間隔中位數 | WebGPU 幀間隔中位數 |
+| --- | ---: | ---: | ---: | ---: |
+| 0 m | 0 | 0 | 0.25 s | 0.30 s |
+| 1.5 m | 28,728 | 632,016 | 1.33 s | 1.38 s |
+| 2 m | 169,803 | 3,735,666 | 7.78 s | 10.15 s |
+| 4 m | 973,656 | 21,420,432 | 逾時，讀回 5 幀 | 逾時，讀回 4 幀 |
+| 全視錐 | 緩衝上限 | 草葉提交未開始 | 無全域幀時間 | 無全域幀時間 |
+
+坡地站姿的視錐地表估計約 2,692 m²，依每平方公尺 79,524 葉、每葉 22 個三角形換算，約需 2.14 億葉及 47.1 億三角形。高地抬升的 WebGL2 全視錐測試估計約 606 m²，同樣在收集階段達到容量上限。這些面積為視錐估算。手機幀時間與全域實繪幀時間尚無量測結果。
+
 ## 表土與水
 
 - Hellesylt 地表母質採 © Norges geologiske undersøkelse (NGU) 區域鬆散沉積物分類。按 EPSG:25832 裁切為現有地形邊界，重柵格化為 16 m 採樣。NGU 來源尺度為約 1:100,000–1:500,000。cam 1（6.872755° E、62.084569° N）為河流沉積物，cam 2（6.870350° E、62.083365° N）為崩塌堆積；16 m 是遊戲運算格距。六個測試點在 NIBIO 查不到可用的表土或排水資料。[NGU 資料集](https://data.norge.no/en/datasets/4c8bdb99-68e3-317c-922f-a77d1f21e309/losmasser-regionalt) · [NLOD 1.0](https://data.norge.no/nlod/en/1.0) · [NIBIO Kilden](https://kilden.nibio.no/)

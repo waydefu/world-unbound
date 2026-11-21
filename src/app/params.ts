@@ -3,6 +3,7 @@ import { WEATHERS, type Weather } from '../env/weather';
 import type { BackendChoice } from '../render/renderer';
 import { CAMERAS, type TurfSite, type TurfView } from './cameras';
 import type { SoilPreview } from './soilRuntime';
+import type { TurfBenchmark } from '../world/turfPopulation';
 
 export type { BackendChoice, Weather };
 export type QualityName = 'low' | 'med' | 'high';
@@ -36,6 +37,7 @@ export interface DebugParams {
   sward: boolean;
   worldTurf: boolean;
   turfStats: boolean;
+  turfBench: TurfBenchmark | null;
   turfSite: TurfSite | null;
   turfView: TurfView;
   turfReference: boolean;
@@ -74,10 +76,12 @@ export function parseParams(search: string): DebugParams {
   const sodView = p.get('sod') === 'full' && grass && terrain === 'cdlod'
     ? (view === 'standing' || view === 'elevated' || view === 'backlight' ? view : 'edge') : null;
   const worldTurf = p.get('sward') === 'world' && grass && terrain === 'cdlod' && sodView === null;
+  const rawBench = p.get('turfBench');
+  const turfBench = worldTurf ? (rawBench === 'all' ? 'all' : numberIn(rawBench, 0, 64)) : null;
   return {
     cam: cam === null ? (sodView === null ? 5 : 2) : Math.floor(cam),
     backend: backend === 'webgpu' || backend === 'webgl2' ? backend : 'auto',
-    quality: q !== null && QUALITIES.includes(q) ? q : null,
+    quality: turfBench !== null ? (q === 'high' ? 'high' : 'med') : q !== null && QUALITIES.includes(q) ? q : null,
     scale: numberIn(p.get('scale'), 0.5, 1.5),
     hour: hour === null ? 13 : hour % 24,
     weather: wx !== null && WEATHERS.includes(wx) ? wx : 'clear',
@@ -92,9 +96,10 @@ export function parseParams(search: string): DebugParams {
     sward: p.get('sward') !== '0',
     worldTurf,
     turfStats: p.get('turfStats') === '1',
+    turfBench,
     turfSite: turfSite === 'slope' || turfSite === 'lowland' || turfSite === 'highland' || turfSite === 'seam' ? turfSite : null,
     turfView: turfView === 'standing' || turfView === 'raised' ? turfView : 'close',
-    turfReference: worldTurf && p.get('turfReference') === '1',
+    turfReference: worldTurf && turfBench === null && p.get('turfReference') === '1',
     sodView,
     soilPreview: soil === 'dry' || soil === 'rain' || soil === 'drained' ? soil : null,
     walk: p.get('walk') === '1',

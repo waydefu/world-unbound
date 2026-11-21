@@ -84,11 +84,11 @@ export class App {
     this.clock = new EnvironmentClock(this.environment);
     this.terrain = params.terrain === 'chunks'
       ? new ChunkBackend(this.memory, noise.texture, this.environment.ocean.floorTexture, tier, this.observer.uploads)
-      : new CdlodBackend(this.memory, noise.texture, tier, this.observer.uploads, params.shadows ? tier.shadows.cascades : 0, params.sward && params.grass, params.soilPreview, !params.grass, params.worldTurf);
+      : new CdlodBackend(this.memory, noise.texture, tier, this.observer.uploads, params.shadows ? tier.shadows.cascades : 0, params.sward && params.grass, params.soilPreview, !params.grass, params.worldTurf, params.turfBench !== null);
     this.vegetation = new VegetationBackend({
       ocean: this.environment.ocean, sun: this.environment.sun, terrain: this.terrain, tier, memory: this.memory,
       uploads: this.observer.uploads, noise: noise.texture, grass: params.grass, sward: params.sward, shadows: params.shadows, fullSod: params.sodView !== null,
-      worldTurf: params.worldTurf, turfStats: params.turfStats, turfReference: params.turfReference && params.turfSite ? TURF_SITES[params.turfSite] : null,
+      worldTurf: params.worldTurf, turfStats: params.turfStats, turfBench: params.turfBench, turfReference: params.turfReference && params.turfSite ? TURF_SITES[params.turfSite] : null,
     });
     this.observer.setMeshes(this.environment.sky.mesh, this.environment.ocean.mesh, this.terrain.farMesh);
     this.terrain.attachSun(this.environment.sun);
@@ -340,7 +340,7 @@ export class App {
     if (this.state.fallbackReason) notes.push(`WebGL2 fallback: ${this.state.fallbackReason}`);
     if (this.state.recoveredFromCrash) notes.push('Recovered from an abnormal reload: safe low settings');
     if (this.state.deviceLostCount > 0) notes.push(`GPU device restored (${this.state.deviceLostCount})`);
-    if (this.state.worldTurf?.overflow) notes.push('World turf candidate buffer full. Depth canopy is active.');
+    if (this.state.worldTurf?.overflow) notes.push(this.options.params.turfBench !== null ? 'Full-leaf test stopped at the candidate buffer limit.' : 'World turf candidate buffer full. Depth canopy is active.');
     this.hud.setStatus(notes.length > 0 ? notes.join(' · ') : null);
   }
   report(): Record<string, unknown> {

@@ -18,6 +18,7 @@ import { loadTurfMaster } from '../render/worldTurfAssets';
 import { WIND_BYTES, WindTexture } from '../render/windTexture';
 import { WORLD_SEED } from '../world/constants';
 import { SOD_LEAVES_PER_M2 } from '../world/sodRoots';
+import type { TurfBenchmark } from '../world/turfPopulation';
 import { CdlodBackend } from './cdlodBackend';
 import { type ResolvedCamera, SOD_ORIGIN, sodBaseY } from './cameras';
 import type { QualityTier } from './quality';
@@ -49,6 +50,7 @@ export interface VegetationOptions {
   readonly fullSod: boolean;
   readonly worldTurf: boolean;
   readonly turfStats: boolean;
+  readonly turfBench: TurfBenchmark | null;
   readonly turfReference: { x: number; z: number } | null;
   /** Sun shadows are on (blades receive them on the med and high tiers). */
   readonly shadows: boolean;
@@ -137,7 +139,7 @@ export class VegetationBackend {
       this.worldTurf = new WorldTurf(terrain.root, terrain.data, {
         master: master.textures, height: terrain.gpu.height, water: terrain.soil.textures.water,
         wind: terrain.carpetMotion, shadows: this.options.shadows && tier.name !== 'low',
-      }, this.options.turfReference ? { ...this.options.turfReference, origins: master.origins } : null, this.options.turfStats);
+      }, this.options.turfReference ? { ...this.options.turfReference, origins: master.origins } : null, this.options.turfStats, this.options.turfBench);
       this.worldTurf.season.value.fromArray(this.seasonWeights);
       memory.add(MemoryPartition.Gpu, master.bytes + this.worldTurf.gpuBytes);
       memory.add(MemoryPartition.CpuRetained, master.bytes + this.worldTurf.cpuBytes);
