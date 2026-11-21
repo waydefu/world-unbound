@@ -9,6 +9,7 @@ Base main: f8f4579cc613c1523fa5f18d8510e1a8e959e4f4
 - **Accepted baseline:** PRs #28–#32 merged at this snapshot; do not redo their grass/wind implementation.
 - **Current grass build:** [PR #39](https://github.com/waydefu/world-unbound/pull/39) integrated rooted turf and soil. [PR #40](https://github.com/waydefu/world-unbound/pull/40) added the rotatable `?cam=6&q=med` view. The complete master is available at `?sod=full&sodView=edge`.
 - **Worldwide turf acceptance is pending.** The owner identified a visible ring of dense blades and flat green grass beyond it. Use the [worldwide turf standard](specs/s1-rooted-soil.md#全域草毯驗收) when changing or reviewing grass across the map.
+- **Environment work follows the same production process.** Use [environment production and acceptance](process/visual-review.md#environment-production-and-acceptance) to record the real-world reference, approve the master, and verify the result across the applicable playable area.
 - **Evidence:** prior phone/CDLOD gate passed; **latest grass WebGPU p95 and 10-minute thermal gate are not yet verified**. Headless SwiftShader is not device proof.
 - **Trust boundary:** `AGENTS.md` and owner approval govern every edit; next agent checks fresh `main`, Issues, PRs and Actions.
 - **Quick checks:** `node tools/handoff-check.mjs` (advisory, offline), `node tools/agent-index.mjs find GrassCells`, and [code routing map](architecture/CODE-MAP.md).
