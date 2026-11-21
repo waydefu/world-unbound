@@ -7,7 +7,7 @@ import { canopyWind, type GrassWindUniforms } from './grassWind';
 /** Three rooted depth layers preserve projected leaf area for overhead and grazing views. */
 export function worldTurfCanopy(
   layers: readonly DataTexture[], noise: DataTexture, wind: DataTexture, motion: GrassWindUniforms,
-  xz: Node<'vec2'>, dist: Node<'float'>, normal: Node<'vec3'>, macro: Node<'float'>,
+  xz: Node<'vec2'>, dist: Node<'float'>, normal: Node<'vec3'>, macro: Node<'float'>, multiscale = false,
 ) {
   const { gust, velocity } = canopyWind(xz, dist, wind, motion);
   const speed = length(velocity);
@@ -39,9 +39,21 @@ export function worldTurfCanopy(
   const patchUv = uv.sub(dir.mul(bend).mul(.047)).mul(.31);
   const foliage = texture(layers[2], patchUv).grad(dX.mul(.31), dY.mul(.31));
   const patch = length(foliage.rgb).mul(CANOPY_AREA_RANGE).min(1.25);
-  const tone = light.div(ground.oneMinus().max(.15)).mul(3.74).add(grazing.mul(.18))
+  let tone = light.div(ground.oneMinus().max(.15)).mul(3.74).add(grazing.mul(.18))
     .add(patch.sub(.26).mul(.17)).add(crowns.a.sub(.5).mul(.054))
     .add(dot(dir, sight.xz).mul(bend).mul(.13)).clamp(.54, 1.45);
-  const lean = dir.mul(bend).mul(.091).sub(crowns.rg.mul(2).sub(1).mul(mix(.037, .021, smoothstep(6, 23, dist))));
+  let lean = dir.mul(bend).mul(.091).sub(crowns.rg.mul(2).sub(1).mul(mix(.037, .021, smoothstep(6, 23, dist))));
+  if (multiscale) {
+    // Once leaf frequencies mip away, retain broader variations in the source canopy's height and pigment.
+    const bent = patchUv;
+    const coarseUv = vec2(bent.x.mul(.79).sub(bent.y.mul(.62)), bent.x.mul(.62).add(bent.y.mul(.79))).mul(.36);
+    const coarse = texture(layers[2], coarseUv).grad(dFdx(coarseUv), dFdy(coarseUv));
+    const footprint = length(dX).max(length(dY));
+    const closer = smoothstep(.035, .24, footprint);
+    const broad = mix(foliage, coarse, closer);
+    const leaflet = broad.a.sub(.24).mul(.57).add(length(broad.rgb).mul(CANOPY_AREA_RANGE).sub(.36).mul(.13));
+    tone = tone.mul(.88).add(leaflet.clamp(-.13, .17)).add(gust.mul(.10)).clamp(.52, 1.45);
+    lean = lean.add(broad.rb.sub(broad.g).mul(.19 * CANOPY_AREA_RANGE));
+  }
   return { tone, lean: vec3(lean.x, 0, lean.y), soilGaps: ground.mul(.18).add(.008).min(.13) };
 }

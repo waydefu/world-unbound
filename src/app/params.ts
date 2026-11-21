@@ -38,6 +38,7 @@ export interface DebugParams {
   worldTurf: boolean;
   turfStats: boolean;
   turfBench: TurfBenchmark | null;
+  turfLod: 20 | 30 | null;
   turfSite: TurfSite | null;
   turfView: TurfView;
   turfReference: boolean;
@@ -78,6 +79,8 @@ export function parseParams(search: string): DebugParams {
   const worldTurf = p.get('sward') === 'world' && grass && terrain === 'cdlod' && sodView === null;
   const rawBench = p.get('turfBench');
   const turfBench = worldTurf ? (rawBench === 'all' ? 'all' : numberIn(rawBench, 0, 64)) : null;
+  const turfReference = worldTurf && turfBench === null && p.get('turfReference') === '1';
+  const lod = p.get('turfLod');
   return {
     cam: cam === null ? (sodView === null ? 5 : 2) : Math.floor(cam),
     backend: backend === 'webgpu' || backend === 'webgl2' ? backend : 'auto',
@@ -97,9 +100,10 @@ export function parseParams(search: string): DebugParams {
     worldTurf,
     turfStats: p.get('turfStats') === '1',
     turfBench,
+    turfLod: worldTurf && turfBench === null && !turfReference ? (lod === '30' ? 30 : lod === '20' ? 20 : null) : null,
     turfSite: turfSite === 'slope' || turfSite === 'lowland' || turfSite === 'highland' || turfSite === 'seam' ? turfSite : null,
-    turfView: turfView === 'standing' || turfView === 'raised' ? turfView : 'close',
-    turfReference: worldTurf && turfBench === null && p.get('turfReference') === '1',
+    turfView: turfView === 'standing' || turfView === 'raised' || turfView === 'wide' ? turfView : 'close',
+    turfReference,
     sodView,
     soilPreview: soil === 'dry' || soil === 'rain' || soil === 'drained' ? soil : null,
     walk: p.get('walk') === '1',

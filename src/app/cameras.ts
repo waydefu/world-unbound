@@ -66,7 +66,7 @@ export const TURF_SITES = {
   seam: { x: 0, z: -40 },
 } as const;
 export type TurfSite = keyof typeof TURF_SITES;
-export type TurfView = 'close' | 'standing' | 'raised';
+export type TurfView = 'close' | 'standing' | 'raised' | 'wide';
 
 export function placeTurfCamera(eye: ResolvedCamera, site: TurfSite, view: TurfView): void {
   const { x, z } = TURF_SITES[site];
@@ -75,7 +75,7 @@ export function placeTurfCamera(eye: ResolvedCamera, site: TurfSite, view: TurfV
   eye.y = heightAt(x, z) + (view === 'close' ? .16 : view === 'standing' ? 1.2 : 7.2);
   eye.targetX = x - .64;
   eye.targetZ = z + .77;
-  eye.targetY = eye.y - (view === 'close' ? .42 : view === 'standing' ? .42 : 2.55);
+  eye.targetY = eye.y - (view === 'raised' ? 2.55 : view === 'wide' ? .34 : .42);
   eye.fovDeg = 50;
 }
 

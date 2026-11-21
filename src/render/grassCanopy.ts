@@ -8,6 +8,7 @@ export interface GrassCanopyWind {
   readonly map: DataTexture;
   readonly motion: GrassWindUniforms;
   readonly depth?: readonly DataTexture[];
+  readonly relief?: boolean;
 }
 
 /** Give the continuous turf surface directional fibre, shallow relief and the same gusts as the blades. */

@@ -38,6 +38,7 @@ export interface WorldTurfMetrics {
   drawCalls: number;
   gpuSampleAgeMs: number | null;
   benchmark: { radius: TurfBenchmark; candidateCapacity: number; frustumGrassAreaEstimateM2: number | null } | null;
+  ribbonLod: { rangeM: number; cells: number; triangles: number; rebuildMs: number } | null;
 }
 
 export class WorldTurf {
@@ -263,6 +264,7 @@ export class WorldTurf {
         radius: this.benchmark, candidateCapacity: CAPACITY,
         frustumGrassAreaEstimateM2: this.benchmark === 'all' ? this.frustumArea(0) : null,
       },
+      ribbonLod: null,
       drawCalls, gpuSampleAgeMs: this.gpu && this.drawn !== null ? Math.round(performance.now() - this.lastCountAt) : null,
     };
   }

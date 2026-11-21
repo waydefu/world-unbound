@@ -13,6 +13,7 @@ import { GUST_WAVELENGTH_M } from '../render/grassWind';
 import { GroundSod } from '../render/groundSod';
 import type { Ocean } from '../render/ocean';
 import type { RendererHandle } from '../render/renderer';
+import { TurfRibbonLod } from '../render/turfRibbonLod';
 import { WorldTurf } from '../render/worldTurf';
 import { loadTurfMaster } from '../render/worldTurfAssets';
 import { WIND_BYTES, WindTexture } from '../render/windTexture';
@@ -51,6 +52,7 @@ export interface VegetationOptions {
   readonly worldTurf: boolean;
   readonly turfStats: boolean;
   readonly turfBench: TurfBenchmark | null;
+  readonly turfLod: 20 | 30 | null;
   readonly turfReference: { x: number; z: number } | null;
   /** Sun shadows are on (blades receive them on the med and high tiers). */
   readonly shadows: boolean;
@@ -66,6 +68,7 @@ export class VegetationBackend {
   private fullSod: { leaves: number; triangles: number } | null = null;
   private groundSod: GroundSod | null = null;
   private worldTurf: WorldTurf | null = null;
+  private turfRibbonLod: TurfRibbonLod | null = null;
   private wind: WindTexture | null = null;
   private day = 0;
   private hour = 12;
@@ -139,11 +142,20 @@ export class VegetationBackend {
       this.worldTurf = new WorldTurf(terrain.root, terrain.data, {
         master: master.textures, height: terrain.gpu.height, water: terrain.soil.textures.water,
         wind: terrain.carpetMotion, shadows: this.options.shadows && tier.name !== 'low',
+        blendCanopy: this.options.turfLod !== null,
       }, this.options.turfReference ? { ...this.options.turfReference, origins: master.origins } : null, this.options.turfStats, this.options.turfBench);
       this.worldTurf.season.value.fromArray(this.seasonWeights);
       memory.add(MemoryPartition.Gpu, master.bytes + this.worldTurf.gpuBytes);
       memory.add(MemoryPartition.CpuRetained, master.bytes + this.worldTurf.cpuBytes);
       uploads.add(performance.now(), master.bytes);
+      if (this.options.turfLod !== null) {
+        const lod = await TurfRibbonLod.load(terrain.gpu.height, terrain.data, this.options.turfLod, this.worldTurf,
+          terrain.carpetMotion, this.options.shadows);
+        terrain.root.add(lod.mesh);
+        this.turfRibbonLod = lod;
+        memory.add(MemoryPartition.CpuRetained, lod.cpuBytes);
+        memory.add(MemoryPartition.Gpu, lod.gpuBytes);
+      }
     } else if (!this.options.worldTurf && sward && !canopyOnly && terrain.carpetWind && terrain.soil) {
       this.groundSod = await GroundSod.load(terrain.data, terrain.gpu.height, terrain.soil.textures.water,
         tier.name === 'high', terrain.carpetMotion, this.options.shadows);
@@ -188,6 +200,7 @@ export class VegetationBackend {
     if (wind === null) return;
     if (wind.update(nowMs, eye.x, eye.z, climate)) uploads.add(nowMs, WIND_BYTES);
     this.worldTurf?.update(nowMs, eye.x, eye.y, eye.z, camera, bufferHeight);
+    this.turfRibbonLod?.update(eye.x, eye.y, eye.z, camera);
     if (grass === null) {
       if (this.options.sward === true && this.options.tier.name === 'low' && this.options.terrain instanceof CdlodBackend) {
         const motion = this.options.terrain.carpetMotion;
@@ -220,6 +233,7 @@ export class VegetationBackend {
     state.grassEnabled = this.wind !== null || this.fullSod !== null;
     state.grassDensityM2 = state.grassEnabled && this.options.sward ? SOD_LEAVES_PER_M2 : 0;
     state.worldTurf = this.worldTurf?.metrics() ?? null;
+    if (state.worldTurf) state.worldTurf.ribbonLod = this.turfRibbonLod?.metrics() ?? null;
     state.windUpdates = this.wind?.updates ?? 0;
     if (this.fullSod) {
       state.grassCells = 1;
@@ -237,7 +251,7 @@ export class VegetationBackend {
     state.grassCells = grass.stats.cells;
     state.grassBlades = grass.stats.blades + state.grassSodTris / 22;
     state.grassCards = grass.stats.cards;
-    state.grassTris = grass.stats.triangles + state.grassSodTris;
+    state.grassTris = grass.stats.triangles + state.grassSodTris + (state.worldTurf?.ribbonLod?.triangles ?? 0);
     state.grassMs = grass.stats.ms;
   }
 }

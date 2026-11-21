@@ -11,6 +11,8 @@ const views = process.env.WU_TURF_VIEWS?.split(',') ?? ['close', 'standing', 'ra
 const variant = process.env.WU_TURF_COMPARE;
 const references = variant === 'trial' ? [false] : variant === 'reference' ? [true] : [true, false];
 const stats = process.env.WU_TURF_STATS === '1';
+const ribbonLod = process.env.WU_TURF_LOD;
+const minFrames = Number(process.env.WU_TURF_FRAMES ?? 1);
 const args = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'];
 if (backend === 'webgpu') args.push('--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-vulkan=swiftshader');
 await mkdir(dir, { recursive: true });
@@ -23,22 +25,24 @@ try {
       const problems = [];
       page.on('pageerror', error => problems.push(error.message));
       page.on('console', message => { if (message.type() === 'error') problems.push(message.text()); });
-      await page.addInitScript(waitForCounts => {
+      await page.addInitScript(({ waitForCounts, minFrames }) => {
         const next = window.requestAnimationFrame.bind(window);
         window.requestAnimationFrame = callback => next(function tick(time) {
           if (window.__turfFrame) return;
           callback(time);
-          if (window.__wu?.ready() && (!waitForCounts || window.__wu.report().world.grass.worldTurf?.submittedCrowns !== null)) {
-            window.__turfFrame = document.querySelector('#viewport-root canvas').toDataURL('image/png');
-          }
+          if (!window.__wu?.ready()) return;
+          const report = window.__wu.report();
+          if (report.frames.total < minFrames || (waitForCounts && report.world.grass.worldTurf?.submittedCrowns === null)) return;
+          window.__turfFrame = document.querySelector('#viewport-root canvas').toDataURL('image/png');
         });
-      }, stats);
+      }, { waitForCounts: stats, minFrames });
       const url = new URL(origin);
       url.search = new URLSearchParams({
         backend, q: 'med', cam: '6', hud: '0', hour: '13', wx: 'clear', scale: '1', sward: 'world',
         turfSite: site, turfView: view, turfReference: reference ? '1' : '0',
         turfStats: stats ? '1' : '0',
       });
+      if (ribbonLod && !reference) url.searchParams.set('turfLod', ribbonLod);
       await page.goto(url.href);
       await page.waitForFunction(() => window.__turfFrame || document.querySelector('#boot-message')?.textContent.startsWith('Could not start'), null, { timeout: 220_000, polling: 250 });
       const { png, report } = await page.evaluate(() => ({ png: window.__turfFrame, report: window.__wu?.report() }));
@@ -46,6 +50,7 @@ try {
       assert.equal(report.backend.active, backend);
       assert.equal(report.world.grass.worldTurf.reference, reference);
       assert.equal(report.world.grass.worldTurf.overflow, false);
+      if (ribbonLod && !reference) assert.equal(report.world.grass.worldTurf.ribbonLod?.rangeM, Number(ribbonLod));
       assert.deepEqual(problems, []);
       await writeFile(join(dir, name + '.png'), Buffer.from(png.split(',')[1], 'base64'));
       await writeFile(join(dir, name + '.json'), JSON.stringify(report, null, 2));

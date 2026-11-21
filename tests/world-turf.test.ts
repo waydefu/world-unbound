@@ -79,6 +79,10 @@ describe('world turf', () => {
     expect(parseParams('?sward=world&turfBench=0').turfBench).toBe(0);
     expect(parseParams('?sward=world&turfBench=65').turfBench).toBeNull();
     expect(parseParams('?sward=baseline&turfBench=all').turfBench).toBeNull();
+    expect(parseParams('?sward=world&turfLod=30&turfView=wide')).toMatchObject({ turfLod: 30, turfView: 'wide' });
+    expect(parseParams('?sward=world&turfLod=20').turfLod).toBe(20);
+    expect(parseParams('?sward=world&turfLod=30&turfBench=all').turfLod).toBeNull();
+    expect(parseParams('?sward=world&turfLod=30&turfReference=1').turfLod).toBeNull();
   });
 
   it('counts native blade roots in 256 actual one-square-metre terrain windows', async () => {

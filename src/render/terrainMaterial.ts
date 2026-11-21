@@ -122,7 +122,7 @@ export function createTerrainMaterial(noise: DataTexture, lite = false, surface:
     .mul(surface && !lite ? tipColour.mul(grassDetail) : float(1));
   const depth = surface?.carpet?.depth;
   const carpet = depth && surface?.carpet
-    ? worldTurfCanopy(depth, noise, surface.carpet.map, surface.carpet.motion, pW.xz, grassDist, nGeo, macro)
+    ? worldTurfCanopy(depth, noise, surface.carpet.map, surface.carpet.motion, pW.xz, grassDist, nGeo, macro, surface.carpet.relief)
     : surface?.carpet && surface.grassCover
     ? grassCanopy(surface.grassCover, noise, surface.carpet, pW.xz, grassDist, nGeo, macro, lite) : null;
   const vegetationCell = depth && surfaceUv && surface
