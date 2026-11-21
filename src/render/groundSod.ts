@@ -1,98 +1,49 @@
-import { BufferAttribute, BufferGeometry, type Camera, DynamicDrawUsage, InstancedMesh, Matrix4, type Node, type UniformNode, Vector3 } from 'three/webgpu';
-import { float, length, mix, normalViewGeometry, normalize, positionGeometry, positionLocal, smoothstep, transformNormalToView, uniform, vec2, vec3 } from 'three/tsl';
+import { type Camera, type DataTexture, Matrix4, Vector3 } from 'three/webgpu';
+import { uniform } from 'three/tsl';
 import { frustumPlanes } from '../world/cdlodMath';
-import { WORLD_MAX, WORLD_MIN } from '../world/constants';
-import { interpolateCell } from '../world/heightField';
+import { WORLD_MIN } from '../world/constants';
+import { sodBarycentric, sodCrownCount, sodHash, sodTriangleSeed, sodWorldAxis } from '../world/sodRoots';
 import { HEIGHT_DIM, materialDim, type TerrainTextureData } from '../world/terrainTextures';
-import { createSodLeafMaterial, loadSodPatch } from './fullSod';
-import { grassCarpetColour } from './grassPalette';
-import { grassGust, type GrassWindUniforms } from './grassWind';
+import type { GrassWindUniforms } from './grassWind';
+import { CROWN_VARIANTS, createCrownBatch, loadCrownAtlas } from './sodCrown';
 
-export const SOD_PATCH_M = 0.25;
-const HALF_PATCH_M = SOD_PATCH_M * 0.5;
-const INDICES_PER_LEAF = 66;
-const LEAF_STEP = 32;
+type Batch = ReturnType<typeof createCrownBatch>;
+const PHASE = 2 * Math.PI / 0x100000000;
+const SUBDIVISIONS = 64;
 
-function separateLeaves(source: BufferGeometry, leaves: number, sparse: boolean): BufferGeometry {
-  const src = source.index?.array;
-  if (!src) throw new Error('Sod leaves require indexed geometry');
-  const count = Math.ceil(leaves / LEAF_STEP);
-  const indices = new Uint32Array((sparse ? count : leaves - count) * INDICES_PER_LEAF);
-  let at = 0;
-  for (let leaf = 0; leaf < leaves; leaf++) {
-    // One leaf from each spatial group of 32, with a stable varied offset across neighbouring groups.
-    const group = Math.floor(leaf / LEAF_STEP);
-    const kept = leaf % LEAF_STEP === (group * 13) % Math.min(LEAF_STEP, leaves - group * LEAF_STEP);
-    if (kept !== sparse) continue;
-    const begin = leaf * INDICES_PER_LEAF;
-    indices.set(src.subarray(begin, begin + INDICES_PER_LEAF), at);
-    at += INDICES_PER_LEAF;
-  }
-  const geom = new BufferGeometry();
-  for (const attribute of ['position', 'normal', 'color']) geom.setAttribute(attribute, source.getAttribute(attribute));
-  geom.setIndex(new BufferAttribute(indices, 1));
-  return geom;
-}
-
-function createSodBatch(
-  geometry: BufferGeometry, capacity: number, distance: number, eye: UniformNode<'vec3', Vector3>,
-  season: UniformNode<'vec3', Vector3>, wind: GrassWindUniforms, shadows: boolean, sparse: boolean,
-) {
-  const material = createSodLeafMaterial(1.24);
-  material.specularIntensity = 0;
-  material.thicknessAttenuationNode = float(sparse ? 0.045 : 0.16);
-  const fade = float(1).sub(smoothstep(distance * (sparse ? 0.57 : 0.62), distance, length(positionLocal.sub(eye))));
-  const height = positionGeometry.y;
-  const gust = grassGust(positionLocal.xz, float(0.53), wind);
-  const flex = height.max(0).pow(2).mul(gust.mul(1.8).add(0.25)).mul(wind.wind.z.min(8)).mul(fade);
-  const sway = vec2(wind.wind.x, wind.wind.y).mul(flex);
-  material.positionNode = positionLocal.add(vec3(sway.x, height.mul(fade.sub(1)).sub(fade.oneMinus().mul(0.020)), sway.y));
-  const colour = material.colorNode as Node<'vec3'> | null;
-  if (colour) material.colorNode = mix(colour, grassCarpetColour(season), sparse ? 0.56 : 0.63);
-  // The canopy underneath supplies its light at distance. Bring the leaves' light toward that surface
-  // as they become subpixel, and keep the bent surfaces readable at arm's length.
-  material.normalNode = normalize(mix(normalViewGeometry, transformNormalToView(vec3(0, 1, 0)), sparse ? 0.81 : 0.62));
-  const mesh = new InstancedMesh(geometry, material, capacity);
-  mesh.name = sparse ? 'terrain-sod-leaves' : 'terrain-sod-near-leaves';
-  mesh.instanceMatrix.setUsage(DynamicDrawUsage);
-  mesh.frustumCulled = false;
-  mesh.receiveShadow = shadows;
-  mesh.count = 0;
-  return { mesh, limit: capacity, triangles: (geometry.index?.count ?? 0) / 3 };
-}
-
-/** Ground-fixed master foliage. The sparse set persists through both distance bands to avoid visible rings. */
+/** Native crowns are sampled on the authoritative triangles in world space. Only visible crowns are uploaded. */
 export class GroundSod {
-  readonly sparse;
-  readonly dense;
+  readonly sparse: Batch;
+  readonly dense: Batch;
   readonly bytes: number;
   private readonly eye = uniform(new Vector3());
   private readonly season = uniform(new Vector3(1, 0, 0));
-  private readonly matrix = new Matrix4();
   private readonly projection = new Matrix4();
   private readonly planes = new Float32Array(24);
-  private readonly lastProjection = new Float64Array(16);
+  private readonly lastProjection = new Float64Array(16).fill(NaN);
+  private readonly uv = new Float64Array(2);
   private readonly dim: number;
   private readonly far: number;
   private readonly near: number;
-  private readonly denseRanks: Float32Array;
+  private readonly ranks: Float32Array;
+  private readonly heap: Uint16Array;
 
-  private constructor(patch: Awaited<ReturnType<typeof loadSodPatch>>, private readonly terrain: TerrainTextureData,
+  private constructor(atlas: DataTexture, height: DataTexture, water: DataTexture, private readonly terrain: TerrainTextureData,
     high: boolean, wind: GrassWindUniforms, shadows: boolean) {
     this.dim = materialDim(terrain.materialStep);
     this.far = high ? 5.25 : 4.0;
     this.near = high ? 0.86 : 0.69;
-    this.sparse = createSodBatch(separateLeaves(patch.geometry, patch.leaves, true), high ? 400 : 256,
-      this.far, this.eye, this.season, wind, shadows, true);
-    this.dense = createSodBatch(separateLeaves(patch.geometry, patch.leaves, false), high ? 14 : 5,
-      this.near, this.eye, this.season, wind, shadows, false);
-    this.lastProjection.fill(NaN);
-    this.denseRanks = new Float32Array(this.dense.limit);
-    this.bytes = patch.bytes + this.sparse.mesh.instanceMatrix.array.byteLength + this.dense.mesh.instanceMatrix.array.byteLength;
+    const common = { atlas, height, water, eye: this.eye, season: this.season, wind, shadows };
+    this.sparse = createCrownBatch({ ...common, capacity: high ? 9000 : 6400, distance: this.far, near: false });
+    this.dense = createCrownBatch({ ...common, capacity: high ? 6500 : 3400, distance: this.near, near: true });
+    this.ranks = new Float32Array(this.dense.capacity);
+    this.heap = new Uint16Array(this.dense.capacity);
+    this.bytes = this.sparse.bytes + this.dense.bytes + (atlas.image.data?.byteLength ?? 0);
   }
 
-  static async load(terrain: TerrainTextureData, high: boolean, wind: GrassWindUniforms, shadows: boolean): Promise<GroundSod> {
-    return new GroundSod(await loadSodPatch(), terrain, high, wind, shadows);
+  static async load(terrain: TerrainTextureData, height: DataTexture, water: DataTexture, high: boolean,
+    wind: GrassWindUniforms, shadows: boolean): Promise<GroundSod> {
+    return new GroundSod(await loadCrownAtlas(), height, water, terrain, high, wind, shadows);
   }
 
   setSeason(fresh: number, summer: number, straw: number): void {
@@ -110,59 +61,125 @@ export class GroundSod {
     this.lastProjection.set(p);
     eye.set(ex, ey, ez);
 
-    const sparse = this.sparse;
-    const dense = this.dense;
-    sparse.mesh.count = 0;
-    dense.mesh.count = 0;
-    if (ey - this.groundY(ex, ez) > this.far + 1.5) return;
+    const { sparse, dense, terrain } = this;
+    sparse.mesh.geometry.instanceCount = 0;
+    dense.mesh.geometry.instanceCount = 0;
+    const x0 = Math.max(0, Math.floor((ex - this.far - 0.15 - WORLD_MIN) * 0.5));
+    const x1 = Math.min(HEIGHT_DIM - 2, Math.floor((ex + this.far + 0.15 - WORLD_MIN) * 0.5));
+    const z0 = Math.max(0, Math.floor((ez - this.far - 0.15 - WORLD_MIN) * 0.5));
+    const z1 = Math.min(HEIGHT_DIM - 2, Math.floor((ez + this.far + 0.15 - WORLD_MIN) * 0.5));
     frustumPlanes(p, this.planes);
-    const far2 = (this.far + HALF_PATCH_M) ** 2;
-    const near2 = (this.near + HALF_PATCH_M) ** 2;
-    const xmin = Math.floor((ex - this.far) / SOD_PATCH_M);
-    const xmax = Math.floor((ex + this.far) / SOD_PATCH_M);
-    const zmin = Math.floor((ez - this.far) / SOD_PATCH_M);
-    const zmax = Math.floor((ez + this.far) / SOD_PATCH_M);
-    for (let iz = zmin; iz <= zmax; iz++) {
-      for (let ix = xmin; ix <= xmax; ix++) {
-        const x = (ix + 0.5) * SOD_PATCH_M;
-        const z = (iz + 0.5) * SOD_PATCH_M;
-        const xz2 = (x - ex) ** 2 + (z - ez) ** 2;
-        if (xz2 >= far2 || !this.meadow(x, z)) continue;
-        const y = this.groundY(x, z);
-        const distance2 = xz2 + (y - ey) ** 2;
-        if (y < 0.65 || distance2 > far2 || !this.visible(x - ex, y - ey, z - ez)) continue;
-        const dx = (this.groundY(x + 0.08, z) - this.groundY(x - 0.08, z)) / 0.16;
-        const dz = (this.groundY(x, z + 0.08) - this.groundY(x, z - 0.08)) / 0.16;
-        if (dx * dx + dz * dz > 0.61) continue;
-        this.matrix.set(1, 0, 0, x, dx, 1, dz, y - 0.002, 0, 0, 1, z, 0, 0, 0, 1);
-        if (sparse.mesh.count < sparse.limit) sparse.mesh.setMatrixAt(sparse.mesh.count++, this.matrix);
-        if (distance2 <= near2) this.addDense(distance2);
+    const heights = terrain.height;
+    for (let z = z0; z <= z1; z++) {
+      for (let x = x0; x <= x1; x++) {
+        const i = z * HEIGHT_DIM + x;
+        const h00 = heights[i];
+        const h10 = heights[i + 1];
+        const h01 = heights[i + HEIGHT_DIM];
+        const h11 = heights[i + HEIGHT_DIM + 1];
+        const closestY = Math.max(Math.min(h00, h10, h01, h11), Math.min(ey, Math.max(h00, h10, h01, h11)));
+        if (Math.abs(closestY - ey) > this.far + 0.17) continue;
+        this.triangle(x, z, 0, h00, h10 - h00, h01 - h00);
+        this.triangle(x, z, 1, h11, h01 - h11, h10 - h11);
       }
     }
-    if (sparse.mesh.count) sparse.mesh.instanceMatrix.needsUpdate = true;
-    if (dense.mesh.count) dense.mesh.instanceMatrix.needsUpdate = true;
+    if (sparse.mesh.geometry.instanceCount) sparse.instance.needsUpdate = true;
+    if (dense.mesh.geometry.instanceCount) dense.instance.needsUpdate = true;
   }
 
   /** @hot */
-  private addDense(distance2: number): void {
-    const { mesh, limit } = this.dense;
-    if (mesh.count < limit) {
-      this.denseRanks[mesh.count] = distance2;
-      mesh.setMatrixAt(mesh.count++, this.matrix);
-      return;
+  private triangle(ix: number, iz: number, upper: number, base: number, dx: number, dz: number): void {
+    const seed = sodTriangleSeed(ix, iz, upper);
+    const count = sodCrownCount(dx, dz);
+    const prefix = Math.ceil(count / 48);
+    for (let i = 0; i < prefix; i++) this.root(ix, iz, upper, base, dx, dz, seed, i, false);
+
+    const eye = this.eye.value;
+    const range = this.near + 0.36;
+    // A depth-three child is at most 25 cm on each lattice axis. Skip its whole subtree when it lies outside the near band.
+    for (let branch = 0; branch < SUBDIVISIONS; branch++) {
+      sodBarycentric(branch, seed, this.uv, 3);
+      const u = this.uv[0];
+      const v = this.uv[1];
+      const y = base + dx * u + dz * v;
+      if (Math.abs(sodWorldAxis(ix, u, upper) - eye.x) > range
+        || Math.abs(sodWorldAxis(iz, v, upper) - eye.z) > range
+        || Math.abs(y - eye.y) > range + 0.125 * (Math.abs(dx) + Math.abs(dz))) continue;
+      const first = branch + Math.max(0, Math.ceil((prefix - branch) / SUBDIVISIONS)) * SUBDIVISIONS;
+      for (let i = first; i < count; i += SUBDIVISIONS) this.root(ix, iz, upper, base, dx, dz, seed, i, true);
     }
-    let farthest = 0;
-    for (let i = 1; i < limit; i++) if (this.denseRanks[i] > this.denseRanks[farthest]) farthest = i;
-    if (distance2 >= this.denseRanks[farthest]) return;
-    this.denseRanks[farthest] = distance2;
-    mesh.setMatrixAt(farthest, this.matrix);
+  }
+
+  /** @hot */
+  private root(ix: number, iz: number, upper: number, base: number, dx: number, dz: number, seed: number, i: number, near: boolean): void {
+    sodBarycentric(i, seed, this.uv);
+    const u = this.uv[0];
+    const v = this.uv[1];
+    const x = sodWorldAxis(ix, u, upper);
+    const z = sodWorldAxis(iz, v, upper);
+    const y = base + dx * u + dz * v;
+    const eye = this.eye.value;
+    const sx = x - eye.x;
+    const sy = y - eye.y;
+    const sz = z - eye.z;
+    const d2 = sx * sx + sy * sy + sz * sz;
+    const reach = (near ? this.near : this.far) + 0.06;
+    if (d2 >= reach * reach || y <= 0.08 || !this.visible(sx, sy, sz) || !this.meadow(x, z)) return;
+    const batch = near ? this.dense : this.sparse;
+    const geometry = batch.mesh.geometry;
+    let at = geometry.instanceCount;
+    if (at === batch.capacity) {
+      if (!near) return;
+      at = this.heap[0];
+      if (d2 >= this.ranks[at]) return;
+      this.replaceDense(at, d2);
+    } else {
+      geometry.instanceCount++;
+      if (near) this.insertDense(at, d2);
+    }
+    const key = sodHash(seed ^ Math.imul(i, 0x9e3779b1));
+    const offset = at * 4;
+    batch.roots[offset] = x;
+    batch.roots[offset + 1] = z;
+    batch.roots[offset + 2] = key * PHASE;
+    batch.roots[offset + 3] = (key >>> 12) % CROWN_VARIANTS;
+  }
+
+  // Keep the nearest crowns when the physical mesh budget fills, without moving the instance data.
+  /** @hot */
+  private insertDense(at: number, d2: number): void {
+    const { heap, ranks } = this;
+    ranks[at] = d2;
+    let item = at;
+    while (item > 0) {
+      const parent = (item - 1) >> 1;
+      if (ranks[heap[parent]] >= d2) break;
+      heap[item] = heap[parent];
+      item = parent;
+    }
+    heap[item] = at;
+  }
+
+  /** @hot */
+  private replaceDense(at: number, d2: number): void {
+    const { heap, ranks } = this;
+    const count = this.dense.mesh.geometry.instanceCount;
+    ranks[at] = d2;
+    let item = 0;
+    for (let child = 1; child < count; child = item * 2 + 1) {
+      if (child + 1 < count && ranks[heap[child + 1]] > ranks[heap[child]]) child++;
+      if (ranks[heap[child]] <= d2) break;
+      heap[item] = heap[child];
+      item = child;
+    }
+    heap[item] = at;
   }
 
   /** @hot */
   private visible(x: number, y: number, z: number): boolean {
     const p = this.planes;
     for (let i = 0; i < 24; i += 4) {
-      if (p[i] * x + p[i + 1] * (y + 0.04) + p[i + 2] * z + p[i + 3] < -0.30) return false;
+      if (p[i] * x + p[i + 1] * (y + 0.045) + p[i + 2] * z + p[i + 3] < -0.13) return false;
     }
     return true;
   }
@@ -170,22 +187,11 @@ export class GroundSod {
   /** @hot */
   private meadow(x: number, z: number): boolean {
     const veg = this.terrain.masks?.vegetation;
-    if (!veg || x < WORLD_MIN || z < WORLD_MIN || x >= WORLD_MAX || z >= WORLD_MAX) return false;
-    const m = this.terrain.materialStep * 2;
-    const i = Math.min(this.dim - 1, Math.round((x - WORLD_MIN) / m));
-    const j = Math.min(this.dim - 1, Math.round((z - WORLD_MIN) / m));
+    if (!veg) return false;
+    const step = this.terrain.materialStep * 2;
+    const i = Math.min(this.dim - 1, Math.round((x - WORLD_MIN) / step));
+    const j = Math.min(this.dim - 1, Math.round((z - WORLD_MIN) / step));
     const at = (i + j * this.dim) * 4;
-    return veg[at] + veg[at + 1] * 0.6 > 116 && veg[at + 3] < 90;
-  }
-
-  /** @hot */
-  private groundY(x: number, z: number): number {
-    const gx = Math.min(HEIGHT_DIM - 1, Math.max(0, (x - WORLD_MIN) * 0.5));
-    const gz = Math.min(HEIGHT_DIM - 1, Math.max(0, (z - WORLD_MIN) * 0.5));
-    const i = Math.min(HEIGHT_DIM - 2, Math.floor(gx));
-    const j = Math.min(HEIGHT_DIM - 2, Math.floor(gz));
-    const at = i + j * HEIGHT_DIM;
-    const h = this.terrain.height;
-    return interpolateCell(h[at], h[at + 1], h[at + HEIGHT_DIM], h[at + HEIGHT_DIM + 1], gx - i, gz - j);
+    return veg[at] + veg[at + 1] >= 123 && veg[at + 3] < 130;
   }
 }

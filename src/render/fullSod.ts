@@ -2,7 +2,7 @@ import { BufferAttribute, BufferGeometry, DoubleSide, Group, Mesh, MeshSSSNodeMa
 import { float, mix, mx_noise_float, positionGeometry, positionLocal, smoothstep, vec3, vertexColor } from 'three/tsl';
 import { soilColour } from './soilPalette';
 
-const assets = import.meta.glob<string>('../../assets/grass/{sod-full,sod-patch}.bin', {
+const assets = import.meta.glob<string>('../../assets/grass/sod-full.bin', {
   query: '?url&no-inline', import: 'default', eager: true,
 });
 const HEADER_BYTES = 24;
@@ -69,11 +69,11 @@ export function decodeFullSod(buffer: ArrayBuffer) {
   return { ...leaf, soil, bytes: leaf.bytes + soilPosition.byteLength * 2 + soilIndex.byteLength };
 }
 
-async function fetchSodMesh(name: 'sod-full' | 'sod-patch'): Promise<ArrayBuffer> {
-  const url = assets[`../../assets/grass/${name}.bin`];
-  if (!url) throw new Error(`Missing ${name} mesh from the build`);
+async function fetchSodMesh(): Promise<ArrayBuffer> {
+  const url = assets['../../assets/grass/sod-full.bin'];
+  if (!url) throw new Error('Missing sod-full mesh from the build');
   const response = await fetch(url);
-  if (!response.ok || !response.body) throw new Error(`${name} mesh: HTTP ${response.status}`);
+  if (!response.ok || !response.body) throw new Error(`sod-full mesh: HTTP ${response.status}`);
   const packed = response.body.pipeThrough(new DecompressionStream('gzip'));
   return new Response(packed).arrayBuffer();
 }
@@ -104,13 +104,9 @@ export function decodeSodPatch(buffer: ArrayBuffer) {
 
 export const SOD_PATCH_LEAVES = 5_010;
 
-export async function loadSodPatch() {
-  return decodeSodPatch(await fetchSodMesh('sod-patch'));
-}
-
 /** Only fetched and uploaded for the one-square-metre high-poly comparison in the game. */
 export async function loadFullSod(shadows: boolean) {
-  const { geometry, soil, leaves, triangles, bytes } = decodeFullSod(await fetchSodMesh('sod-full'));
+  const { geometry, soil, leaves, triangles, bytes } = decodeFullSod(await fetchSodMesh());
   const leafMesh = new Mesh(geometry, createSodLeafMaterial());
   leafMesh.receiveShadow = shadows;
   leafMesh.castShadow = shadows;

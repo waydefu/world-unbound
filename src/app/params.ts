@@ -1,6 +1,7 @@
 /** URL debug parameters (pure parsing; invalid values fall back to defaults). */
 import { WEATHERS, type Weather } from '../env/weather';
 import type { BackendChoice } from '../render/renderer';
+import type { SoilPreview } from './soilRuntime';
 
 export type { BackendChoice, Weather };
 export type QualityName = 'low' | 'med' | 'high';
@@ -34,6 +35,8 @@ export interface DebugParams {
   sward: boolean;
   /** ?sod=full compares the complete high-poly tile on camera 2. */
   sodView: SodView | null;
+  /** Deterministic soil moisture states for fixed-light A/B captures. */
+  soilPreview: SoilPreview | null;
   /** Repeat the eye-height grass test path on camera 1 or 2. */
   walk: boolean;
 }
@@ -58,6 +61,7 @@ export function parseParams(search: string): DebugParams {
   const hour = numberIn(p.get('hour'), 0, 24);
   const day = numberIn(p.get('day'), 0, 32);
   const view = p.get('sodView');
+  const soil = p.get('soil');
   const terrain = p.get('terrain') === 'chunks' ? 'chunks' : 'cdlod';
   const grass = p.get('grass') !== '0';
   const sodView = p.get('sod') === 'full' && grass && terrain === 'cdlod'
@@ -79,6 +83,7 @@ export function parseParams(search: string): DebugParams {
     grass,
     sward: p.get('sward') !== '0',
     sodView,
+    soilPreview: soil === 'dry' || soil === 'rain' || soil === 'drained' ? soil : null,
     walk: p.get('walk') === '1',
   };
 }

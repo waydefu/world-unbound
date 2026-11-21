@@ -14,6 +14,7 @@ import { GroundSod } from '../render/groundSod';
 import type { Ocean } from '../render/ocean';
 import { WIND_BYTES, WindTexture } from '../render/windTexture';
 import { WORLD_SEED } from '../world/constants';
+import { SOD_LEAVES_PER_M2 } from '../world/sodRoots';
 import { CdlodBackend } from './cdlodBackend';
 import { type ResolvedCamera, SOD_ORIGIN, sodBaseY } from './cameras';
 import type { QualityTier } from './quality';
@@ -23,11 +24,11 @@ import type { TerrainBackend } from './terrainBackend';
 /** Climate and grass fields of AppState before the first tick. */
 export function initialVegetationState(): Pick<
   AppState, 'windDirDeg' | 'windSpeedMs' | 'temperatureC' | 'season01' | 'grassEnabled' | 'grassCells' | 'grassBlades'
-  | 'grassCards' | 'grassTris' | 'grassMs' | 'grassSodTiles' | 'grassSodTris' | 'windUpdates'
+  | 'grassCards' | 'grassTris' | 'grassMs' | 'grassSodTiles' | 'grassSodTris' | 'grassSodCrowns' | 'grassDensityM2' | 'windUpdates'
 > {
   return {
     windDirDeg: 0, windSpeedMs: 0, temperatureC: 0, season01: 0, grassEnabled: false, grassCells: 0, grassBlades: 0,
-    grassCards: 0, grassTris: 0, grassMs: 0, grassSodTiles: 0, grassSodTris: 0, windUpdates: 0,
+    grassCards: 0, grassTris: 0, grassMs: 0, grassSodTiles: 0, grassSodTris: 0, grassSodCrowns: 0, grassDensityM2: 0, windUpdates: 0,
   };
 }
 
@@ -72,6 +73,7 @@ export class VegetationBackend {
     this.day = day;
     this.hour = hour;
     this.weather = weather;
+    if (this.options.terrain instanceof CdlodBackend) this.options.terrain.setWeather(weather);
     this.startMs = -1;
     const w = vegetationSeason(normaliseDay(day + hour / 24) / DAYS_PER_YEAR, this.seasonWeights);
     this.options.terrain.setSeason(w[0], w[1], w[2]);
@@ -122,8 +124,9 @@ export class VegetationBackend {
       grass.setWetness(WEATHER_WETNESS[this.weather]);
       terrain.root.add(grass.root);
     }
-    if (sward && !canopyOnly && terrain.carpetWind) {
-      this.groundSod = await GroundSod.load(terrain.data, tier.name === 'high', terrain.carpetMotion, this.options.shadows);
+    if (sward && !canopyOnly && terrain.carpetWind && terrain.soil) {
+      this.groundSod = await GroundSod.load(terrain.data, terrain.gpu.height, terrain.soil.textures.water,
+        tier.name === 'high', terrain.carpetMotion, this.options.shadows);
       this.groundSod.setSeason(this.seasonWeights[0], this.seasonWeights[1], this.seasonWeights[2]);
       terrain.root.add(this.groundSod.sparse.mesh, this.groundSod.dense.mesh);
       memory.add(MemoryPartition.Gpu, this.groundSod.bytes);
@@ -190,6 +193,7 @@ export class VegetationBackend {
     state.season01 = this.climate.season01;
     const grass = this.grass;
     state.grassEnabled = this.wind !== null || this.fullSod !== null;
+    state.grassDensityM2 = state.grassEnabled && this.options.sward ? SOD_LEAVES_PER_M2 : 0;
     state.windUpdates = this.wind?.updates ?? 0;
     if (this.fullSod) {
       state.grassCells = 1;
@@ -200,10 +204,11 @@ export class VegetationBackend {
     }
     if (grass === null) return;
     const sod = this.groundSod;
-    const sodTiles = sod ? sod.sparse.mesh.count + sod.dense.mesh.count : 0;
-    state.grassSodTiles = sodTiles;
-    state.grassSodTris = sod ? sod.sparse.mesh.count * sod.sparse.triangles + sod.dense.mesh.count * sod.dense.triangles : 0;
-    state.grassCells = grass.stats.cells + sodTiles;
+    const sparse = sod?.sparse.mesh.geometry.instanceCount ?? 0;
+    const dense = sod?.dense.mesh.geometry.instanceCount ?? 0;
+    state.grassSodCrowns = sparse + dense;
+    state.grassSodTris = sod ? sparse * sod.sparse.triangles + dense * sod.dense.triangles : 0;
+    state.grassCells = grass.stats.cells;
     state.grassBlades = grass.stats.blades + state.grassSodTris / 22;
     state.grassCards = grass.stats.cards;
     state.grassTris = grass.stats.triangles + state.grassSodTris;

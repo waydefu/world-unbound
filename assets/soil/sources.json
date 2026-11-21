@@ -1,0 +1,34 @@
+{
+  "geology": {
+    "source": "https://geo.ngu.no/api/features/losmasseregionalt/collections/losmasseflate/items?f=json&limit=1000&bbox=6.82950073116852%2C62.0640202798891%2C6.91043709785071%2C62.1019700038888",
+    "registry": "https://data.norge.no/en/datasets/4c8bdb99-68e3-317c-922f-a77d1f21e309/losmasser-regionalt",
+    "attribution": "© Norges geologiske undersøkelse (NGU)",
+    "license": "NLOD 1.0",
+    "license_url": "https://data.norge.no/nlod/en/1.0",
+    "changes": "Clipped to Hellesylt and rasterized in UTM.",
+    "codes": [
+      11,
+      12,
+      20,
+      50,
+      81,
+      100,
+      130
+    ],
+    "crs": "EPSG:25832",
+    "utm_bounds": [
+      386706,
+      6883206,
+      390802,
+      6887302
+    ],
+    "cell_m": 16
+  },
+  "scan": {
+    "source": "https://ambientcg.com/view?id=Ground103",
+    "license": "CC0-1.0",
+    "size_px": 512,
+    "world_repeat_m": 1.2,
+    "scale": "visual calibration"
+  }
+}

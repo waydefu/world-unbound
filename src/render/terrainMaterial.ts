@@ -9,6 +9,7 @@ import { grassCanopy, type GrassCanopyWind } from './grassCanopy';
 import { canopyShade, grassCarpetColour, grassCarpetWeight, groundCover, meadowTint } from './grassPalette';
 import { triplanarChannel, triplanarSlope } from './noiseSampling';
 import { soilColour } from './soilPalette';
+import { soilSurface, type SoilSurfaceTextures } from './soilSurface';
 
 /**
  * Procedural PBR terrain material (G1.3). The chunk colour attribute carries
@@ -46,6 +47,8 @@ export interface TerrainSurface {
   readonly wetness: DataTexture;
   readonly grassCover: DataTexture | null;
   readonly carpet: GrassCanopyWind | null;
+  readonly soil?: SoilSurfaceTextures;
+  readonly exposeSoil?: boolean;
 }
 
 const SEABED = vec3(0.105, 0.118, 0.098);
@@ -121,10 +124,12 @@ export function createTerrainMaterial(noise: DataTexture, lite = false, surface:
   const carpetWeight = carpet ? grassCarpetWeight(veg.r.add(veg.g).min(1)) : float(0);
   const organic = smoothstep(0.12, 0.48, veg.a).mul(float(1).sub(smoothstep(0.39, 0.80, rockShare)))
     .mul(smoothstep(0.5, 2.8, y)).mul(0.67);
+  const soil = surface?.soil ? soilSurface(surface.soil, pW.xz, dist) : null;
   const soilWet = max(wetness, wet01.mul(0.72));
-  const earth = soilColour(grain.mul(0.23).add(macro.mul(0.21)).add(0.5), soilWet);
+  const earth = soil?.albedo ?? soilColour(grain.mul(0.23).add(macro.mul(0.21)).add(0.5), soilWet);
   const grassBed = carpet ? mix(baseGrass, grassCarpetColour(season).mul(carpet.tone), carpetWeight) : baseGrass;
-  const grassCol = surface ? mix(grassBed, earth, organic) : grassBed;
+  const exposed = surface?.exposeSoil ? float(1) : carpet ? mix(organic, carpet.soilGaps, carpetWeight) : organic;
+  const grassCol = surface ? mix(grassBed, earth, exposed) : grassBed;
   // Stone quays and breakwaters read as stone, not as a flat tan band: darker on the steep flank and at the foot,
   // where the wall meets the water.
   const stoneEdge = max(float(1).sub(nGeo.y).mul(4), float(1).sub(smoothstep(0.2, 1.3, y))).min(1);
@@ -137,30 +142,34 @@ export function createTerrainMaterial(noise: DataTexture, lite = false, surface:
     base = base.mul(float(1).add(grain.mul(0.14).mul(mix(0.4, 1, detail)).mul(grainWeight)));
   }
 
-  const rough = grass.mul(0.88).add(w.x.mul(0.92)).add(rock.mul(surface ? 0.8 : 0.72)).add(w.z.mul(0.9));
+  const rough = (soil ? mix(0.88, soil.roughness, exposed) : float(0.88)).mul(grass)
+    .add(w.x.mul(0.92)).add(rock.mul(surface ? 0.8 : 0.72)).add(w.z.mul(0.9));
   const shore = float(1).sub(smoothstep(0.2, 1.4, y));
   const wet = max(shore.mul(float(1).sub(w.z.mul(0.45))), wetness.mul(float(1).sub(rock.mul(0.5))));
-  const albedo = base.mul(mix(1, 0.55, wet));
+  const surfaceWet = soil ? mix(wet, soil.damp.mul(0.28), grass) : wet;
+  const wetWithoutSoil = surfaceWet.mul(soil ? float(1).sub(grass.mul(exposed)) : 1);
+  const albedo = base.mul(mix(1, 0.55, wetWithoutSoil));
   // Wet ground gets a gentler sheen than a water film would (roughness 0.3 turned the low sun into a silver streak).
-  const roughness = mix(rough, WET_ROUGHNESS, wet);
-
-
+  const roughness = mix(rough, WET_ROUGHNESS, wetWithoutSoil);
   const material = new MeshPhysicalNodeMaterial({ metalness: 0, side: FrontSide });
   material.vertexColors = false;
   material.name = 'terrain';
   material.colorNode = albedo;
   material.roughnessNode = roughness;
-  material.specularIntensityNode = mix(SPECULAR_DRY, SPECULAR_WET, wet);
+  const film = soil ? soil.film.mul(exposed).mul(grass) : float(0);
+  material.specularIntensityNode = mix(mix(SPECULAR_DRY, SPECULAR_WET, wetWithoutSoil), 0.67, film);
+  if (soil) material.iorNode = mix(1.5, 1.33, film);
   if (!lite) {
     // Micro-relief: one slope fetch (the texture stores the gradient), no finite differences.
     const g = triplanarSlope(noise, pW, nGeo, RELIEF_METRES);
     const strength = grass.mul(surface ? mix(0.38, 0.08, carpetWeight) : float(0.3)).add(w.x.mul(0.15)).add(rock.mul(0.6)).add(w.z.mul(0.34))
       .mul(detail).mul(mix(1, 0.4, wet));
-    const ground = nGeo.sub(g.mul(strength));
-    const nW = normalize(carpet ? ground.add(carpet.lean.mul(carpetWeight).mul(grass)) : ground);
+    const ground = nGeo.sub(g.mul(strength)).add(soil ? soil.bump.mul(exposed).mul(grass) : vec3(0));
+    const nW = normalize(carpet ? ground.add(carpet.lean.mul(carpetWeight).mul(grass).mul(float(1).sub(exposed))) : ground);
     material.normalNode = transformNormalToView(nW);
   } else if (surface) {
-    const nW = carpet ? normalize(nGeo.add(carpet.lean.mul(carpetWeight).mul(grass))) : nGeo;
+    const ground = nGeo.add(soil ? soil.bump.mul(exposed).mul(grass) : vec3(0));
+    const nW = normalize(carpet ? ground.add(carpet.lean.mul(carpetWeight).mul(grass).mul(float(1).sub(exposed))) : ground);
     material.normalNode = transformNormalToView(nW);
   }
   const rockOcclusion = mix(w.w, w.w.max(0.55), rock.mul(detail));

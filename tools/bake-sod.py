@@ -70,6 +70,24 @@ def export_patch(path):
     print("patch leaves", count, "triangles", count * template.size // 3, "gzip bytes", path.stat().st_size)
 
 
+def export_crowns(path):
+    mesh, points, colours = read_blades()
+    normals = np.empty(points.size, dtype=np.float32)
+    mesh.vertex_normals.foreach_get("vector", normals)
+    normals = normals.reshape(points.shape)
+    variants, leaves, vertices = 16, 9, 19
+    atlas = np.zeros((variants, 4, leaves * vertices, 4), dtype="<f4")
+    for i in range(variants):
+        first = ((11 + i // 4 * 21) * 94 + 15 + (i % 4) * 19) * leaves
+        local = points[first:first + leaves].copy()
+        local[:, :, :2] -= local[:, 1, :2].mean(axis=0)
+        atlas[i, 0, :, :3] = y_up(local)
+        atlas[i, 1, :, :3] = y_up(normals[first:first + leaves])
+        atlas[i, 2] = colours[first:first + leaves].reshape(-1, 4)
+        atlas[i, 3, :, :3] = y_up(np.repeat(local[:, 1:2, :], vertices, axis=1))
+    path.write_bytes(struct.pack("<4s2I", b"CRN1", variants, leaves * vertices) + atlas.tobytes())
+
+
 def export_full(path):
     import bpy
 
@@ -199,8 +217,10 @@ if __name__ == "__main__":
             export_full(Path(path))
         elif mode == "patch":
             export_patch(Path(path))
+        elif mode == "crowns":
+            export_crowns(Path(path))
         else:
-            raise ValueError("Expected extract, full or patch")
+            raise ValueError("Expected extract, full, patch or crowns")
     else:
         source, dest = map(Path, sys.argv[1:])
         with np.load(source) as data:

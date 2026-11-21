@@ -81,7 +81,7 @@ export class App {
     this.clock = new EnvironmentClock(this.environment);
     this.terrain = params.terrain === 'chunks'
       ? new ChunkBackend(this.memory, noise.texture, this.environment.ocean.floorTexture, tier, this.observer.uploads)
-      : new CdlodBackend(this.memory, noise.texture, tier, this.observer.uploads, params.shadows ? tier.shadows.cascades : 0, params.sward && params.grass);
+      : new CdlodBackend(this.memory, noise.texture, tier, this.observer.uploads, params.shadows ? tier.shadows.cascades : 0, params.sward && params.grass, params.soilPreview, !params.grass);
     this.vegetation = new VegetationBackend({
       ocean: this.environment.ocean, sun: this.environment.sun, terrain: this.terrain, tier, memory: this.memory,
       uploads: this.observer.uploads, noise: noise.texture, grass: params.grass, sward: params.sward, shadows: params.shadows, fullSod: params.sodView !== null,
