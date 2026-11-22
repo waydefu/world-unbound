@@ -1,17 +1,17 @@
 # Handoff
 
-Snapshot: 2026-11-21, based on merged global turf LOD trial PR #43. Read [AGENTS.md](../AGENTS.md) first (binding), then this handoff, then [INDEX.md](INDEX.md). For tools, environment and token-efficient discovery, see [process/agent-workflow.md](process/agent-workflow.md). Confirm open Issues and latest `main` before planning.
+Snapshot: 2026-11-22, based on merged turf lighting PR #44 and the owner's lowland phone export. Read [AGENTS.md](../AGENTS.md) first (binding), then this handoff, then [INDEX.md](INDEX.md). For tools, environment and token-efficient discovery, see [process/agent-workflow.md](process/agent-workflow.md). Confirm open Issues and latest `main` before planning.
 
-Base main: 53d4b0b18c55f716a99f86993d794131aa926780
+Base main: 20c3b0d0a857f6f6e30791a6f753a97cb5f10c7f
 
 ## 30-second resume (verify GitHub state before acting)
 
 - **Accepted baseline:** PRs #28–#32 merged at this snapshot; do not redo their grass/wind implementation.
 - **Current grass build:** [PR #39](https://github.com/waydefu/world-unbound/pull/39) integrated rooted turf and soil. [PR #40](https://github.com/waydefu/world-unbound/pull/40) added the rotatable `?cam=6&q=med` view. The complete master is available at `?sod=full&sodView=edge`.
-- **Turf performance experiment:** the [opt-in mesh and canopy trials](specs/s1-turf-rendering-experiment.md) compare against the merged 10–13 m handoff. Visual acceptance and the owner’s phone results are pending.
+- **Turf phone handoff (#44).** Lowland standing, WebGPU Medium at scale 1.0 reached 21.4 FPS with a 100 ms p95 over 45.8 s. Follow the [phone baseline and controlled layer comparisons](specs/s1-turf-rendering-experiment.md) before increasing the 1/24 crown fraction.
 - **Worldwide turf acceptance is pending.** The owner identified a visible ring of dense blades and flat green grass beyond it. Use the [worldwide turf standard](specs/s1-rooted-soil.md#全域草毯驗收) when changing or reviewing grass across the map.
 - **Environment work follows the same production process.** Use [environment production and acceptance](process/visual-review.md#environment-production-and-acceptance) to record the real-world reference, approve the master, and verify the result across the applicable playable area.
-- **Evidence:** prior phone/CDLOD gate passed; **latest grass WebGPU p95 and 10-minute thermal gate are not yet verified**. Headless SwiftShader is not device proof.
+- **Evidence:** the earlier CDLOD phone gate passed. The #44 grass short run missed the 60 FPS target. Per-layer attribution, motion review, WebGL2 and the 10-minute thermal run remain open.
 - **Trust boundary:** `AGENTS.md` and owner approval govern every edit; next agent checks fresh `main`, Issues, PRs and Actions.
 - **Quick checks:** `node tools/handoff-check.mjs` (advisory, offline), `node tools/agent-index.mjs find GrassCells`, and [code routing map](architecture/CODE-MAP.md).
 - **Handoff rule:** when a PR changes current status, update this dated snapshot and base SHA; do not mark unverified work complete. Full history follows.
@@ -57,7 +57,7 @@ Owner's phone: Adreno 8xx, Chrome 157, WebGPU, 60 Hz, 2.2 MP drawing buffer, med
 
 **Next agent session** (order agreed with the owner; details in [environment research](research/environment-systems.md)):
 
-1. **Use the [worldwide turf standard](specs/s1-rooted-soil.md#全域草毯驗收) for the next grass review.** Compare Low and Medium at the same locations, heights, light and wind, and inspect transitions during motion. Record the owner’s phone WebGPU results separately. [Issue #33](https://github.com/waydefu/world-unbound/issues/33) tracks root contact, overlapping blades and thin-tip lighting.
+1. Start with the [#44 phone experiment](specs/s1-turf-rendering-experiment.md) and isolate one grass layer at a time. **Use the [worldwide turf standard](specs/s1-rooted-soil.md#全域草毯驗收) for the next grass review.** Compare Low and Medium at the same locations, heights, light and wind, and inspect transitions during motion. Record the owner’s phone WebGPU results separately. [Issue #33](https://github.com/waydefu/world-unbound/issues/33) tracks root contact, overlapping blades and thin-tip lighting.
 2. Weather W1/W2: layered clouds, fog layers, rain/snow, surface wetness, lightning (cam 4 rain night is still too dark and shows no rain).
 3. Ocean O1: tide, wind-driven sea state, water colour and caustics, bathymetry constrained by Kartverket soundings.
 4. Player controller, then S1 interaction. Use the soil layers and water state from #39 for footprints that recover, sub-cell puddle geometry and mud.
