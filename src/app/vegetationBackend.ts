@@ -23,6 +23,7 @@ import { SOD_LEAVES_PER_M2 } from '../world/sodRoots';
 import type { TurfBenchmark, TurfTrial } from '../world/turfPopulation';
 import { CdlodBackend } from './cdlodBackend';
 import { type ResolvedCamera, SOD_ORIGIN, sodBaseY } from './cameras';
+import type { TurfDrawOff } from './params';
 import type { QualityTier } from './quality';
 import type { AppState } from './report';
 import type { TerrainBackend } from './terrainBackend';
@@ -55,6 +56,8 @@ export interface VegetationOptions {
   readonly turfBench: TurfBenchmark | null;
   readonly turfLod: 20 | 30 | null;
   readonly turfTrial: TurfTrial | null;
+  readonly turfOff: TurfDrawOff | null;
+  readonly turfCull: boolean;
   readonly turfReference: { x: number; z: number } | null;
   /** Sun shadows are on (blades receive them on the med and high tiers). */
   readonly shadows: boolean;
@@ -151,9 +154,11 @@ export class VegetationBackend {
       const trial = this.options.turfTrial;
       this.worldTurf = new WorldTurf(terrain.root, terrain.data, meshOptions,
         this.options.turfReference ? { ...this.options.turfReference, origins: master.origins } : null,
-        this.options.turfStats, this.options.turfBench, memory, trial);
+        this.options.turfStats, this.options.turfBench, memory, trial, false,
+        { drawOff: this.options.turfOff === 'full', earlyCull: this.options.turfCull });
       if (trial) {
-        this.foldedTurf = new WorldTurf(terrain.root, terrain.data, meshOptions, null, this.options.turfStats, null, memory, trial, true);
+        this.foldedTurf = new WorldTurf(terrain.root, terrain.data, meshOptions, null, this.options.turfStats, null, memory, trial, true,
+          { drawOff: this.options.turfOff === 'folded', earlyCull: this.options.turfCull });
         this.foldedTurf.season.value.fromArray(this.seasonWeights);
       }
       this.worldTurf.season.value.fromArray(this.seasonWeights);
@@ -163,6 +168,7 @@ export class VegetationBackend {
       if (this.options.turfLod !== null) {
         const lod = await TurfRibbonLod.load(terrain.gpu.height, terrain.data, this.options.turfLod, this.worldTurf,
           terrain.carpetMotion, this.options.shadows, trial === 'canopy');
+        lod.mesh.visible = this.options.turfOff !== 'ribbon';
         terrain.root.add(lod.mesh);
         this.turfRibbonLod = lod;
         memory.add(MemoryPartition.CpuRetained, lod.cpuBytes);

@@ -68,7 +68,7 @@ export class Environment {
   private readonly fogBase = new Color();
   private readonly overcastZenith = new Float64Array(3);
 
-  constructor(scene: Scene, noise: DataTexture, lite = false) {
+  constructor(scene: Scene, noise: DataTexture, lite = false, private readonly skyLighting = false) {
     this.ocean = new Ocean(this.sky, noise, lite);
     scene.add(this.sun, this.sun.target, this.moon, this.moon.target, this.ambient, this.ocean.mesh, this.sky.mesh);
     scene.fog = this.fog;
@@ -100,8 +100,19 @@ export class Environment {
     // Sky ambience: irradiance from the sky table, greyed and dimmed by cloud.
     const e = summary.skyIrradianceUp;
     const eLum = luminance(e);
-    const overcastMix = (c: number): number => (e[c] + (eLum - e[c]) * w.overcast) * w.dim;
     const night = NIGHT_FLOOR * Math.PI;
+    // Cloud deck: CIE standard overcast sky with the same irradiance, E = 7 pi Lz / 9,
+    // so the overcast sky and the ambient light it casts always agree.
+    // Under cloud at night the deck is only lit from below by town and moon: show it darker than the ground it
+    // lights (the ambient above keeps the full lift), otherwise the sky reads brighter than the land.
+    const darkSky = w.overcast * (1 - smooth(-0.1, 0.05, sinAlt));
+    const deck = 1 - (1 - NIGHT_DECK) * darkSky;
+    const zenith = this.overcastZenith;
+    for (let c = 0; c < 3; c++) zenith[c] = (9 / 7) * (eLum * w.dim + NIGHT_FLOOR * TINT[c]) * deck;
+
+    // Integrate the visible cloud deck and use the result for ambient light and the exposure meter.
+    const skyIrradiance = (c: number): number => e[c] * (1 - w.overcast) + zenith[c] * (7 / 9) * w.overcast;
+    const overcastMix = (c: number): number => (e[c] + (eLum - e[c]) * w.overcast) * w.dim;
     // Under cloud the ground is lit by the whole deck: lift the floor by a share of the overcast zenith (not
     // only by the starlight floor) so terrain stays readable against the brighter sky. Exposure does not see it.
     const lift = (c: number): number => OVERCAST_LIFT * w.overcast * (9 / 7) * (eLum * w.dim + NIGHT_FLOOR * TINT[c]);
@@ -112,11 +123,8 @@ export class Environment {
     const neutralFill = eLum * w.dim * daylight;
     const skyTintMix = daylight * 0.4;
     const skyFill = (c: number): number => (1 - skyTintMix) * overcastMix(c) * fill + neutralFill;
-    this.ambient.color.setRGB(
-      Math.PI * (skyFill(0) + lift(0)) + night * MOON_TINT.r,
-      Math.PI * (skyFill(1) + lift(1)) + night * MOON_TINT.g,
-      Math.PI * (skyFill(2) + lift(2)) + night * MOON_TINT.b,
-    );
+    const ambient = (c: number): number => Math.PI * (this.skyLighting ? skyIrradiance(c) : skyFill(c) + lift(c)) + night * TINT[c];
+    this.ambient.color.setRGB(ambient(0), ambient(1), ambient(2));
     // Ground bounce: 0.35 x sky plus the sun's irradiance scattered by the sunlit ground and slopes around a point:
     // albedo 0.25 x about 40% of the lower hemisphere sunlit (valleys, shaded faces see lit slopes opposite).
     const bounce = BOUNCE_SHARE * this.sunBase;
@@ -125,15 +133,6 @@ export class Environment {
       0.35 * this.ambient.color.g + bounce * t[1] * 0.98,
       0.35 * this.ambient.color.b + bounce * t[2] * 0.92,
     );
-
-    // Cloud deck: CIE standard overcast sky with the same irradiance, E = 7 pi Lz / 9,
-    // so the overcast sky and the ambient light it casts always agree.
-    // Under cloud at night the deck is only lit from below by town and moon: show it darker than the ground it
-    // lights (the ambient above keeps the full lift), otherwise the sky reads brighter than the land.
-    const darkSky = w.overcast * (1 - smooth(-0.1, 0.05, sinAlt));
-    const deck = 1 - (1 - NIGHT_DECK) * darkSky;
-    const zenith = this.overcastZenith;
-    for (let c = 0; c < 3; c++) zenith[c] = (9 / 7) * (eLum * w.dim + NIGHT_FLOOR * TINT[c]) * deck;
 
     // Aerial perspective approximated by exponential fog tinted with the horizon radiance.
     const h = summary.horizon;
@@ -173,7 +172,10 @@ export class Environment {
     // is no direct sun, so the key ramp starts at the horizon instead of in twilight: a white surface lit
     // only by sky ambient maps to ~0.12 until the sun is up, which keeps overcast dusk/night from
     // showing a sky far brighter than the ground.
-    const white = luminance(t) * Math.max(0, sinAlt) * w.sun * sunVisible + eLum * w.dim
+    const skyWhite = this.skyLighting
+      ? 0.2126 * skyIrradiance(0) + 0.7152 * skyIrradiance(1) + 0.0722 * skyIrradiance(2)
+      : eLum * w.dim;
+    const white = luminance(t) * Math.max(0, sinAlt) * w.sun * sunVisible + skyWhite
       + moonIllum * Math.max(0, Math.sin(celestial.moonAltitude)) + NIGHT_FLOOR;
     const nightKey = NIGHT_KEY + (NIGHT_KEY_OVERCAST - NIGHT_KEY) * w.overcast;
     const key = nightKey + (1 - nightKey) * smooth(-0.1 + 0.1 * w.overcast, 0.06 + 0.1 * w.overcast, sinAlt);

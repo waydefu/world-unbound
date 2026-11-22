@@ -72,6 +72,7 @@ export class CdlodBackend implements TerrainBackend {
     private readonly turfBenchmark = false,
     private readonly turfRelief = false,
     private readonly filteredTurf = false,
+    private readonly skipCanopyDraw = false,
   ) {
     this.root.name = 'terrain-root';
     // The low tier keeps the material texture at 4 m texels (1025 squared): a quarter of the memory.
@@ -137,7 +138,10 @@ export class CdlodBackend implements TerrainBackend {
       grassCover: grassCover?.texture ?? null,
       soil: this.soil.textures,
       exposeSoil: this.removeGrass && this.soilPreview !== null,
-      carpet: this.carpetWind ? { map: this.carpetWind.texture, motion: this.carpetMotion, depth: depth?.textures, relief: this.turfRelief, filtered: this.filteredTurf } : null,
+      carpet: this.carpetWind ? {
+        map: this.carpetWind.texture, motion: this.carpetMotion, depth: depth?.textures,
+        relief: this.turfRelief, filtered: this.filteredTurf, skipDepthDraw: this.skipCanopyDraw,
+      } : null,
     });
     terrain.account(memory);
     this.root.add(terrain.root);
