@@ -1,6 +1,7 @@
 /** URL debug parameters (pure parsing; invalid values fall back to defaults). */
 import { WEATHERS, type Weather } from '../env/weather';
 import type { BackendChoice } from '../render/renderer';
+import type { TurfRibbonTrial } from '../render/turfRibbonGeometry';
 import { CAMERAS, type TurfSite, type TurfView } from './cameras';
 import type { SoilPreview } from './soilRuntime';
 import type { TurfBenchmark, TurfTrial } from '../world/turfPopulation';
@@ -43,6 +44,7 @@ export interface DebugParams {
   turfTrial: TurfTrial | null;
   turfOff: TurfDrawOff | null;
   turfCull: boolean;
+  turfRibbon: TurfRibbonTrial | null;
   /** Experimental ambient calibration from the same atmosphere as the sky. */
   skyLighting: boolean;
   /** Pre-exposure multiplier for matched A/B captures. */
@@ -91,6 +93,7 @@ export function parseParams(search: string): DebugParams {
   const lod = p.get('turfLod');
   const trial = p.get('turfTrial');
   const drawOff = p.get('turfOff');
+  const ribbon = p.get('turfRibbon');
   const turfLod = worldTurf && turfBench === null && !turfReference ? (lod === '30' ? 30 : lod === '20' ? 20 : null) : null;
   const turfTrial = turfLod !== null && (trial === 'mesh' || trial === 'canopy') ? trial : null;
   return {
@@ -116,6 +119,7 @@ export function parseParams(search: string): DebugParams {
     turfTrial,
     turfOff: turfTrial === 'canopy' && (drawOff === 'full' || drawOff === 'folded' || drawOff === 'ribbon' || drawOff === 'canopy') ? drawOff : null,
     turfCull: turfTrial === 'canopy' && p.get('turfCull') === '1',
+    turfRibbon: turfTrial === 'canopy' && (ribbon === 'trim' || ribbon === 'depth') ? ribbon : null,
     skyLighting: p.get('lighting') === 'sky',
     exposure: numberIn(p.get('exposure'), 0.4, 1e6),
     turfSite: turfSite === 'slope' || turfSite === 'lowland' || turfSite === 'highland' || turfSite === 'seam' ? turfSite : null,

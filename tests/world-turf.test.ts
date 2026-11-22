@@ -7,6 +7,7 @@ import { parseParams } from '../src/app/params';
 import { BUDGET_BALANCED, MemoryRegistry } from '../src/perf/memoryRegistry';
 import { createGrassWind } from '../src/render/grassWind';
 import type { RendererHandle } from '../src/render/renderer';
+import { createTurfRibbonGeometry, RIBBON_ATLAS_BYTES, turfRibbonAtlasTop } from '../src/render/turfRibbonGeometry';
 import { WorldTurf } from '../src/render/worldTurf';
 import { CROWN_VERTICES, decodeTurfCanopy, decodeTurfMaster, MASTER_HEIGHT, MASTER_WIDTH, turfMasterOrigins } from '../src/render/worldTurfAssets';
 import { worldTurfGeometry } from '../src/render/worldTurfMesh';
@@ -74,6 +75,23 @@ describe('world turf', () => {
     expect(new Set(reduced?.array).size).toBe(9 * 10);
   });
 
+  it('trims the empty side-atlas margin and keeps the original rooted texture coordinates', () => {
+    const bytes = asset('sod-side');
+    expect(bytes.byteLength).toBe(RIBBON_ATLAS_BYTES);
+    const top = turfRibbonAtlasTop(bytes);
+    expect(top).toBe(235 / 256);
+    const geometry = createTurfRibbonGeometry(top);
+    expect(geometry.index?.count).toBe(12);
+    const position = geometry.getAttribute('position');
+    const uv = geometry.getAttribute('uv');
+    for (let i = 0; i < position.count; i++) {
+      expect(position.getY(i)).toBe(uv.getY(i));
+      expect(position.getX(i)).toBe(i % 2 === 0 ? -.5 : .5);
+      expect(position.getY(i)).toBe(i % 4 < 2 ? 0 : top);
+    }
+    expect(turfRibbonAtlasTop(new Uint8Array(RIBBON_ATLAS_BYTES))).toBe(1);
+  });
+
   it('preserves the scene in the graphics menu and keeps world turf opt-in', () => {
     const source = 'https://example.com/world-unbound/?cam=6&wx=rain&hour=17&scale=0.75&sward=world&backend=webgl2';
     const next = graphicsUrl(source, 5, 'med', '0.75');
@@ -104,7 +122,11 @@ describe('world turf', () => {
     for (const mode of ['full', 'folded', 'ribbon', 'canopy']) {
       expect(parseParams(`${trial}&turfOff=${mode}`).turfOff).toBe(mode);
     }
-    expect(parseParams(trial)).toMatchObject({ turfOff: null, turfCull: false, skyLighting: false, exposure: null });
+    expect(parseParams(trial)).toMatchObject({ turfOff: null, turfCull: false, turfRibbon: null, skyLighting: false, exposure: null });
+    expect(parseParams(`${trial}&turfRibbon=trim`).turfRibbon).toBe('trim');
+    expect(parseParams(`${trial}&turfRibbon=depth`).turfRibbon).toBe('depth');
+    expect(parseParams(`${trial}&turfRibbon=unknown`).turfRibbon).toBeNull();
+    expect(parseParams('?sward=world&turfLod=30&turfTrial=mesh&turfRibbon=depth').turfRibbon).toBeNull();
     expect(parseParams(`${trial}&turfOff=all&turfCull=1&lighting=sky&exposure=1.428`))
       .toMatchObject({ turfOff: null, turfCull: true, skyLighting: true, exposure: 1.428 });
     expect(parseParams('?sward=world&turfLod=30&turfTrial=mesh&turfOff=ribbon&turfCull=1&exposure=0'))

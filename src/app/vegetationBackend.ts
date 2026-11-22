@@ -13,6 +13,7 @@ import { GUST_WAVELENGTH_M } from '../render/grassWind';
 import { GroundSod } from '../render/groundSod';
 import type { Ocean } from '../render/ocean';
 import type { RendererHandle } from '../render/renderer';
+import type { TurfRibbonTrial } from '../render/turfRibbonGeometry';
 import { TurfRibbonLod } from '../render/turfRibbonLod';
 import { WorldTurf } from '../render/worldTurf';
 import { loadTurfMaster } from '../render/worldTurfAssets';
@@ -58,6 +59,7 @@ export interface VegetationOptions {
   readonly turfTrial: TurfTrial | null;
   readonly turfOff: TurfDrawOff | null;
   readonly turfCull: boolean;
+  readonly turfRibbon: TurfRibbonTrial | null;
   readonly turfReference: { x: number; z: number } | null;
   /** Sun shadows are on (blades receive them on the med and high tiers). */
   readonly shadows: boolean;
@@ -167,7 +169,7 @@ export class VegetationBackend {
       uploads.add(performance.now(), master.bytes);
       if (this.options.turfLod !== null) {
         const lod = await TurfRibbonLod.load(terrain.gpu.height, terrain.data, this.options.turfLod, this.worldTurf,
-          terrain.carpetMotion, this.options.shadows, trial === 'canopy');
+          terrain.carpetMotion, this.options.shadows, trial === 'canopy', this.options.turfRibbon);
         lod.mesh.visible = this.options.turfOff !== 'ribbon';
         terrain.root.add(lod.mesh);
         this.turfRibbonLod = lod;
@@ -193,6 +195,7 @@ export class VegetationBackend {
   setRenderer(handle: RendererHandle): void {
     this.worldTurf?.attach(handle);
     this.foldedTurf?.attach(handle);
+    this.turfRibbonLod?.setRenderer(handle);
   }
 
   /**

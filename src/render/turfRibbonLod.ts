@@ -1,5 +1,5 @@
 import {
-  BufferAttribute, DataTexture, DoubleSide, DynamicDrawUsage, InstancedBufferAttribute, InstancedBufferGeometry,
+  DataTexture, DoubleSide, DynamicDrawUsage, InstancedBufferAttribute, type InstancedBufferGeometry,
   LinearFilter, LinearMipmapLinearFilter, Matrix4, Mesh, MeshPhysicalNodeMaterial, RGFormat, UnsignedByteType, Vector3,
   type PerspectiveCamera,
 } from 'three/webgpu';
@@ -12,7 +12,11 @@ import { HEIGHT_DIM, type TerrainTextureData } from '../world/terrainTextures';
 import { TURF_NATIVE_FADE_START_M, turfEligible, turfVisible } from '../world/turfPopulation';
 import { grassCarpetColour } from './grassPalette';
 import { grassGust, type GrassWindUniforms } from './grassWind';
+import type { RendererHandle } from './renderer';
 import { terrainHeightNode } from './terrainHeightNode';
+import {
+  createTurfRibbonGeometry, RIBBON_ATLAS_BYTES, RIBBON_ATLAS_HEIGHT, RIBBON_ATLAS_WIDTH, turfRibbonAtlasTop, type TurfRibbonTrial,
+} from './turfRibbonGeometry';
 import type { WorldTurf } from './worldTurf';
 import { nativeTurfCoverage } from './worldTurfMesh';
 
@@ -22,15 +26,15 @@ const PADDING_M = .32;
 const CAMERA_SLACK_M = .60;
 const ROTATION_SLACK = Math.cos(8 * Math.PI / 180);
 const RIBBON_TRIANGLES = 4;
-const ATLAS_BYTES = 512 * 256 * 2;
+const RIBBON_ALPHA_CUTOFF = .035;
 const sideAssets = import.meta.glob<string>('../../assets/grass/sod-side.bin', { query: '?url&no-inline', import: 'default', eager: true });
 
 async function loadSideAtlas(): Promise<DataTexture> {
   const response = await fetch(sideAssets['../../assets/grass/sod-side.bin']);
   if (!response.ok) throw new Error(`Grass side profile: HTTP ${response.status}`);
   const bytes = new Uint8Array(await response.arrayBuffer());
-  if (bytes.length !== ATLAS_BYTES) throw new Error('Invalid grass side profile');
-  const atlas = new DataTexture(bytes, 512, 256, RGFormat, UnsignedByteType);
+  if (bytes.length !== RIBBON_ATLAS_BYTES) throw new Error('Invalid grass side profile');
+  const atlas = new DataTexture(bytes, RIBBON_ATLAS_WIDTH, RIBBON_ATLAS_HEIGHT, RGFormat, UnsignedByteType);
   atlas.magFilter = LinearFilter;
   atlas.minFilter = LinearMipmapLinearFilter;
   atlas.generateMipmaps = true;
@@ -56,14 +60,9 @@ export class TurfRibbonLod {
   readonly gpuBytes: number;
 
   private constructor(atlas: DataTexture, height: DataTexture, private readonly terrain: TerrainTextureData,
-    private readonly range: number, native: WorldTurf, wind: GrassWindUniforms, shadows: boolean, private readonly proxy: boolean) {
-    const geometry = new InstancedBufferGeometry();
-    geometry.setAttribute('position', new BufferAttribute(new Float32Array([
-      -.5, 0, 0, .5, 0, 0, -.5, 1, 0, .5, 1, 0,
-      -.5, 0, 1, .5, 0, 1, -.5, 1, 1, .5, 1, 1,
-    ]), 3));
-    geometry.setAttribute('uv', new BufferAttribute(new Float32Array([0, 0, 1, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 0, 1]), 2));
-    geometry.setIndex([0, 1, 2, 2, 1, 3, 4, 5, 6, 6, 5, 7]);
+    private readonly range: number, native: WorldTurf, wind: GrassWindUniforms, shadows: boolean, private readonly proxy: boolean,
+    private readonly trial: TurfRibbonTrial | null, private readonly top: number) {
+    const geometry = createTurfRibbonGeometry(top);
     const capacity = (Math.ceil(2 * (range + CAMERA_SLACK_M) / STEP_M) + 3) ** 2;
     this.roots = new InstancedBufferAttribute(new Float32Array(capacity * 4), 4).setUsage(DynamicDrawUsage);
     geometry.setAttribute('ribbonRoot', this.roots);
@@ -74,7 +73,7 @@ export class TurfRibbonLod {
     const near = proxy ? smoothstep(native.detailReach.x, native.detailReach.y, d) : nativeTurfCoverage(d).oneMinus();
     const far = smoothstep(range * .75, range, d).oneMinus();
     const material = new MeshPhysicalNodeMaterial({ side: DoubleSide, roughness: .82, specularIntensity: .14,
-      transparent: true, depthWrite: false, alphaTest: .035, forceSinglePass: true });
+      transparent: true, depthWrite: false, alphaTest: RIBBON_ALPHA_CUTOFF, forceSinglePass: true });
     const sampleHeight = terrainHeightNode(height);
     const ribbonNormal = varyingProperty('vec3', 'turfRibbonNormal');
     material.positionNode = Fn(() => {
@@ -109,12 +108,27 @@ export class TurfRibbonLod {
     mesh.receiveShadow = shadows;
     mesh.name = 'world-turf-ribbons';
     this.mesh = mesh;
-    this.cpuBytes = this.roots.array.byteLength + ATLAS_BYTES;
-    this.gpuBytes = this.roots.array.byteLength + Math.ceil(ATLAS_BYTES * 4 / 3);
+    this.cpuBytes = this.roots.array.byteLength + RIBBON_ATLAS_BYTES;
+    this.gpuBytes = this.roots.array.byteLength + Math.ceil(RIBBON_ATLAS_BYTES * 4 / 3);
   }
 
-  static async load(height: DataTexture, terrain: TerrainTextureData, range: number, native: WorldTurf, wind: GrassWindUniforms, shadows: boolean, proxy: boolean) {
-    return new TurfRibbonLod(await loadSideAtlas(), height, terrain, range, native, wind, shadows, proxy);
+  static async load(height: DataTexture, terrain: TerrainTextureData, range: number, native: WorldTurf, wind: GrassWindUniforms,
+    shadows: boolean, proxy: boolean, trial: TurfRibbonTrial | null = null) {
+    const atlas = await loadSideAtlas();
+    const top = trial ? turfRibbonAtlasTop(atlas.image.data as Uint8Array) : 1;
+    return new TurfRibbonLod(atlas, height, terrain, range, native, wind, shadows, proxy, trial, top);
+  }
+
+  setRenderer(handle: RendererHandle): void {
+    const depth = this.trial === 'depth' && handle.backend === 'webgpu' && handle.renderer.currentSamples > 1;
+    const { material } = this.mesh;
+    if (material.alphaToCoverage === depth) return;
+    material.transparent = !depth;
+    material.depthWrite = depth;
+    // Let MSAA convert the original opacity to coverage. Keep three.js's alpha-test edge remap off in this mode.
+    material.alphaToCoverage = depth;
+    material.alphaTest = depth ? 0 : RIBBON_ALPHA_CUTOFF;
+    material.needsUpdate = true;
   }
 
   /** @hot Update only after leaving the padded view window. */
@@ -195,6 +209,8 @@ export class TurfRibbonLod {
 
   metrics() {
     const cells = this.mesh.geometry.instanceCount;
-    return { rangeM: this.range, cells, triangles: this.mesh.visible ? cells * RIBBON_TRIANGLES : 0, rebuildMs: this.rebuildMs };
+    const mode: 'blend' | TurfRibbonTrial = this.mesh.material.alphaToCoverage ? 'depth' : this.trial ? 'trim' : 'blend';
+    return { rangeM: this.range, cells, triangles: this.mesh.visible ? cells * RIBBON_TRIANGLES : 0,
+      rebuildMs: this.rebuildMs, mode, topV: this.top };
   }
 }
