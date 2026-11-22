@@ -25,7 +25,6 @@ import { loadAndInstallTerrain } from './terrainAssets';
 import { loadOceanFloor, type StartupProgress } from './startup';
 import type { TerrainBackend } from './terrainBackend';
 import { VegetationBackend } from './vegetationBackend';
-
 const LOW_FREQUENCY_MS = 500;
 const WARMUP_TIMEOUT_MS = 20000;
 /** Shader-variant warning lines from the spec: Balanced 64, High 128. */
@@ -77,18 +76,19 @@ export class App {
     const noise = createNoiseTexture();
     this.memory.add(MemoryPartition.Gpu, noise.gpuBytes);
     this.observer.uploads.add(performance.now(), noise.gpuBytes);
-    this.environment = new Environment(this.scene, noise.texture, lite);
+    this.environment = new Environment(this.scene, noise.texture, lite, params.skyLighting);
     this.environment.uploads = this.observer.uploads;
     if (params.shadows) this.memory.add(MemoryPartition.Gpu, attachSunShadows(this.environment.sun, tier.shadows));
     this.memory.add(MemoryPartition.Gpu, this.environment.ocean.gpuBytes);
-    this.clock = new EnvironmentClock(this.environment);
+    this.clock = new EnvironmentClock(this.environment, params.exposure);
     this.terrain = params.terrain === 'chunks'
       ? new ChunkBackend(this.memory, noise.texture, this.environment.ocean.floorTexture, tier, this.observer.uploads)
-      : new CdlodBackend(this.memory, noise.texture, tier, this.observer.uploads, params.shadows ? tier.shadows.cascades : 0, params.sward && params.grass, params.soilPreview, !params.grass, params.worldTurf, params.turfBench !== null, params.turfLod !== null, params.turfTrial === 'canopy');
+      : new CdlodBackend(this.memory, noise.texture, tier, this.observer.uploads, params.shadows ? tier.shadows.cascades : 0, params.sward && params.grass, params.soilPreview, !params.grass, params.worldTurf, params.turfBench !== null, params.turfLod !== null, params.turfTrial === 'canopy', params.turfOff === 'canopy');
     this.vegetation = new VegetationBackend({
       ocean: this.environment.ocean, sun: this.environment.sun, terrain: this.terrain, tier, memory: this.memory,
       uploads: this.observer.uploads, noise: noise.texture, grass: params.grass, sward: params.sward, shadows: params.shadows, fullSod: params.sodView !== null,
-      worldTurf: params.worldTurf, turfStats: params.turfStats, turfBench: params.turfBench, turfLod: params.turfLod, turfTrial: params.turfTrial, turfReference: params.turfReference && params.turfSite ? TURF_SITES[params.turfSite] : null,
+      worldTurf: params.worldTurf, turfStats: params.turfStats, turfBench: params.turfBench, turfLod: params.turfLod, turfTrial: params.turfTrial,
+      turfOff: params.turfOff, turfCull: params.turfCull, turfReference: params.turfReference && params.turfSite ? TURF_SITES[params.turfSite] : null,
     });
     this.observer.setMeshes(this.environment.sky.mesh, this.environment.ocean.mesh, this.terrain.farMesh);
     this.terrain.attachSun(this.environment.sun);

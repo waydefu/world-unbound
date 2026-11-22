@@ -26,7 +26,7 @@ export class EnvironmentClock {
   private readonly sky: SkyViewBuilder;
   private appliedVersion = -1;
 
-  constructor(private readonly environment: Environment) {
+  constructor(private readonly environment: Environment, private readonly fixedExposure: number | null = null) {
     const t0 = performance.now();
     const trans = buildTransmittance();
     this.sky = new SkyViewBuilder(trans, buildMultipleScattering(trans));
@@ -42,7 +42,7 @@ export class EnvironmentClock {
     computeCelestial(day, hour, this.celestial);
     this.sky.buildNow(this.celestial.sunAltitude, cameraHeightM);
     this.publish();
-    this.exposure = this.environment.targetExposure;
+    this.exposure = this.fixedExposure ?? this.environment.targetExposure;
   }
 
   /**
@@ -52,6 +52,7 @@ export class EnvironmentClock {
   update(dtMs: number): number {
     if (this.sky.building) this.sky.step(ROWS_PER_FRAME);
     if (this.sky.version !== this.appliedVersion) this.publish();
+    if (this.fixedExposure !== null) return this.fixedExposure;
     const target = this.environment.targetExposure;
     const k = 1 - Math.exp(-Math.min(dtMs, 100) / ADAPT_MS);
     // Adapt in log space so bright-to-dark and dark-to-bright take equal time.
