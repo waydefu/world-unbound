@@ -72,7 +72,8 @@ export class WorldTurf {
     private readonly options: Omit<TurfMeshOptions, 'eye' | 'season' | 'reach' | 'reference' | 'unfaded'>,
     private readonly reference: { readonly x: number; readonly z: number; readonly origins: Float32Array } | null,
     private readonly diagnostic: boolean, private readonly benchmark: TurfBenchmark | null, private readonly memory: MemoryRegistry,
-    private readonly trial: TurfTrial | null = null, private readonly folded = false) {
+    private readonly trial: TurfTrial | null = null, private readonly folded = false,
+    private readonly experiment?: { readonly drawOff: boolean; readonly earlyCull: boolean }) {
     this.capacity = trial === 'canopy' || (trial !== null && !folded) ? TRIAL_CAPACITY : CAPACITY;
     this.crownDivisor = trial === 'canopy' && folded ? TURF_PROXY_CROWN_DIVISOR : 1;
   }
@@ -133,10 +134,15 @@ export class WorldTurf {
               If(this.folded ? distance.lessThan(limit) : distance.greaterThanEqual(limit), () => { visibleRoot.assign(0); });
             }
           }
-          for (let plane = 0; plane < 6; plane++) {
-            const p = this.planeNodes.element(plane);
-            If(dot(p.xyz, offset).add(p.w).lessThan(-TURF_CROWN_PADDING_M), () => { visibleRoot.assign(0); });
-          }
+          const testFrustum = () => {
+            for (let plane = 0; plane < 6; plane++) {
+              const p = this.planeNodes.element(plane);
+              If(dot(p.xyz, offset).add(p.w).lessThan(-TURF_CROWN_PADDING_M), () => { visibleRoot.assign(0); });
+            }
+          };
+          // A distance or LOD rejection cannot pass the final visibility test.
+          if (this.experiment?.earlyCull) If(visibleRoot.equal(1), testFrustum);
+          else testFrustum();
           If(visibleRoot.equal(1), () => {
             const slot = atomicAdd(indirect.element(1), 1);
             visible.element(slot).assign(id);
@@ -164,6 +170,7 @@ export class WorldTurf {
     this.batches.push(batch);
     this.memory.add(MemoryPartition.CpuRetained, cpuBytes);
     this.memory.add(MemoryPartition.Gpu, gpuBytes);
+    mesh.visible = !this.experiment?.drawOff;
     this.root.add(mesh);
     return batch;
   }
@@ -244,7 +251,7 @@ export class WorldTurf {
       for (let i = 0; i < 6; i++) this.vectors[i].fromArray(this.planes, i * 4);
       for (let b = 0; b < this.batches.length; b++) {
         const batch = this.batches[b];
-        batch.mesh.visible = batch.count !== 0;
+        batch.mesh.visible = batch.count !== 0 && !this.experiment?.drawOff;
         if (batch.count) batch.gpu?.run(batch.count);
       }
     } else {
@@ -273,7 +280,7 @@ export class WorldTurf {
         }
         this.drawn += size / 4;
         (mesh.geometry as ReturnType<typeof worldTurfGeometry>).instanceCount = size / 4;
-        mesh.visible = size !== 0;
+        mesh.visible = size !== 0 && !this.experiment?.drawOff;
         if (size) {
           instance.clearUpdateRanges();
           instance.addUpdateRange(0, size);
@@ -318,11 +325,12 @@ export class WorldTurf {
 
   metrics(): WorldTurfMetrics {
     const gpu = this.handle?.backend === 'webgpu';
+    const submitted = this.experiment?.drawOff ? 0 : this.drawn;
     const drawCalls = this.batches.reduce((sum, batch) => sum + Number(batch.mesh.visible && batch.count > 0), 0);
     return {
       mode: gpu ? 'gpu-indirect' : 'cpu-instanced', reference: this.reference !== null,
-      submittedCrowns: this.drawn, submittedLeaves: this.drawn === null ? null : this.drawn * SOD_LEAVES_PER_CROWN,
-      submittedTriangles: this.drawn === null ? null : this.drawn * SOD_LEAVES_PER_CROWN * (this.folded ? TURF_REDUCED_TRIANGLES_PER_LEAF : 22),
+      submittedCrowns: submitted, submittedLeaves: submitted === null ? null : submitted * SOD_LEAVES_PER_CROWN,
+      submittedTriangles: submitted === null ? null : submitted * SOD_LEAVES_PER_CROWN * (this.folded ? TURF_REDUCED_TRIANGLES_PER_LEAF : 22),
       candidateCrowns: this.count, overflow: this.overflow, collectMs: this.collectMs, selectMs: this.selectMs,
       gpuComputeMs: this.gpuComputeMs,
       proxyFrustumAreaEstimateM2: this.diagnostic && this.benchmark === null && (!this.trial || this.folded)

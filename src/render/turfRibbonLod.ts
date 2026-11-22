@@ -195,6 +195,6 @@ export class TurfRibbonLod {
 
   metrics() {
     const cells = this.mesh.geometry.instanceCount;
-    return { rangeM: this.range, cells, triangles: cells * RIBBON_TRIANGLES, rebuildMs: this.rebuildMs };
+    return { rangeM: this.range, cells, triangles: this.mesh.visible ? cells * RIBBON_TRIANGLES : 0, rebuildMs: this.rebuildMs };
   }
 }

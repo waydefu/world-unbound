@@ -99,6 +99,18 @@ describe('world turf', () => {
     expect(parseParams('?sward=world&turfLod=30&turfTrial=mesh&turfBench=all').turfTrial).toBeNull();
   });
 
+  it('keeps layer diagnostics opt-in to the canopy trial and parses a fixed exposure', () => {
+    const trial = '?sward=world&turfLod=30&turfTrial=canopy';
+    for (const mode of ['full', 'folded', 'ribbon', 'canopy']) {
+      expect(parseParams(`${trial}&turfOff=${mode}`).turfOff).toBe(mode);
+    }
+    expect(parseParams(trial)).toMatchObject({ turfOff: null, turfCull: false, skyLighting: false, exposure: null });
+    expect(parseParams(`${trial}&turfOff=all&turfCull=1&lighting=sky&exposure=1.428`))
+      .toMatchObject({ turfOff: null, turfCull: true, skyLighting: true, exposure: 1.428 });
+    expect(parseParams('?sward=world&turfLod=30&turfTrial=mesh&turfOff=ribbon&turfCull=1&exposure=0'))
+      .toMatchObject({ turfOff: null, turfCull: false, exposure: null });
+  });
+
   it('preserves native roots across real terrain samples and the 13 m draw batches', async () => {
     const terrain = buildTerrainTextures(1);
     const { pages: assets, origins } = await readMaster();

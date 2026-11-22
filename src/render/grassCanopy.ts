@@ -10,6 +10,7 @@ export interface GrassCanopyWind {
   readonly depth?: readonly DataTexture[];
   readonly relief?: boolean;
   readonly filtered?: boolean;
+  readonly skipDepthDraw?: boolean;
 }
 
 /** Give the continuous turf surface directional fibre, shallow relief and the same gusts as the blades. */
