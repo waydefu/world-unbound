@@ -14,6 +14,7 @@ const references = variant === 'trial' ? [false] : variant === 'reference' ? [tr
 const stats = process.env.WU_TURF_STATS === '1';
 const ribbonLod = process.env.WU_TURF_LOD;
 const trial = process.env.WU_TURF_TRIAL;
+const ribbon = process.env.WU_TURF_RIBBON;
 const minFrames = Number(process.env.WU_TURF_FRAMES ?? 1);
 const args = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'];
 if (backend === 'webgpu') args.push('--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-vulkan=swiftshader');
@@ -46,6 +47,7 @@ try {
       });
       if (ribbonLod && !reference) url.searchParams.set('turfLod', ribbonLod);
       if (trial && !reference) url.searchParams.set('turfTrial', trial);
+      if (ribbon && !reference) url.searchParams.set('turfRibbon', ribbon);
       await page.goto(url.href);
       await page.waitForFunction(() => window.__turfFrame || document.querySelector('#boot-message')?.textContent.startsWith('Could not start'), null, { timeout: 220_000, polling: 250 });
       const { png, report } = await page.evaluate(() => ({ png: window.__turfFrame, report: window.__wu?.report() }));
@@ -55,6 +57,10 @@ try {
       assert.equal(report.world.grass.worldTurf.overflow, false);
       if (ribbonLod && !reference) assert.equal(report.world.grass.worldTurf.ribbonLod?.rangeM, Number(ribbonLod));
       if (trial && !reference) assert.equal(report.world.grass.worldTurf.trial?.mode, trial);
+      if (ribbon && !reference) {
+        assert.equal(report.params.turfRibbon, ribbon);
+        assert.equal(report.world.grass.worldTurf.ribbonLod?.mode, backend === 'webgl2' ? 'trim' : ribbon);
+      }
       assert.deepEqual(problems, []);
       await writeFile(join(dir, name + '.png'), Buffer.from(png.split(',')[1], 'base64'));
       await writeFile(join(dir, name + '.json'), JSON.stringify(report, null, 2));

@@ -88,7 +88,7 @@ export class App {
       ocean: this.environment.ocean, sun: this.environment.sun, terrain: this.terrain, tier, memory: this.memory,
       uploads: this.observer.uploads, noise: noise.texture, grass: params.grass, sward: params.sward, shadows: params.shadows, fullSod: params.sodView !== null,
       worldTurf: params.worldTurf, turfStats: params.turfStats, turfBench: params.turfBench, turfLod: params.turfLod, turfTrial: params.turfTrial,
-      turfOff: params.turfOff, turfCull: params.turfCull, turfReference: params.turfReference && params.turfSite ? TURF_SITES[params.turfSite] : null,
+      turfOff: params.turfOff, turfCull: params.turfCull, turfRibbon: params.turfRibbon, turfReference: params.turfReference && params.turfSite ? TURF_SITES[params.turfSite] : null,
     });
     this.observer.setMeshes(this.environment.sky.mesh, this.environment.ocean.mesh, this.terrain.farMesh);
     this.terrain.attachSun(this.environment.sun);
