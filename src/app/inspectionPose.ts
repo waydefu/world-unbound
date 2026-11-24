@@ -18,7 +18,7 @@ export interface InspectionPose {
 /** World eye coordinates in metres, yaw/pitch and vertical field of view in degrees. */
 export function parseInspectionPose(raw: string | null): InspectionPose | null {
   const fields = raw?.split(',');
-  if (!fields || fields.length !== 7 || fields.some((field) => field.trim() === '')) return null;
+  if (fields?.length !== 7 || fields.some((field) => field.trim() === '')) return null;
   const [x, y, z, yaw, pitch, fov, near] = fields.map(Number);
   if (![x, y, z, yaw, pitch, fov, near].every(Number.isFinite)) return null;
   if (x < WORLD_MIN || x > WORLD_MAX || z < WORLD_MIN || z > WORLD_MAX || y < -56 || y > 1500
