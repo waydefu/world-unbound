@@ -235,7 +235,7 @@ export class App {
     this.state.cameraIndex = CAMERAS.indexOf(spec);
     this.state.cameraName = sodView ? `sod-master-${sodView}` : spec.name;
     this.camera.fov = this.eye.fovDeg;
-    this.camera.near = sodView ? 0.025 : spec.nearM ?? 0.3;
+    this.camera.near = sodView ? 0.025 : params.turfSite && index === 6 && params.turfView === 'macro' ? 0.008 : spec.nearM ?? 0.3;
     this.camera.updateProjectionMatrix();
     // The camera stays at the origin; the world is translated around it.
     this.camera.position.set(0, 0, 0);
