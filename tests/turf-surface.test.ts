@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { expect, it } from 'vitest';
 import { Quaternion, Vector3 } from 'three/webgpu';
 import { TURF_SITES } from '../src/app/cameras';
@@ -7,7 +8,7 @@ import { heightAt } from '../src/world/heightField';
 import { SOD_LEAVES_PER_M2, SOD_ROOT_INSET_M } from '../src/world/sodRoots';
 
 it('measures low master tips that cross a local terrain plane when only the root is raised', async () => {
-  const bytes = readFileSync(new URL('../assets/grass/sod-world-master.bin', import.meta.url));
+  const bytes = readFileSync(fileURLToPath(new URL('../assets/grass/sod-world-master.bin', import.meta.url)));
   const stream = new Blob([Uint8Array.from(bytes)]).stream().pipeThrough(new DecompressionStream('gzip'));
   const tables = decodeTurfMaster(await new Response(stream).arrayBuffer());
   const low = tables[0].image.data as Uint8Array, high = tables[1].image.data as Uint8Array;
