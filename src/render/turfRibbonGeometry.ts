@@ -1,6 +1,6 @@
 import { BufferAttribute, InstancedBufferGeometry } from 'three/webgpu';
 
-export type TurfRibbonTrial = 'trim' | 'depth' | 'blades';
+export type TurfRibbonTrial = 'trim' | 'depth' | 'blades' | 'curved';
 
 export const RIBBON_ATLAS_WIDTH = 512;
 export const RIBBON_ATLAS_HEIGHT = 256;
