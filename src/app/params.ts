@@ -123,7 +123,7 @@ export function parseParams(search: string): DebugParams {
     skyLighting: p.get('lighting') === 'sky',
     exposure: numberIn(p.get('exposure'), 0.4, 1e6),
     turfSite: turfSite === 'slope' || turfSite === 'lowland' || turfSite === 'highland' || turfSite === 'seam' ? turfSite : null,
-    turfView: turfView === 'standing' || turfView === 'raised' || turfView === 'wide' ? turfView : 'close',
+    turfView: turfView === 'macro' || turfView === 'standing' || turfView === 'raised' || turfView === 'wide' ? turfView : 'close',
     turfReference,
     sodView,
     soilPreview: soil === 'dry' || soil === 'rain' || soil === 'drained' ? soil : null,
