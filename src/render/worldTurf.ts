@@ -104,7 +104,7 @@ export class WorldTurf {
     const candidates = new Float32Array(capacity * 4);
     const geometry = worldTurfGeometry(this.folded);
     const common = { ...this.options, eye: this.eye, season: this.season, reach: this.reach,
-      reference: this.reference !== null, unfaded: this.reference !== null || this.benchmark !== null,
+      reference: this.reference !== null, unfaded: this.reference !== null || this.benchmark !== null || (!!this.options.surfaceFrame && !!this.trial && !this.folded),
       proxyLeaf: this.trial === 'canopy' && this.folded };
     let mesh: Mesh;
     let gpu: GpuRoots | null = null;

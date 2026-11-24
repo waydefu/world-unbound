@@ -7,6 +7,7 @@ Base main: 67da0fe3968c5993827cbcbcfeba2dc436d8e47f
 ## 30-second resume (verify GitHub state before acting)
 
 - **Accepted baseline:** PRs #28–#32 merged at this snapshot; do not redo their grass/wind implementation.
+- **#50 草葉近景對照。** 自由貼地觀察、同一姿態重播、坡面葉身試驗與驗收缺口見[近景對照](specs/s1-turf-inspection.md)。全域畫質與手機 60 FPS 仍待驗收。
 - **Current grass build:** [PR #39](https://github.com/waydefu/world-unbound/pull/39) integrated rooted turf and soil. [PR #40](https://github.com/waydefu/world-unbound/pull/40) added the rotatable `?cam=6&q=med` view. The complete master is available at `?sod=full&sodView=edge`.
 - **Turf phone handoff.** Fixed lowland standing on POCO F8 Ultra, WebGPU Medium at scale 1.0, measured 9.1 FPS with all turf and 20.1 FPS with ribbon drawing hidden. See the [ribbon and depth experiments](specs/s1-turf-lighting-diagnostics.md#草片輪廓與深度試驗) and [controlled layer comparisons](specs/s1-turf-rendering-experiment.md).
 - **Worldwide turf acceptance is pending.** The owner identified a visible ring of dense blades and flat green grass beyond it. Use the [worldwide turf standard](specs/s1-rooted-soil.md#全域草毯驗收) when changing or reviewing grass across the map.

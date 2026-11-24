@@ -182,7 +182,7 @@ export class GrassLayer {
    * matrices must be current. `dtSeconds` advances the travelling gust phase.
    * @hot
    */
-  update(ex: number, ey: number, ez: number, camera: Camera, nowSeconds: number, dtSeconds: number): void {
+  update(ex: number, ey: number, ez: number, camera: Camera, nowSeconds: number, dtSeconds: number, fixedTime = false): void {
     const started = performance.now();
     this.viewProjection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     frustumPlanes(this.viewProjection.elements, this.planes);
@@ -202,7 +202,8 @@ export class GrassLayer {
     }
     uniforms.eye.value.set(ex, ey, ez);
     uniforms.time.value = nowSeconds;
-    if (dtSeconds > 0 && dtSeconds < MAX_GUST_STEP_S) this.lastS += dtSeconds * GUST_CYCLES_PER_MS * Math.max(uniforms.wind.value.z, 1.5);
+    if (fixedTime) this.lastS = nowSeconds * GUST_CYCLES_PER_MS * Math.max(uniforms.wind.value.z, 1.5);
+    else if (dtSeconds > 0 && dtSeconds < MAX_GUST_STEP_S) this.lastS += dtSeconds * GUST_CYCLES_PER_MS * Math.max(uniforms.wind.value.z, 1.5);
     uniforms.gustPhase.value = this.lastS;
     stats.ms += (performance.now() - started - stats.ms) * 0.05;
   }

@@ -6,6 +6,7 @@ const MAX_PITCH = MathUtils.degToRad(88);
 /** First-person look around a fixed camera position. */
 export class CameraLook {
   private enabled = false;
+  private multiTouch = false;
   private pointer: number | null = null;
   private x = 0;
   private y = 0;
@@ -18,16 +19,17 @@ export class CameraLook {
     viewport.addEventListener('lostpointercapture', this.end);
   }
 
-  reset(enabled: boolean): void {
+  reset(enabled: boolean, multiTouch = false): void {
     const pointer = this.pointer;
     this.pointer = null;
     if (pointer !== null && this.viewport.hasPointerCapture(pointer)) this.viewport.releasePointerCapture(pointer);
     this.enabled = enabled;
+    this.multiTouch = multiTouch;
     this.viewport.classList.toggle('look-enabled', enabled);
   }
 
   private readonly start = (event: PointerEvent): void => {
-    if (!this.enabled || this.pointer !== null || !event.isPrimary || event.button !== 0) return;
+    if (!this.enabled || this.pointer !== null || (!this.multiTouch && !event.isPrimary) || event.button !== 0) return;
     this.viewport.setPointerCapture(event.pointerId);
     this.pointer = event.pointerId;
     this.x = event.clientX;

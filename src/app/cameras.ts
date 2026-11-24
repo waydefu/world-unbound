@@ -1,5 +1,6 @@
 import { SEA_LEVEL } from '../world/constants';
 import { heightAt } from '../world/heightField';
+import { INSPECTION_HEIGHTS } from './inspectionPose';
 import type { Weather } from '../env/weather';
 import type { SodView } from './params';
 
@@ -66,12 +67,20 @@ export const TURF_SITES = {
   seam: { x: 0, z: -40 },
 } as const;
 export type TurfSite = keyof typeof TURF_SITES;
-export type TurfView = 'close' | 'standing' | 'raised' | 'wide';
+export type TurfView = 'macro' | 'close' | 'standing' | 'raised' | 'wide';
 
 export function placeTurfCamera(eye: ResolvedCamera, site: TurfSite, view: TurfView): void {
   const { x, z } = TURF_SITES[site];
   eye.x = x;
   eye.z = z;
+  if (view === 'macro') {
+    eye.y = heightAt(x, z) + INSPECTION_HEIGHTS.macro;
+    eye.targetX = x - .32;
+    eye.targetZ = z + .385;
+    eye.targetY = heightAt(eye.targetX, eye.targetZ) + INSPECTION_HEIGHTS.macro;
+    eye.fovDeg = 50;
+    return;
+  }
   eye.y = heightAt(x, z) + (view === 'close' ? .16 : view === 'standing' ? 1.2 : 7.2);
   eye.targetX = x - .64;
   eye.targetZ = z + .77;
@@ -152,11 +161,11 @@ export class GrassTestWalk {
   }
 
   /** @hot */
-  update(now: number, eye: ResolvedCamera): void {
+  update(now: number, eye: ResolvedCamera, captureMs: number | null = null): void {
     const spec = this.spec;
     if (!spec) return;
     if (this.start < 0) this.start = now;
-    const phase = ((now - this.start) % WALK_DURATION_MS) / WALK_DURATION_MS;
+    const phase = ((captureMs ?? (now - this.start)) % WALK_DURATION_MS) / WALK_DURATION_MS;
     const progress = 0.5 - 0.5 * Math.cos(phase * 2 * Math.PI);
     const distance = progress * WALK_METRES;
     const at = progress * WALK_GROUND_STEPS;

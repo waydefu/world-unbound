@@ -3,6 +3,7 @@ import { WEATHERS, type Weather } from '../env/weather';
 import type { BackendChoice } from '../render/renderer';
 import type { TurfRibbonTrial } from '../render/turfRibbonGeometry';
 import { CAMERAS, type TurfSite, type TurfView } from './cameras';
+import { parseInspectionPose, type InspectionPose } from './inspectionPose';
 import type { SoilPreview } from './soilRuntime';
 import type { TurfBenchmark, TurfTrial } from '../world/turfPopulation';
 
@@ -39,6 +40,8 @@ export interface DebugParams {
   sward: boolean;
   worldTurf: boolean;
   turfStats: boolean;
+  turfFrame: 'surface' | null;
+  captureMs: number | null;
   turfBench: TurfBenchmark | null;
   turfLod: 20 | 30 | null;
   turfTrial: TurfTrial | null;
@@ -52,6 +55,8 @@ export interface DebugParams {
   turfSite: TurfSite | null;
   turfView: TurfView;
   turfReference: boolean;
+  inspect: boolean;
+  inspectPose: InspectionPose | null;
   /** ?sod=full compares the complete high-poly tile on camera 2. */
   sodView: SodView | null;
   /** Deterministic soil moisture states for fixed-light A/B captures. */
@@ -90,6 +95,10 @@ export function parseParams(search: string): DebugParams {
   const rawBench = p.get('turfBench');
   const turfBench = worldTurf ? (rawBench === 'all' ? 'all' : numberIn(rawBench, 0, 64)) : null;
   const turfReference = worldTurf && turfBench === null && p.get('turfReference') === '1';
+  const inspect = p.get('inspect') === '1' && turfBench === null;
+  const inspectPose = turfBench === null ? parseInspectionPose(p.get('inspectPose')) : null;
+  const knownSite = turfSite === 'slope' || turfSite === 'lowland' || turfSite === 'highland' || turfSite === 'seam';
+  const useSlope = (inspect && turfReference) || turfView === 'macro';
   const lod = p.get('turfLod');
   const trial = p.get('turfTrial');
   const drawOff = p.get('turfOff');
@@ -97,7 +106,7 @@ export function parseParams(search: string): DebugParams {
   const turfLod = worldTurf && turfBench === null && !turfReference ? (lod === '30' ? 30 : lod === '20' ? 20 : null) : null;
   const turfTrial = turfLod !== null && (trial === 'mesh' || trial === 'canopy') ? trial : null;
   return {
-    cam: cam === null ? (sodView === null ? 5 : 2) : Math.floor(cam),
+    cam: cam === null ? (sodView !== null ? 2 : inspect || inspectPose || turfView === 'macro' ? 6 : 5) : Math.floor(cam),
     backend: backend === 'webgpu' || backend === 'webgl2' ? backend : 'auto',
     quality: turfBench !== null ? (q === 'high' ? 'high' : 'med') : q !== null && QUALITIES.includes(q) ? q : null,
     scale: numberIn(p.get('scale'), 0.5, 1.5),
@@ -113,6 +122,8 @@ export function parseParams(search: string): DebugParams {
     grass,
     sward: p.get('sward') !== '0',
     worldTurf,
+    turfFrame: worldTurf && !turfReference && p.get('turfFrame') === 'surface' ? 'surface' : null,
+    captureMs: numberIn(p.get('captureMs'), 0, 12_000),
     turfStats: p.get('turfStats') === '1',
     turfBench,
     turfLod,
@@ -122,9 +133,11 @@ export function parseParams(search: string): DebugParams {
     turfRibbon: turfTrial === 'canopy' && (ribbon === 'trim' || ribbon === 'depth' || ribbon === 'quality') ? ribbon : null,
     skyLighting: p.get('lighting') === 'sky',
     exposure: numberIn(p.get('exposure'), 0.4, 1e6),
-    turfSite: turfSite === 'slope' || turfSite === 'lowland' || turfSite === 'highland' || turfSite === 'seam' ? turfSite : null,
-    turfView: turfView === 'standing' || turfView === 'raised' || turfView === 'wide' ? turfView : 'close',
+    turfSite: knownSite ? turfSite : useSlope ? 'slope' : null,
+    turfView: turfView === 'macro' || turfView === 'standing' || turfView === 'raised' || turfView === 'wide' ? turfView : 'close',
     turfReference,
+    inspect,
+    inspectPose,
     sodView,
     soilPreview: soil === 'dry' || soil === 'rain' || soil === 'drained' ? soil : null,
     walk: p.get('walk') === '1',
