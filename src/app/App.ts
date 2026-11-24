@@ -10,6 +10,8 @@ import { attachSunShadows } from '../render/shadows';
 import { createRenderer, warmUp, whenDeviceLost, type RendererHandle } from '../render/renderer';
 import { Hud, downloadJson } from '../ui/hud';
 import { CameraLook } from './cameraLook';
+import { InspectionCamera } from './inspectionCamera';
+import { applyInspectionPose, INSPECTION_NEAR_M, sampleInspectionPose } from './inspectionPose';
 import { CAMERAS, GrassTestWalk, placeTurfCamera, resolveCamera, resolveSodCamera, TURF_SITES, turfWalkCamera, type ResolvedCamera } from './cameras';
 import { GpuTimer } from './gpuTimer';
 import { Observer } from './observability';
@@ -27,7 +29,6 @@ import type { TerrainBackend } from './terrainBackend';
 import { VegetationBackend } from './vegetationBackend';
 const LOW_FREQUENCY_MS = 500;
 const WARMUP_TIMEOUT_MS = 20000;
-/** Shader-variant warning lines from the spec: Balanced 64, High 128. */
 const VARIANT_BUDGET = { low: 64, med: 64, high: 128 } as const;
 
 export interface AppOptions {
@@ -57,6 +58,7 @@ export class App {
   private readonly eye: ResolvedCamera = { x: 0, y: 0, z: 0, targetX: 0, targetY: 0, targetZ: 0, fovDeg: 55 };
   private readonly grassWalk = new GrassTestWalk();
   private readonly look: CameraLook;
+  private readonly inspection: InspectionCamera | null;
   private readonly bufferSize = new Vector2();
   private handle!: RendererHandle;
   private gpuTimer!: GpuTimer;
@@ -69,6 +71,7 @@ export class App {
   private constructor(private readonly options: AppOptions) {
     const { params, tier } = options;
     this.look = new CameraLook(options.viewportRoot, this.camera);
+    this.inspection = params.inspect ? new InspectionCamera(options.viewportRoot) : null;
     const lite = tier.name === 'low';
     this.memory = new MemoryRegistry(tier.memoryBudgetMiB);
     this.dyn = new DynamicResolution({ ...DEFAULT_DYNAMIC_RESOLUTION, maxScale: tier.maxScale, initialScale: tier.maxScale });
@@ -100,7 +103,6 @@ export class App {
     }, params.hud, CAMERAS);
     this.state = createAppState(tier, params, options.recoveredFromCrash, this.clock.lutMs, VARIANT_BUDGET[tier.name]);
   }
-
   static async create(options: AppOptions): Promise<App> {
     const terrainLoadMs = await loadAndInstallTerrain((done, total) => options.progress?.(5 + 40 * done / total, `Terrain tiles ${done}/${total}`));
     const app = new App(options);
@@ -108,7 +110,6 @@ export class App {
     await app.start();
     return app;
   }
-
   private async start(): Promise<void> {
     const { params, capabilities, tier, viewportRoot, progress } = this.options;
     this.startTime = performance.now();
@@ -160,7 +161,6 @@ export class App {
     this.updateStatus();
     this.handle.renderer.setAnimationLoop(this.frame);
   }
-
   private attachRenderer(): void {
     const handle = this.handle;
     this.state.backend = handle.backend;
@@ -179,13 +179,6 @@ export class App {
     void whenDeviceLost(handle.renderer).then(onLost);
     this.resize();
   }
-
-  /**
-   * GPU device/context loss: build a new renderer on a new canvas. Geometry
-   * and material data are retained on the CPU, so the scene re-uploads itself.
-   * WebGPU is retried once if an adapter can still be obtained; a second loss
-   * (or no adapter) moves to the flagged WebGL2 path.
-   */
   async recoverFromDeviceLoss(): Promise<void> {
     if (this.recovering) return;
     this.recovering = true;
@@ -221,25 +214,30 @@ export class App {
     this.running = true;
     this.handle.renderer.setAnimationLoop(this.frame);
   }
-
   setCamera(index: number): void {
     const spec = CAMERAS[index] ?? CAMERAS[0];
-    this.look.reset(spec.allowLook === true);
+    this.look.reset(spec.allowLook === true || this.inspection !== null, this.inspection !== null);
     const { params } = this.options;
     const sodView = spec === CAMERAS[2] ? params.sodView : null;
     resolveCamera(spec, this.eye);
     if (sodView) resolveSodCamera(sodView, this.eye);
     else if (params.turfSite && (index === 2 || index === 6)) placeTurfCamera(this.eye, params.turfSite, params.turfView);
-    this.grassWalk.reset(!sodView && !params.turfReference && params.walk && (index === 1 || index === 2 || (index === 6 && params.turfSite))
+    const pose = index === params.cam ? params.inspectPose : null;
+    this.grassWalk.reset(!pose && !this.inspection && !sodView && !params.turfReference && params.walk && (index === 1 || index === 2 || (index === 6 && params.turfSite))
       ? (params.turfSite ? turfWalkCamera(this.eye, spec) : spec) : null);
     this.state.cameraIndex = CAMERAS.indexOf(spec);
     this.state.cameraName = sodView ? `sod-master-${sodView}` : spec.name;
     this.camera.fov = this.eye.fovDeg;
-    this.camera.near = sodView ? 0.025 : spec.nearM ?? 0.3;
-    this.camera.updateProjectionMatrix();
+    const macro = params.turfView === 'macro' && params.turfSite && (index === 2 || index === 6);
+    this.camera.near = this.inspection || macro ? INSPECTION_NEAR_M : sodView ? 0.025 : spec.nearM ?? 0.3;
     // The camera stays at the origin; the world is translated around it.
     this.camera.position.set(0, 0, 0);
     this.camera.lookAt(this.eye.targetX - this.eye.x, this.eye.targetY - this.eye.y, this.eye.targetZ - this.eye.z);
+    this.camera.rotation.reorder('YXZ');
+    if (pose) applyInspectionPose(this.eye, this.camera, pose);
+    this.inspection?.reset(this.eye);
+    this.camera.updateProjectionMatrix();
+    this.camera.updateMatrixWorld();
     this.state.hour = params.hourExplicit ? params.hour : spec.hour ?? params.hour;
     const weather = params.weatherExplicit ? params.weather : spec.weather ?? params.weather;
     this.state.weather = weather;
@@ -253,7 +251,6 @@ export class App {
     this.terrain.invalidate();
     this.ready = false;
   }
-
   private resize(): void {
     const { viewportRoot, tier } = this.options;
     const width = Math.max(1, viewportRoot.clientWidth);
@@ -268,7 +265,6 @@ export class App {
     this.handle.renderer.setSize(width, height, false);
     this.applyRenderScale();
   }
-
   /** @amortized runs only when the controller changes the scale or the window resizes */
   private applyRenderScale(): void {
     const { renderer } = this.handle;
@@ -277,14 +273,12 @@ export class App {
     this.state.bufferWidth = this.bufferSize.x;
     this.state.bufferHeight = this.bufferSize.y;
   }
-
   /** @hot */
   private placeWorld(seconds: number): void {
     this.terrain.root.position.set(-this.eye.x, -this.eye.y, -this.eye.z);
     this.terrain.setEyeOffset(this.eye.x, this.eye.y, this.eye.z);
     this.environment.ocean.update(this.eye.x, this.eye.y, this.eye.z, seconds);
   }
-
   /** @hot */
   private readonly frame = (now: number): void => {
     const interval = this.lastTime === 0 ? 1000 / this.state.refreshHz : now - this.lastTime;
@@ -292,6 +286,10 @@ export class App {
     this.stats.push(interval, this.dyn.scale);
     if (this.dyn.update(interval)) this.applyRenderScale();
     if (this.ready) this.grassWalk.update(now, this.eye);
+    if (this.inspection) {
+      if (this.ready) this.inspection.update(this.eye, this.camera, interval);
+      this.camera.updateMatrixWorld();
+    }
     this.terrain.update(now, this.eye, this.camera);
     this.vegetation.update(now, this.eye, this.camera, this.state.bufferHeight);
     this.placeWorld(now / 1000);
@@ -300,7 +298,6 @@ export class App {
     this.gpuTimer.afterRender();
     if (now - this.lastLowFrequency >= LOW_FREQUENCY_MS) this.lowFrequency(now);
   };
-
   /** @amortized telemetry and HUD refresh at 2 Hz */
   private lowFrequency(now: number): void {
     this.lastLowFrequency = now;
@@ -334,7 +331,6 @@ export class App {
     }
     if (this.hud.isVisible) this.hud.setText(formatHud(state, stats, this.dyn, this.memory));
   }
-
   private updateStatus(): void {
     const notes: string[] = [];
     if (this.state.fallbackReason) notes.push(`WebGL2 fallback: ${this.state.fallbackReason}`);
@@ -344,6 +340,7 @@ export class App {
     this.hud.setStatus(notes.length > 0 ? notes.join(' · ') : null);
   }
   report(): Record<string, unknown> {
-    return buildReport(this.state, this.stats, this.dyn, this.memory, this.options.capabilities, this.options.params);
+    const report = buildReport(this.state, this.stats, this.dyn, this.memory, this.options.capabilities, this.options.params);
+    return { ...report, camera: { index: this.state.cameraIndex, name: this.state.cameraName, pose: sampleInspectionPose(this.eye, this.camera) } };
   }
 }
