@@ -119,7 +119,7 @@ export function parseParams(search: string): DebugParams {
     turfTrial,
     turfOff: turfTrial === 'canopy' && (drawOff === 'full' || drawOff === 'folded' || drawOff === 'ribbon' || drawOff === 'canopy') ? drawOff : null,
     turfCull: turfTrial === 'canopy' && p.get('turfCull') === '1',
-    turfRibbon: turfTrial === 'canopy' && (ribbon === 'trim' || ribbon === 'depth') ? ribbon : null,
+    turfRibbon: turfTrial === 'canopy' && (ribbon === 'trim' || ribbon === 'depth' || ribbon === 'quality') ? ribbon : null,
     skyLighting: p.get('lighting') === 'sky',
     exposure: numberIn(p.get('exposure'), 0.4, 1e6),
     turfSite: turfSite === 'slope' || turfSite === 'lowland' || turfSite === 'highland' || turfSite === 'seam' ? turfSite : null,
