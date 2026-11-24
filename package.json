@@ -15,6 +15,7 @@
     "test": "vitest run",
     "audit": "node scripts/audit.mjs",
     "audit:visual": "node scripts/audit-visual.mjs",
+    "postaudit:visual": "node tools/turf-smoke.mjs",
     "check": "npm run lint && npm run typecheck && npm test && npm run build && npm run audit && npm run audit:visual -- --skip-build",
     "lint": "biome lint --error-on-warnings",
     "check:quiet": "node tools/check-quiet.mjs"

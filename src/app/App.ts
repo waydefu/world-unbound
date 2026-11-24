@@ -91,6 +91,7 @@ export class App {
       ocean: this.environment.ocean, sun: this.environment.sun, terrain: this.terrain, tier, memory: this.memory,
       uploads: this.observer.uploads, noise: noise.texture, grass: params.grass, sward: params.sward, shadows: params.shadows, fullSod: params.sodView !== null,
       worldTurf: params.worldTurf, turfStats: params.turfStats, turfBench: params.turfBench, turfLod: params.turfLod, turfTrial: params.turfTrial,
+      surfaceFrame: params.turfFrame === 'surface', captureMs: params.captureMs,
       turfOff: params.turfOff, turfCull: params.turfCull, turfRibbon: params.turfRibbon, turfReference: params.turfReference && params.turfSite ? TURF_SITES[params.turfSite] : null,
     });
     this.observer.setMeshes(this.environment.sky.mesh, this.environment.ocean.mesh, this.terrain.farMesh);
@@ -223,7 +224,7 @@ export class App {
     if (sodView) resolveSodCamera(sodView, this.eye);
     else if (params.turfSite && (index === 2 || index === 6)) placeTurfCamera(this.eye, params.turfSite, params.turfView);
     const pose = index === params.cam ? params.inspectPose : null;
-    this.grassWalk.reset(!pose && !this.inspection && !sodView && !params.turfReference && params.walk && (index === 1 || index === 2 || (index === 6 && params.turfSite))
+    this.grassWalk.reset(!pose && !this.inspection && !sodView && (!params.turfReference || params.captureMs !== null) && params.walk && (index === 1 || index === 2 || (index === 6 && params.turfSite))
       ? (params.turfSite ? turfWalkCamera(this.eye, spec) : spec) : null);
     this.state.cameraIndex = CAMERAS.indexOf(spec);
     this.state.cameraName = sodView ? `sod-master-${sodView}` : spec.name;
@@ -285,14 +286,13 @@ export class App {
     this.lastTime = now;
     this.stats.push(interval, this.dyn.scale);
     if (this.dyn.update(interval)) this.applyRenderScale();
-    if (this.ready) this.grassWalk.update(now, this.eye);
-    if (this.inspection) {
-      if (this.ready) this.inspection.update(this.eye, this.camera, interval);
-      this.camera.updateMatrixWorld();
-    }
+    const captureMs = this.options.params.captureMs;
+    if (this.ready || captureMs !== null) this.grassWalk.update(now, this.eye, captureMs);
+    if (this.ready) this.inspection?.update(this.eye, this.camera, interval);
+    this.camera.updateMatrixWorld();
     this.terrain.update(now, this.eye, this.camera);
     this.vegetation.update(now, this.eye, this.camera, this.state.bufferHeight);
-    this.placeWorld(now / 1000);
+    this.placeWorld((captureMs ?? now) / 1000);
     this.environment.setExposure(this.clock.update(interval));
     this.handle.renderer.render(this.scene, this.camera);
     this.gpuTimer.afterRender();

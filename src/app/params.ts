@@ -40,6 +40,8 @@ export interface DebugParams {
   sward: boolean;
   worldTurf: boolean;
   turfStats: boolean;
+  turfFrame: 'surface' | null;
+  captureMs: number | null;
   turfBench: TurfBenchmark | null;
   turfLod: 20 | 30 | null;
   turfTrial: TurfTrial | null;
@@ -120,6 +122,8 @@ export function parseParams(search: string): DebugParams {
     grass,
     sward: p.get('sward') !== '0',
     worldTurf,
+    turfFrame: worldTurf && !turfReference && p.get('turfFrame') === 'surface' ? 'surface' : null,
+    captureMs: numberIn(p.get('captureMs'), 0, 12_000),
     turfStats: p.get('turfStats') === '1',
     turfBench,
     turfLod,

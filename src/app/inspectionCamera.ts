@@ -1,6 +1,6 @@
 import { MathUtils, type PerspectiveCamera } from 'three/webgpu';
 import { CELL_SIZE, SEA_LEVEL, WORLD_MAX, WORLD_MIN } from '../world/constants';
-import { heightAt } from '../world/heightField';
+import { heightAt, interpolateCell } from '../world/heightField';
 import { createInspectionControls, type InspectionHeight } from '../ui/inspectionControls';
 import type { ResolvedCamera } from './cameras';
 import { INSPECTION_HEIGHTS } from './inspectionPose';
@@ -87,9 +87,7 @@ export class InspectionCamera {
     if (cellX !== this.groundX || cellZ !== this.groundZ) this.loadGroundCell(cellX, cellZ);
     const fx = (x - cellX) / CELL_SIZE;
     const fz = (z - cellZ) / CELL_SIZE;
-    const ground = fx + fz <= 1
-      ? this.h00 + (this.h10 - this.h00) * fx + (this.h01 - this.h00) * fz
-      : this.h11 + (this.h01 - this.h11) * (1 - fx) + (this.h10 - this.h11) * (1 - fz);
+    const ground = interpolateCell(this.h00, this.h10, this.h01, this.h11, fx, fz);
     return Math.max(ground, SEA_LEVEL);
   }
 

@@ -161,11 +161,11 @@ export class GrassTestWalk {
   }
 
   /** @hot */
-  update(now: number, eye: ResolvedCamera): void {
+  update(now: number, eye: ResolvedCamera, captureMs: number | null = null): void {
     const spec = this.spec;
     if (!spec) return;
     if (this.start < 0) this.start = now;
-    const phase = ((now - this.start) % WALK_DURATION_MS) / WALK_DURATION_MS;
+    const phase = ((captureMs ?? (now - this.start)) % WALK_DURATION_MS) / WALK_DURATION_MS;
     const progress = 0.5 - 0.5 * Math.cos(phase * 2 * Math.PI);
     const distance = progress * WALK_METRES;
     const at = progress * WALK_GROUND_STEPS;

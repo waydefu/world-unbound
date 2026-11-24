@@ -3,7 +3,7 @@ import {
   type Node, type UniformNode, type Vector3,
 } from 'three/webgpu';
 import {
-  abs, float, floor, Fn, ivec2, length, mix, normalize, sign, smoothstep, texture,
+  abs, dot, float, floor, Fn, ivec2, length, mix, normalize, sign, smoothstep, texture,
   transformNormalToView, varyingProperty, vec3, vertexIndex,
 } from 'three/tsl';
 import { WORLD_MAX, WORLD_MIN } from '../world/constants';
@@ -45,6 +45,14 @@ export interface TurfMeshOptions {
   unfaded: boolean;
   ribbonHandoff?: boolean;
   proxyLeaf?: boolean;
+  surfaceFrame?: boolean;
+}
+
+/** Shortest rotation from +Y to the upward terrain normal; lengths and the leaf fold are preserved. */
+function fromTurfPlane(v: Node<'vec3'>, n: Node<'vec3'>) {
+  const along = dot(n.xz, v.xz).toVar();
+  const lateral = v.xz.add(n.xz.mul(v.y.sub(along.div(n.y.add(1)))));
+  return vec3(lateral.x, n.y.mul(v.y).sub(along), lateral.y);
 }
 
 export function nativeTurfCoverage(distance: Node<'float'>) {
@@ -94,7 +102,9 @@ export function worldTurfMesh(geometry: InstancedBufferGeometry, root: Node<'vec
     bladeHeight.assign(h);
     const gust = grassGust(base, phase, wind);
     const sway = wind.wind.xy.mul(h.max(0).pow(2).mul(gust.mul(1.7).add(.2)).mul(wind.wind.z.min(8)));
-    const top = base.add(p.xz).add(sway);
+    const relative = vec3(p.x.sub(leaf.x).add(sway.x), h, p.z.sub(leaf.z).add(sway.y));
+    const offset = options.surfaceFrame ? fromTurfPlane(relative, ground.normal).toVar() : relative;
+    const top = options.surfaceFrame ? foot.add(offset.xz) : base.add(p.xz).add(sway);
     const oct = detail.xy.mul(2).sub(1);
     const nz = abs(oct.x).add(abs(oct.y)).oneMinus();
     const unfolded = nz.lessThan(0).select(abs(oct.yx).oneMinus().mul(sign(oct)), oct);
@@ -102,9 +112,9 @@ export function worldTurfMesh(geometry: InstancedBufferGeometry, root: Node<'vec
     const n = normalize(vec3(unfolded, nz).add(windTilt));
     terrainNormal.assign(normalize(ground.normal.add(windTilt.mul(.45))));
     pigment.assign(vec3(lo.a, hi.a, detail.b));
-    normal.assign(n);
+    normal.assign(options.surfaceFrame ? fromTurfPlane(n, ground.normal) : n);
     moisture.assign(texture(water, base.sub(WORLD_MIN).div(WORLD_MAX - WORLD_MIN)).level(float(0)).r);
-    return vec3(top.x, y.sub(SOD_ROOT_INSET_M).add(h), top.y);
+    return vec3(top.x, y.sub(SOD_ROOT_INSET_M).add(offset.y), top.y);
   })();
   const native = seasonal(pigment.mul(vec3(.26, .34, .19)), season);
   const contact = mix(.58, 1, smoothstep(.005, .076, bladeHeight));

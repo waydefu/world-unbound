@@ -54,6 +54,8 @@ export interface VegetationOptions {
   readonly fullSod: boolean;
   readonly worldTurf: boolean;
   readonly turfStats: boolean;
+  readonly surfaceFrame: boolean;
+  readonly captureMs: number | null;
   readonly turfBench: TurfBenchmark | null;
   readonly turfLod: 20 | 30 | null;
   readonly turfTrial: TurfTrial | null;
@@ -151,7 +153,7 @@ export class VegetationBackend {
       const meshOptions = {
         master: master.textures, height: terrain.gpu.height, water: terrain.soil.textures.water,
         wind: terrain.carpetMotion, shadows: this.options.shadows && tier.name !== 'low',
-        ribbonHandoff: this.options.turfLod !== null,
+        surfaceFrame: this.options.surfaceFrame, ribbonHandoff: this.options.turfLod !== null,
       };
       const trial = this.options.turfTrial;
       this.worldTurf = new WorldTurf(terrain.root, terrain.data, meshOptions,
@@ -205,7 +207,7 @@ export class VegetationBackend {
    */
   private gameTimeSeconds(nowMs: number): number {
     if (this.startMs < 0) this.startMs = nowMs;
-    return (this.day * 24 + this.hour) * 3600 + (nowMs - this.startMs) / 1000;
+    return (this.day * 24 + this.hour) * 3600 + (this.options.captureMs ?? (nowMs - this.startMs)) / 1000;
   }
 
   /** @hot */
@@ -229,7 +231,8 @@ export class VegetationBackend {
         const motion = this.options.terrain.carpetMotion;
         motion.wind.value.set(dirX, dirZ, climate.windSpeedMs, climate.gust01);
         if (dt > 0 && dt < 1) this.canopyGustPhase += dt * climate.windSpeedMs * 1.1 / GUST_WAVELENGTH_M;
-        motion.gustPhase.value = this.canopyGustPhase;
+        motion.gustPhase.value = this.options.captureMs === null ? this.canopyGustPhase
+          : this.options.captureMs / 1000 * climate.windSpeedMs * 1.1 / GUST_WAVELENGTH_M;
       }
       return;
     }
@@ -237,7 +240,7 @@ export class VegetationBackend {
     const p = sun.position;
     const inv = 1 / Math.max(1e-6, Math.sqrt(p.x * p.x + p.y * p.y + p.z * p.z));
     grass.setSun(p.x * inv, p.y * inv, p.z * inv, sun.color.r * sun.intensity, sun.color.g * sun.intensity, sun.color.b * sun.intensity);
-    grass.update(eye.x, eye.y, eye.z, camera, nowMs / 1000, dt);
+    grass.update(eye.x, eye.y, eye.z, camera, (this.options.captureMs ?? nowMs) / 1000, dt, this.options.captureMs !== null);
     this.groundSod?.update(eye.x, eye.y, eye.z, camera);
   }
 
