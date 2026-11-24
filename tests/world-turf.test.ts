@@ -7,7 +7,7 @@ import { parseParams } from '../src/app/params';
 import { BUDGET_BALANCED, MemoryRegistry } from '../src/perf/memoryRegistry';
 import { createGrassWind } from '../src/render/grassWind';
 import type { RendererHandle } from '../src/render/renderer';
-import { createTurfRibbonGeometry, RIBBON_ATLAS_BYTES, turfRibbonAtlasTop } from '../src/render/turfRibbonGeometry';
+import { createTurfQualityGeometry, createTurfRibbonGeometry, RIBBON_ATLAS_BYTES, turfRibbonAtlasTop } from '../src/render/turfRibbonGeometry';
 import { WorldTurf } from '../src/render/worldTurf';
 import { CROWN_VERTICES, decodeTurfCanopy, decodeTurfMaster, MASTER_HEIGHT, MASTER_WIDTH, turfMasterOrigins } from '../src/render/worldTurfAssets';
 import { worldTurfGeometry } from '../src/render/worldTurfMesh';
@@ -92,6 +92,21 @@ describe('world turf', () => {
     expect(turfRibbonAtlasTop(new Uint8Array(RIBBON_ATLAS_BYTES))).toBe(1);
   });
 
+  it('keeps authored silhouette UVs across three quality angles', () => {
+    const top = 235 / 256;
+    const geometry = createTurfQualityGeometry(top);
+    const vertices = geometry.getAttribute('position');
+    const uvs = geometry.getAttribute('uv');
+    expect(vertices.count).toBe(12);
+    expect(geometry.index?.count).toBe(18);
+    for (let i = 0; i < 12; i++) {
+      expect(vertices.getZ(i)).toBe(Math.floor(i / 4));
+      expect(vertices.getY(i)).toBe(uvs.getY(i));
+      expect(uvs.getX(i)).toBe(uvs.getX(i % 4));
+    }
+    geometry.dispose();
+  });
+
   it('preserves the scene in the graphics menu and keeps world turf opt-in', () => {
     const source = 'https://example.com/world-unbound/?cam=6&wx=rain&hour=17&scale=0.75&sward=world&backend=webgl2';
     const next = graphicsUrl(source, 5, 'med', '0.75');
@@ -125,6 +140,7 @@ describe('world turf', () => {
     expect(parseParams(trial)).toMatchObject({ turfOff: null, turfCull: false, turfRibbon: null, skyLighting: false, exposure: null });
     expect(parseParams(`${trial}&turfRibbon=trim`).turfRibbon).toBe('trim');
     expect(parseParams(`${trial}&turfRibbon=depth`).turfRibbon).toBe('depth');
+    expect(parseParams(`${trial}&turfRibbon=quality`).turfRibbon).toBe('quality');
     expect(parseParams(`${trial}&turfRibbon=unknown`).turfRibbon).toBeNull();
     expect(parseParams('?sward=world&turfLod=30&turfTrial=mesh&turfRibbon=depth').turfRibbon).toBeNull();
     expect(parseParams(`${trial}&turfOff=all&turfCull=1&lighting=sky&exposure=1.428`))
