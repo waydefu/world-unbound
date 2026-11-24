@@ -58,3 +58,25 @@
 - `npm ci --ignore-scripts`、`npm run check:quiet`，另用 `WU_TURF_COMPARE=trial WU_TURF_LOD=30 WU_TURF_TRIAL=canopy WU_TURF_RIBBON=blades node tools/turf-capture.mjs out/proxy-blades webgl2 lowland slope highland seam`；webgpu 同樣執行並確認實際 backend。
 - 相同河谷固定站姿暖機後 60 秒，交替跑基準；再測轉向、walk=1、四地點貼地／站姿／抬升、直橫向、逆光與風擺。記錄 p50/p95/p99、長幀、實際解析度、GPU 通道及提交量。保留光影、厚度、草尖與連續性才可接受；原模 10 m 後交棒的標準仍待獨立驗證。最終須 Medium scale=1 的 POCO 60 FPS 及 10 分鐘熱機，不達標不替換預設。
 - 後續依真機資料分別試特化光照、草簇共用地形／風資料、分格剔除。原生 WGSL 後端待 TSL A/B 證明必要性才另立 spike。未複製上游程式碼。
+
+
+## Abyssal Garden 曲面葉片 A/B（2026-11-24，實驗中）
+
+在 [Issue #50](https://github.com/waydefu/world-unbound/issues/50) 的要求下，經過母模／全域草地現況、[Abyssal Garden 的 `source/src/shaders.js` 葉片頂點函式](https://github.com/Noniv/abyssal-garden/blob/main/source/src/shaders.js) 與 renderer/SoC 契約三輪核對後，新增 `&turfRibbon=curved`，**不是正式畫質路徑**。
+
+### 具體變更
+- `src/render/turfCurvedGeometry.ts`：四片草葉、每葉五列、合計 32 triangles/cell。只有根位、左右與葉長參數，沒有透明貼圖；根位仍由原來的 `turfEligible`、`heightAt`、frustum/距離選取產生。
+- `src/render/turfCurvedMaterial.ts`：TSL 頂點程序化塑形，從中心線延伸出逐節彎曲、寬度輪廓、隨高度扭轉、風場擺動和近似隨曲率變化的法線。與 Abyssal Garden 的「頂點時構形」策略相同，**不是直接搬其 WGSL 原始碼**，保留現有 three.js 光照、陰影及 WebGL2 備援。
+- 原 `&turfRibbon=blades`（#48 三葉代理）以及 `trim`/`depth` 和預設路徑全保留，沒有把降低葉片數量當成手機畫質改善。
+- `&turfView=macro`：貼地 0.055 m、鏡頭朝向約 0.19 m 外的地表草葉、8 mm 相機近裁切面；修正 `close` 原本瞄向地下的問題。此為**固定相機近看**，尚非可自由走到全圖任何位置的操作功能。
+
+### 重現比較
+在同一個**具備 PR 分支程式的測試部署**使用：
+- `?sward=world&turfLod=30&turfTrial=canopy&turfRibbon=curved&cam=6&turfSite=lowland&turfView=macro&q=med&scale=1&backend=webgpu`
+- 對照 `turfRibbon=blades`、`turfRibbon=trim`、無 `turfRibbon`；比較 `turfView=close|standing|raised` 及 slope/lowland/highland/seam。
+- 拍照：`WU_TURF_COMPARE=trial WU_TURF_LOD=30 WU_TURF_TRIAL=canopy WU_TURF_RIBBON=curved WU_TURF_VIEWS=macro,close,standing,raised node tools/turf-capture.mjs out/curved webgl2 lowland slope highland seam`。
+- 須觀察：真實立體葉尖、貼地、不形成格線、LOD 交接、遠坡密度、風動連續、視角閃爍、畫質提升是否**肉眼明顯**；記錄 60 秒與 10 分鐘原生解析度真機成績和 shader、GPU、CPU 花費。32 triangles/cell 約為 #48 不透明三葉代理的 3.56 倍，**可能比原方案更慢**。
+- 沒有截圖、真機對照、視覺盲審前，絕不宣稱已達 79,524 葉／m² 的全域高模視覺標準，更不能據此合併 main。移除 `turfRibbon=curved` 就回退。
+
+### 授權和來源
+Abyssal Garden 的 MIT 許可可供研究和合法改作，請參照上游授權；本實作採用「程序化中心線＋曲面葉寬＋扭轉＋距離剔除」的技術思路，沒有複製其 WGSL 原始碼或素材。若後續決定複製上游程式，必須保留其原著作權與完整 MIT 授權聲明。
