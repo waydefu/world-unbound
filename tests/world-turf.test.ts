@@ -102,7 +102,9 @@ describe('world turf', () => {
     for (let i = 0; i < 12; i++) {
       expect(vertices.getZ(i)).toBe(Math.floor(i / 4));
       expect(vertices.getY(i)).toBe(uvs.getY(i));
-      expect(uvs.getX(i)).toBe(uvs.getX(i % 4));
+      // The second crossed plane intentionally mirrors U; the new third plane copies the first.
+      const expectedU = i < 8 ? (i % 4 === 0 || i % 4 === 2 ? (i < 4 ? 0 : 1) : (i < 4 ? 1 : 0)) : uvs.getX(i - 8);
+      expect(uvs.getX(i)).toBe(expectedU);
     }
     geometry.dispose();
   });
