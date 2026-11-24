@@ -17,7 +17,7 @@ export interface WorldTurfMetrics {
   benchmark: { radius: TurfBenchmark; candidateCapacity: number; frustumGrassAreaEstimateM2: number | null } | null;
   trial?: TurfTrialMetrics;
   ribbonLod: { rangeM: number; cells: number; triangles: number; rebuildMs: number;
-    mode: 'blend' | 'trim' | 'depth'; topV: number } | null;
+    mode: 'blend' | 'trim' | 'depth' | 'quality'; topV: number } | null;
   nativeFade: { startM: number; endM: number } | null;
   residentBatches: number;
 }

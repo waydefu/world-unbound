@@ -59,7 +59,7 @@ try {
       if (trial && !reference) assert.equal(report.world.grass.worldTurf.trial?.mode, trial);
       if (ribbon && !reference) {
         assert.equal(report.params.turfRibbon, ribbon);
-        assert.equal(report.world.grass.worldTurf.ribbonLod?.mode, backend === 'webgl2' ? 'trim' : ribbon);
+        assert.equal(report.world.grass.worldTurf.ribbonLod?.mode, backend === 'webgl2' && ribbon === 'depth' ? 'trim' : ribbon);
       }
       assert.deepEqual(problems, []);
       await writeFile(join(dir, name + '.png'), Buffer.from(png.split(',')[1], 'base64'));
