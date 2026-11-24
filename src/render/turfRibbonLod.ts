@@ -87,10 +87,14 @@ export class TurfRibbonLod {
       const base = root.xz.add(along.mul(positionGeometry.x).mul(mix(.17, .24, root.w))).add(spread).toVar();
       const gust = grassGust(root.xz, root.w, wind);
       const sway = wind.wind.xy.mul(h.pow(2).mul(gust.mul(1.7).add(.2)).mul(wind.wind.z.min(8)));
-      const tip = base.add(sway);
+      // The quality silhouette bends its tip without moving its anchored root.
+      const curl = quality ? along.mul(positionGeometry.y.mul(positionGeometry.y).mul(.020)) : vec2(0, 0);
+      const tip = base.add(sway).add(curl);
       const ground = sampleHeight.withNormal(base);
       const tilt = vec3(across.x.mul(.18).add(sway.x.mul(2.4)), 0, across.y.mul(.18).add(sway.y.mul(2.4)));
-      ribbonNormal.assign(normalize(ground.normal.add(tilt).add(quality ? vec3(along.x.mul(.17), 0, along.y.mul(.17)) : vec3(0, 0, 0))));
+      const bladeBend = quality ? positionGeometry.y.mul(.16) : 0;
+      ribbonNormal.assign(normalize(ground.normal.add(tilt).add(quality
+        ? vec3(along.x.mul(bladeBend), 0, along.y.mul(bladeBend)) : vec3(0, 0, 0))));
       return vec3(tip.x, ground.y.add(h).sub(.002), tip.y);
     })();
     material.normalNode = transformNormalToView(ribbonNormal);
