@@ -87,10 +87,13 @@ async function sweep(browser, backend, failures) {
       });
       await page.waitForTimeout(700);
       const report = await page.evaluate(() => window.__wu.report());
-      const png = await page.screenshot({ type: 'png' });
+      // Preserve the scene report even when a software-GPU screenshot stalls.
+      writeFileSync(path.join(outDir, `${backend}-cam${cam}.json`), JSON.stringify(report, null, 2));
+      // SwiftShader can take longer than Playwright's default 30 s to read back a frame.
+      // Keep screenshot and image-quality validation mandatory; timeout remains finite.
+      const png = await page.screenshot({ type: 'png', timeout: 60_000 });
       const stats = await imageStats(page, png);
       writeFileSync(path.join(outDir, `${backend}-cam${cam}.png`), png);
-      writeFileSync(path.join(outDir, `${backend}-cam${cam}.json`), JSON.stringify(report, null, 2));
       if (report.backend.active !== backend) problems.push(`asked for ${backend}, got ${report.backend.active} (${report.backend.fallbackReason})`);
       if (stats.stdDev < 4 || stats.colours < 12) problems.push(`frame looks blank (stdDev ${stats.stdDev.toFixed(1)}, ${stats.colours} colours)`);
       if (report.world.chunksLoaded < 20) problems.push(`only ${report.world.chunksLoaded} chunks resident`);
