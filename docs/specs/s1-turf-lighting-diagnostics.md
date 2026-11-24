@@ -45,3 +45,16 @@
 ## 放行
 
 在 A 河谷、D 坡地、F 高地、I 接縫比較原模貼地、站姿、抬升、移動和風擺。Medium 固定比例 1.0，分別記錄 POCO F8 Ultra WebGPU 和 WebGL2，待 60 秒短測與至少 10 分鐘熱機，連同畫面交給使用者驗收。使用者要求的 10 公尺後才開始原模交棒仍需以單獨試驗驗證。這次開關用於測現況，移除新增參數即可回到基準。
+
+## 不透明程序化草片對照（Abyssal Garden 研究）
+
+2026-11-24 使用者同意開始獨立試驗。Refs #33；基線 main `e2b53e8`。沿用原本 30 m canopy 試驗，另加 `&turfRibbon=blades`。每一個既有草片代理根位改為三片具實際尖端輪廓的葉片（9 個三角形／格，而透明交叉草片為 4 個）；不讀取側面 alpha atlas，不混合、不使用 alpha test，開啟深度寫入，近遠交棒透過縮窄葉寬。沿用同一根位選取、地形、風、季節色和物理材質類型，保留全模、簡模和地表三層冠層。這只是程序化中景代理，不是 79,524 葉／m² 原模的等效性證明；不改預設，也不擅自改原模密度。兩種後端使用相同候選幾何。
+
+視線核查：App.ts 的 camera.position 固定為零，terrain.root.position 為 -eye；因此現有 positionWorld.normalize() 在此相機相對座標契約下是正確的，不改草冠或基準草片。若未來採用非零渲染相機位置則須重審。
+
+### 驗證矩陣
+
+- 基準、trim、depth、blades、off=ribbon 五組；固定相同鏡頭、曝光、風、解析度與陰影；depth 只在支援 MSAA 的 WebGPU 真正啟用。匯出 mode 應為 blades，triangles 應為可見格數 × 9（停繪時為零）。不以三角形數量推定 GPU 幀時間。
+- `npm ci --ignore-scripts`、`npm run check:quiet`，另用 `WU_TURF_COMPARE=trial WU_TURF_LOD=30 WU_TURF_TRIAL=canopy WU_TURF_RIBBON=blades node tools/turf-capture.mjs out/proxy-blades webgl2 lowland slope highland seam`；webgpu 同樣執行並確認實際 backend。
+- 相同河谷固定站姿暖機後 60 秒，交替跑基準；再測轉向、walk=1、四地點貼地／站姿／抬升、直橫向、逆光與風擺。記錄 p50/p95/p99、長幀、實際解析度、GPU 通道及提交量。保留光影、厚度、草尖與連續性才可接受；原模 10 m 後交棒的標準仍待獨立驗證。最終須 Medium scale=1 的 POCO 60 FPS 及 10 分鐘熱機，不達標不替換預設。
+- 後續依真機資料分別試特化光照、草簇共用地形／風資料、分格剔除。原生 WGSL 後端待 TSL A/B 證明必要性才另立 spike。未複製上游程式碼。

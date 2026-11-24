@@ -39,3 +39,10 @@ Looked at 2026-11-17 from page source and marketing text only (not run; no perfo
 - [takustaqu/atmosphere](https://github.com/takustaqu/atmosphere) (MIT). Procedural sky in one WebGL1 fragment shader (raw GLSL, no three.js dependency): the ten cloud genera reduced to four forms at three altitudes, cumulonimbus optionally ray-marched as a volume, value noise baked to a small tiling texture, clouds rendered at a fraction of resolution (`cloudScale`), an experimental keyframed sky cache, screen-space crepuscular rays, precipitation and optics. Desktop timings only (M2 Max 5.3 ms at 1080p); no mobile data.
 - Relevant: the genus-to-form-and-altitude reduction, reduced-resolution clouds, the baked tiling noise (as in our G1.4.1 noise texture), crepuscular rays.
 - Differs: its sky colour is hand-tuned and a function of elevation, not physical; ours is Hillaire (ADR-0002) and must stay the light source for clouds. Read from the README only; `src/` not reviewed yet.
+
+## Abyssal Garden 原始碼補充研究（2026-11-24）
+
+- [main.js](https://github.com/Noniv/abyssal-garden/blob/main/source/src/main.js#L398)：CPU 先檢查分格 AABB 的視錐、距離，合併相鄰實例範圍並近列優先。大葉採 18/10/6 頂點的 triangle-strip，遠處另有稀疏實例表。不是逐葉 GPU compute 剔除。
+- [shaders.js](https://github.com/Noniv/abyssal-garden/blob/main/source/src/shaders.js#L401)：參數化葉片曲線、法線、擺動、雙面光照、透光；使用真實幾何輪廓而非植物透明矩形。適合作為中景代理實驗，而非替換已核准草模。
+- [main.js](https://github.com/Noniv/abyssal-garden/blob/main/source/src/main.js#L145)：GPU 生成密度場後讀回 CPU，Surface Nets 在 CPU 生成地形網格；陰影主要為載入期預計算。真實 4 km 地形與動態日夜仍應維持本專案 CDLOD 及 CSM。
+- 本專案下一步見 [不透明程序化草片對照](../specs/s1-turf-lighting-diagnostics.md#不透明程序化草片對照abyssal-garden-研究)。保留 Three.js TSL 和 WebGL2；先量測再選底層重構，不採用上游程式碼。
