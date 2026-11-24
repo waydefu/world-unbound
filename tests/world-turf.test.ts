@@ -169,6 +169,7 @@ describe('world turf', () => {
     expect(parseParams(`${trial}&turfRibbon=depth`).turfRibbon).toBe('depth');
     expect(parseParams(`${trial}&turfRibbon=blades`).turfRibbon).toBe('blades');
     expect(parseParams(`${trial}&turfRibbon=curved`).turfRibbon).toBe('curved');
+    expect(parseParams(`${trial}&turfView=macro`).turfView).toBe('macro');
     expect(parseParams('?sward=world&turfLod=30&turfTrial=mesh&turfRibbon=blades').turfRibbon).toBeNull();
     expect(parseParams(`${trial}&turfRibbon=unknown`).turfRibbon).toBeNull();
     expect(parseParams('?sward=world&turfLod=30&turfTrial=mesh&turfRibbon=depth').turfRibbon).toBeNull();
@@ -176,6 +177,18 @@ describe('world turf', () => {
       .toMatchObject({ turfOff: null, turfCull: true, skyLighting: true, exposure: 1.428 });
     expect(parseParams('?sward=world&turfLod=30&turfTrial=mesh&turfOff=ribbon&turfCull=1&exposure=0'))
       .toMatchObject({ turfOff: null, turfCull: false, exposure: null });
+  });
+
+  it('aims lowland inspection cameras at visible grass rather than through the ground', () => {
+    const spec = CAMERAS[6];
+    const view = resolveCamera(spec, { x: 0, y: 0, z: 0, targetX: 0, targetY: 0, targetZ: 0, fovDeg: 50 });
+    placeTurfCamera(view, 'lowland', 'macro');
+    expect(view.y - heightAt(view.x, view.z)).toBeCloseTo(.055, 3);
+    expect(view.y - view.targetY).toBeCloseTo(.04, 3);
+    expect(Math.hypot(view.x - view.targetX, view.z - view.targetZ)).toBeLessThan(.25);
+    placeTurfCamera(view, 'lowland', 'close');
+    expect(view.y - heightAt(view.x, view.z)).toBeCloseTo(.16, 3);
+    expect(view.y - view.targetY).toBeCloseTo(.12, 3);
   });
 
   it('preserves native roots across real terrain samples and the 13 m draw batches', async () => {
