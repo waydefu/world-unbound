@@ -6,6 +6,7 @@ import { placeTurfCamera, resolveCamera, CAMERAS, TURF_SITES } from '../src/app/
 import { parseParams } from '../src/app/params';
 import { BUDGET_BALANCED, MemoryRegistry } from '../src/perf/memoryRegistry';
 import { createGrassWind } from '../src/render/grassWind';
+import { createTurfCurvedGeometry, CURVED_GRASS_LEAVES, CURVED_GRASS_ROWS, CURVED_GRASS_TRIANGLES } from '../src/render/turfCurvedGeometry';
 import type { RendererHandle } from '../src/render/renderer';
 import { createTurfProxyGeometry, createTurfRibbonGeometry, TURF_PROXY_TRIANGLES, RIBBON_ATLAS_BYTES, turfRibbonAtlasTop } from '../src/render/turfRibbonGeometry';
 import { WorldTurf } from '../src/render/worldTurf';
@@ -111,6 +112,28 @@ describe('world turf', () => {
     geometry.dispose();
   });
 
+  it('builds four rooted parametric leaf strips with consistent winding, UVs, and zero-width-tip inputs', () => {
+    const geometry = createTurfCurvedGeometry();
+    const positions = geometry.getAttribute('position');
+    const uv = geometry.getAttribute('uv');
+    expect(positions.count).toBe(CURVED_GRASS_LEAVES * CURVED_GRASS_ROWS * 2);
+    expect(geometry.index?.count).toBe(CURVED_GRASS_TRIANGLES * 3);
+    for (let blade = 0; blade < CURVED_GRASS_LEAVES; blade++) {
+      for (let row = 0; row < CURVED_GRASS_ROWS; row++) {
+        for (let side = 0; side < 2; side++) {
+          const index = (blade * CURVED_GRASS_ROWS + row) * 2 + side;
+          expect(positions.getX(index)).toBe(side === 0 ? -1 : 1);
+          expect(positions.getY(index)).toBeCloseTo(row / (CURVED_GRASS_ROWS - 1));
+          expect(positions.getZ(index)).toBe(blade);
+          expect(uv.getX(index)).toBe(side);
+          expect(uv.getY(index)).toBe(positions.getY(index));
+        }
+      }
+    }
+    for (const index of geometry.index?.array ?? []) expect(index).toBeLessThan(positions.count);
+    geometry.dispose();
+  });
+
   it('preserves the scene in the graphics menu and keeps world turf opt-in', () => {
     const source = 'https://example.com/world-unbound/?cam=6&wx=rain&hour=17&scale=0.75&sward=world&backend=webgl2';
     const next = graphicsUrl(source, 5, 'med', '0.75');
@@ -145,6 +168,7 @@ describe('world turf', () => {
     expect(parseParams(`${trial}&turfRibbon=trim`).turfRibbon).toBe('trim');
     expect(parseParams(`${trial}&turfRibbon=depth`).turfRibbon).toBe('depth');
     expect(parseParams(`${trial}&turfRibbon=blades`).turfRibbon).toBe('blades');
+    expect(parseParams(`${trial}&turfRibbon=curved`).turfRibbon).toBe('curved');
     expect(parseParams('?sward=world&turfLod=30&turfTrial=mesh&turfRibbon=blades').turfRibbon).toBeNull();
     expect(parseParams(`${trial}&turfRibbon=unknown`).turfRibbon).toBeNull();
     expect(parseParams('?sward=world&turfLod=30&turfTrial=mesh&turfRibbon=depth').turfRibbon).toBeNull();
