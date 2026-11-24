@@ -5,6 +5,8 @@ import {
 } from 'three/webgpu';
 import { abs, attribute, cos, Fn, mix, normalize, positionGeometry, positionWorld, sin, smoothstep, texture, transformNormalToView, uv, varyingProperty, vec2, vec3 } from 'three/tsl';
 import { frustumPlanes } from '../world/cdlodMath';
+import { createTurfCurvedGeometry, CURVED_GRASS_TRIANGLES } from './turfCurvedGeometry';
+import { createTurfCurvedMaterial } from './turfCurvedMaterial';
 import { WORLD_MAX, WORLD_MIN } from '../world/constants';
 import { heightAt } from '../world/heightField';
 import { sodHash } from '../world/sodRoots';
@@ -63,7 +65,9 @@ export class TurfRibbonLod {
     private readonly range: number, native: WorldTurf, wind: GrassWindUniforms, shadows: boolean, private readonly proxy: boolean,
     private readonly trial: TurfRibbonTrial | null, private readonly top: number) {
     const blades = trial === 'blades';
-    const geometry = blades ? createTurfProxyGeometry() : createTurfRibbonGeometry(top);
+    const curved = trial === 'curved';
+    const opaque = blades || curved;
+    const geometry = curved ? createTurfCurvedGeometry() : blades ? createTurfProxyGeometry() : createTurfRibbonGeometry(top);
     const capacity = (Math.ceil(2 * (range + CAMERA_SLACK_M) / STEP_M) + 3) ** 2;
     this.roots = new InstancedBufferAttribute(new Float32Array(capacity * 4), 4).setUsage(DynamicDrawUsage);
     geometry.setAttribute('ribbonRoot', this.roots);
@@ -73,8 +77,10 @@ export class TurfRibbonLod {
     const d = root.xyz.sub(native.eye).length().max(.01);
     const near = proxy ? smoothstep(native.detailReach.x, native.detailReach.y, d) : nativeTurfCoverage(d).oneMinus();
     const far = smoothstep(range * .75, range, d).oneMinus();
-    const material = new MeshPhysicalNodeMaterial({ side: DoubleSide, roughness: .82, specularIntensity: .14,
-      transparent: !blades, depthWrite: blades, alphaTest: blades ? 0 : RIBBON_ALPHA_CUTOFF, forceSinglePass: true });
+    const material = curved ? createTurfCurvedMaterial(root, height, native, wind, range, proxy)
+      : new MeshPhysicalNodeMaterial({ side: DoubleSide, roughness: .82, specularIntensity: .14,
+        transparent: !opaque, depthWrite: opaque, alphaTest: opaque ? 0 : RIBBON_ALPHA_CUTOFF, forceSinglePass: true });
+    if (!curved) {
     const sampleHeight = terrainHeightNode(height);
     const ribbonNormal = varyingProperty('vec3', 'turfRibbonNormal');
     material.positionNode = Fn(() => {
@@ -110,25 +116,27 @@ export class TurfRibbonLod {
         material.opacityNode = alpha.mul(near).mul(far);
       }
     }
+    }
     const mesh = new Mesh(geometry, material);
     mesh.frustumCulled = false;
     mesh.receiveShadow = shadows;
-    mesh.name = blades ? 'world-turf-proxy-blades' : 'world-turf-ribbons';
+    mesh.name = curved ? 'world-turf-curved-blades' : blades ? 'world-turf-proxy-blades' : 'world-turf-ribbons';
     this.mesh = mesh;
-    const geometryBytes = blades ? 15 * 5 * 4 + 27 * 2 : 8 * 5 * 4 + 12 * 2;
+    const geometryBytes = geometry.getAttribute('position').array.byteLength
+      + geometry.getAttribute('uv').array.byteLength + (geometry.index?.array.byteLength ?? 0);
     this.cpuBytes = this.roots.array.byteLength + geometryBytes + (atlas ? RIBBON_ATLAS_BYTES : 0);
     this.gpuBytes = this.roots.array.byteLength + geometryBytes + (atlas ? Math.ceil(RIBBON_ATLAS_BYTES * 4 / 3) : 0);
   }
 
   static async load(height: DataTexture, terrain: TerrainTextureData, range: number, native: WorldTurf, wind: GrassWindUniforms,
     shadows: boolean, proxy: boolean, trial: TurfRibbonTrial | null = null) {
-    const atlas = trial === 'blades' ? null : await loadSideAtlas();
+    const atlas = trial === 'blades' || trial === 'curved' ? null : await loadSideAtlas();
     const top = trial && atlas ? turfRibbonAtlasTop(atlas.image.data as Uint8Array) : 1;
     return new TurfRibbonLod(atlas, height, terrain, range, native, wind, shadows, proxy, trial, top);
   }
 
   setRenderer(handle: RendererHandle): void {
-    if (this.trial === 'blades') return;
+    if (this.trial === 'blades' || this.trial === 'curved') return;
     const depth = this.trial === 'depth' && handle.backend === 'webgpu' && handle.renderer.currentSamples > 1;
     const { material } = this.mesh;
     if (material.alphaToCoverage === depth) return;
@@ -218,8 +226,10 @@ export class TurfRibbonLod {
 
   metrics() {
     const cells = this.mesh.geometry.instanceCount;
-    const mode: 'blend' | TurfRibbonTrial = this.trial === 'blades' ? 'blades' : this.mesh.material.alphaToCoverage ? 'depth' : this.trial ? 'trim' : 'blend';
-    const trianglesPerCell = mode === 'blades' ? TURF_PROXY_TRIANGLES : RIBBON_TRIANGLES;
+    const mode: 'blend' | TurfRibbonTrial = this.trial === 'curved' ? 'curved' : this.trial === 'blades' ? 'blades'
+      : this.mesh.material.alphaToCoverage ? 'depth' : this.trial ? 'trim' : 'blend';
+    const trianglesPerCell = mode === 'curved' ? CURVED_GRASS_TRIANGLES
+      : mode === 'blades' ? TURF_PROXY_TRIANGLES : RIBBON_TRIANGLES;
     return { rangeM: this.range, cells, triangles: this.mesh.visible ? cells * trianglesPerCell : 0,
       rebuildMs: this.rebuildMs, mode, topV: this.top };
   }
