@@ -66,16 +66,19 @@ export const TURF_SITES = {
   seam: { x: 0, z: -40 },
 } as const;
 export type TurfSite = keyof typeof TURF_SITES;
-export type TurfView = 'close' | 'standing' | 'raised' | 'wide';
+export type TurfView = 'macro' | 'close' | 'standing' | 'raised' | 'wide';
 
 export function placeTurfCamera(eye: ResolvedCamera, site: TurfSite, view: TurfView): void {
   const { x, z } = TURF_SITES[site];
   eye.x = x;
   eye.z = z;
-  eye.y = heightAt(x, z) + (view === 'close' ? .16 : view === 'standing' ? 1.2 : 7.2);
-  eye.targetX = x - .64;
-  eye.targetZ = z + .77;
-  eye.targetY = eye.y - (view === 'raised' ? 2.55 : view === 'wide' ? .34 : .42);
+  const inspection = view === 'macro' || view === 'close';
+  eye.y = heightAt(x, z) + (view === 'macro' ? .055 : view === 'close' ? .16 : view === 'standing' ? 1.2 : 7.2);
+  // Observe actual blades rather than aiming 26 cm below ground in the close-up preset.
+  eye.targetX = x - (view === 'macro' ? .12 : inspection ? .27 : .64);
+  eye.targetZ = z + (view === 'macro' ? .15 : inspection ? .32 : .77);
+  eye.targetY = eye.y - (view === 'macro' ? .04 : view === 'close' ? .12
+    : view === 'raised' ? 2.55 : view === 'wide' ? .34 : .42);
   eye.fovDeg = 50;
 }
 
