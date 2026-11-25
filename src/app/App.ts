@@ -129,7 +129,6 @@ export class App {
     this.selectCamera(params.cam);
     this.terrain.prime(this.eye.x, this.eye.z);
     this.placeWorld(0);
-
     await prepareScene(this.startup, this.terrain, this.vegetation, this.scene, this.camera, {
       container: viewportRoot, choice: params.backend, webgpuUsable: capabilities.webgpu.adapter,
       antialias: tier.antialias, timestampQuery: capabilities.webgpu.features.includes('timestamp-query'),
@@ -343,6 +342,7 @@ export class App {
   report(): Record<string, unknown> {
     const report = buildReport(this.state, this.stats, this.dyn, this.memory, this.options.capabilities, this.options.params);
     return { ...report, startup: this.startup, cpuFrameTiming: this.diagnostics?.report() ?? null,
+      gpuRenderPasses: this.diagnostics ? this.gpuTimer.lastResolvedPasses() : null,
       camera: { index: this.state.cameraIndex, name: this.state.cameraName, initialIndex: this.options.params.cam,
         cuts: this.cameraCuts, locked: this.options.params.perf, pose: sampleInspectionPose(this.eye, this.camera) } };
   }

@@ -10,7 +10,7 @@
 
 URL 固定使用 `?cam=6&turfSite=slope&turfView=macro&perf=1&q=med&scale=1&backend=webgpu&day=6&hour=13&wx=clear&exposure=1.428&hud=0&sward=world&turfLod=30&turfTrial=canopy&turfRibbon=quality&turfFrame=surface`。使用同一台手機、同一 Chrome、相同方向、2186 × 1006 drawing buffer。比對 JSON 的實際後端和相機姿態。保留實時風動。量 60 秒的穩定窗口及 10 分鐘熱機。冷載入與快取載入分開量，鎖定機身與環境條件，並記錄測試時是否在充電。舊版未支援 `perf=1`，量測時避免點擊相機欄或拖曳畫面。近期分位數保留在樣本數上限內，`sessionMeanMs` 涵蓋整段會話。新增的 CPU 時間分成地形更新、植被更新與 CPU render 提交。慢幀附前一個 callback 的耗時，以區分一幀內的工作與 callback 間隔。用 `perf=trace&inspect=1` 記錄自由移動時的慢幀與當時相機位置。缺少溫度或 GPU 時脈資料時保留未知。
 
-GPU pass 加總不能當作單幀占用。診斷時分別比較一次 `shadows=0`、`turfOff=ribbon`、`turfOff=full`、`turfOff=folded`、`turfOff=canopy`，每次只改一個開關。這些測試用於估計各層對成本的影響。正式品質／效能驗收使用所有畫質層。
+GPU pass 加總不能當作單幀占用。效能模式的 `gpuRenderPasses` 額外提供已解析的最近一幀逐 pass 時間。context ID 由 Three.js 生成，跨會話會改變。草片和母模同在主 pass，仍須使用各層開關比較。診斷時分別比較一次 `shadows=0`、`turfOff=ribbon`、`turfOff=full`、`turfOff=folded`、`turfOff=canopy`，每次只改一個開關。這些測試用於估計各層對成本的影響。正式品質／效能驗收使用所有畫質層。
 
 另開 `turfStats=1` 做間接繪製計數取樣，保留 `countSource`、取樣年齡及各層結果。只有實際無繪製或讀回計數為 0 才回報 0，停用、等待或相機已改變時仍回報 null。原 `triangles` 欄在未取到完整數據時是小計，可用 `triangleCountComplete` 辨識；正式效能記錄使用 `turfStats=0`。
 
