@@ -20,6 +20,7 @@ declare global {
 }
 
 async function boot(): Promise<void> {
+  const bootStartMs = performance.now();
   const bootScreen = document.getElementById('boot') as HTMLElement;
   const bootMessage = document.getElementById('boot-message') as HTMLElement;
   const bootProgress = document.getElementById('boot-progress') as HTMLProgressElement;
@@ -49,6 +50,7 @@ async function boot(): Promise<void> {
     });
     const app = await App.create({
       params,
+      bootStartMs,
       capabilities,
       tier: QUALITY[quality],
       recoveredFromCrash: session.recoveredFromCrash,

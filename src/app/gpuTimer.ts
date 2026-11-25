@@ -54,6 +54,20 @@ export class GpuTimer {
     return this.active ? this.ring.count : null;
   }
 
+  /** @amortized Read existing render timestamps for the resolved frame without a new GPU readback. */
+  lastResolvedPasses(): { frame: number; passes: Array<{ context: string; durationMs: number }> } | null {
+    if (!this.active) return null;
+    const pool = (this.renderer.backend as unknown as { timestampQueryPool?: { render?: TimestampPool } }).timestampQueryPool?.render;
+    if (!pool || pool.frames.length === 0) return null;
+    const frame = pool.frames[pool.frames.length - 1];
+    const suffix = `:f${frame}`;
+    const passes = [];
+    for (const [uid, durationMs] of pool.timestamps) {
+      if (uid.endsWith(suffix)) passes.push({ context: uid.slice(0, -suffix.length), durationMs });
+    }
+    return { frame, passes };
+  }
+
   /**
    * Number of timestamped passes in the last resolved frame (read from the render pool's
    * `frames` and per-context `timestamps`, keys `<context>:f<frame>`), or null when unavailable.

@@ -19,14 +19,14 @@ export class ChunkBackend implements TerrainBackend {
   private readonly streamer: TerrainStreamer;
   private readonly telemetry = createChunkTelemetry();
 
-  constructor(memory: MemoryRegistry, noise: DataTexture, floor: DataTexture, tier: QualityTier, uploads: SlidingRate) {
+  constructor(client: TerrainClient, memory: MemoryRegistry, noise: DataTexture, floor: DataTexture, tier: QualityTier, uploads: SlidingRate) {
     const lite = tier.name === 'low';
     this.chunks = new TerrainChunks(memory, noise, tier.shadows.maxFar, lite);
     this.chunks.uploads = uploads;
     this.far = new FarTerrain(floor, noise, tier.lod.viewRadius, lite);
     memory.add(MemoryPartition.Gpu, this.far.gpuBytes);
     this.chunks.root.add(this.far.mesh);
-    this.streamer = new TerrainStreamer(this.chunks, memory, tier.lod);
+    this.streamer = new TerrainStreamer(this.chunks, memory, tier.lod, client);
   }
 
   get root(): TerrainChunks['root'] {

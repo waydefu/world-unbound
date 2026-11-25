@@ -4,7 +4,7 @@ import { ChunkRequests } from '../world/chunkRequests';
 import { slotCx, slotCz, type LodPolicy } from '../world/chunkGrid';
 import { CHUNK_COUNT } from '../world/constants';
 import type { SampleRing } from '../perf/sampleRing';
-import { TerrainClient } from './terrainClient';
+import type { TerrainClient } from './terrainClient';
 import { createBuildRing } from './observability';
 import { resultBytes, runTerrainJob, type TerrainRequest } from '../world/terrainJob';
 
@@ -20,7 +20,6 @@ const PREFETCH_SECONDS = 0.75;
  */
 export class TerrainStreamer {
   readonly requests = new ChunkRequests();
-  readonly client = new TerrainClient();
   /** Per-chunk build times (ms) reported by the worker; ring of the latest 120. */
   readonly buildMs: SampleRing = createBuildRing();
   /** Raised under GPU memory pressure: coarser LODs everywhere. */
@@ -34,6 +33,7 @@ export class TerrainStreamer {
     private readonly chunks: TerrainChunks,
     private readonly memory: MemoryRegistry,
     private readonly policy: LodPolicy,
+    readonly client: TerrainClient,
   ) {}
 
   /** Forces a retarget on the next update (camera cut, quality change). */

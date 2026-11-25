@@ -6,7 +6,7 @@ import {
 import { abs, attribute, cos, Fn, mix, normalize, positionGeometry, positionWorld, sin, smoothstep, texture, transformNormalToView, uv, varyingProperty, vec2, vec3 } from 'three/tsl';
 import { frustumPlanes } from '../world/cdlodMath';
 import { WORLD_MAX, WORLD_MIN } from '../world/constants';
-import { heightAt } from '../world/heightField';
+import { HeightCellSampler } from '../world/heightField';
 import { sodHash } from '../world/sodRoots';
 import { HEIGHT_DIM, type TerrainTextureData } from '../world/terrainTextures';
 import { TURF_NATIVE_FADE_START_M, turfEligible, turfVisible } from '../world/turfPopulation';
@@ -51,6 +51,7 @@ export class TurfRibbonLod {
   private readonly projection = new Matrix4();
   private readonly planes = new Float32Array(24);
   private readonly direction = new Vector3();
+  private readonly sampler = new HeightCellSampler();
   private x = NaN;
   private y = NaN;
   private z = NaN;
@@ -174,6 +175,8 @@ export class TurfRibbonLod {
     const tileRadius = radius + tileHalf * Math.SQRT2;
     const tileR2 = tileRadius ** 2;
     const heights = this.terrain.height;
+    const { sampler } = this;
+    sampler.reset();
     for (let tz = back; tz <= front; tz += TILE_CELLS) {
       const zEnd = Math.min(front, tz + TILE_CELLS - 1);
       const cz = (tz + zEnd) * .5 * STEP_M;
@@ -197,7 +200,7 @@ export class TurfRibbonLod {
           const dx = wx - x, dz = wz - z;
           const xz2 = dx * dx + dz * dz;
           if (xz2 >= r2 || !turfEligible(this.terrain, wx, wz)) continue;
-          const h = heightAt(wx, wz);
+          const h = sampler.heightAt(wx, wz);
           const dy = h - y;
           const distance2 = xz2 + dy * dy;
           if (h <= .08 || distance2 >= r2 || distance2 <= hidden2 || !turfVisible(this.planes, dx, dy, dz, padding)) continue;

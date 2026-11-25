@@ -16,7 +16,7 @@ import type { ResolvedCamera } from './cameras';
 import type { QualityTier } from './quality';
 import type { AppState } from './report';
 import type { TerrainBackend } from './terrainBackend';
-import { TerrainClient } from './terrainClient';
+import type { TerrainClient } from './terrainClient';
 import { loadSoilAssets, type SoilPreview, SoilRuntime } from './soilRuntime';
 
 const sodAtlases = import.meta.glob<string>('../../assets/grass/sod-top.bin', {
@@ -39,7 +39,6 @@ async function loadSodAtlas(): Promise<Uint8Array> {
 export class CdlodBackend implements TerrainBackend {
   readonly mode = 'cdlod' as const;
   readonly root = new Group();
-  readonly client = new TerrainClient();
   readonly farMesh: Mesh | null = null;
   private terrain: CdlodTerrain | null = null;
   private readonly textures: Promise<TerrainTextureData>;
@@ -59,6 +58,7 @@ export class CdlodBackend implements TerrainBackend {
   private cascadeCams: readonly CascadeCamera[] = [];
 
   constructor(
+    readonly client: TerrainClient,
     private readonly memory: MemoryRegistry,
     private readonly noise: DataTexture,
     private readonly tier: QualityTier,

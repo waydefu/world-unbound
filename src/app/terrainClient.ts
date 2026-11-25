@@ -1,3 +1,5 @@
+import { installTerrainGrid } from '../world/terrainData';
+import { loadAndInstallTerrain, type TerrainLoadTiming, type TerrainProgress } from './terrainAssets';
 import { COAST_DIM, SEAFLOOR_DIM, buildCoastFloor, buildSeaFloor } from '../world/seaFloor';
 import { runTerrainJob, type TerrainRequest, type TerrainResult } from '../world/terrainJob';
 import { buildTerrainTextures, type MaterialStep, type TerrainTextureData } from '../world/terrainTextures';
@@ -10,7 +12,8 @@ import { buildTerrainTextures, type MaterialStep, type TerrainTextureData } from
 type WorkerNotice =
   | { kind: 'seafloor'; fine: boolean; heights: Float32Array }
   | { kind: 'textures'; textures: TerrainTextureData }
-  | { kind: 'terrain-ready'; ms: number }
+  | { kind: 'terrain-ready'; timing: TerrainLoadTiming; grid: Int16Array; sentAt: number }
+  | { kind: 'terrain-progress'; loaded: number; total: number }
   | { kind: 'terrain-error'; message: string };
 
 export class TerrainClient {
@@ -18,6 +21,10 @@ export class TerrainClient {
   /** Milliseconds the worker needed to fetch, verify and decode the terrain tiles (0 until it reports). */
   workerLoadMs = 0;
   private worker: Worker | null = null;
+  private bootProgress: TerrainProgress | undefined;
+  private finishBoot: ((result: TerrainLoadTiming | null) => void) | null = null;
+  private readonly boot = new Promise<TerrainLoadTiming | null>(resolve => { this.finishBoot = resolve; });
+  bootTransferMs: number | null = null;
   private readonly results: TerrainResult[] = [];
   private readonly fallbackJobs: TerrainRequest[] = [];
   /** Jobs the worker has been sent but not answered, for replay after a crash. */
@@ -34,8 +41,16 @@ export class TerrainClient {
       this.worker.onmessage = (event: MessageEvent<TerrainResult | WorkerNotice>): void => {
         const data = event.data;
         if ('kind' in data) {
+          if (data.kind === 'terrain-progress') {
+            this.bootProgress?.(data.loaded, data.total);
+            return;
+          }
           if (data.kind === 'terrain-ready') {
-            this.workerLoadMs = data.ms;
+            installTerrainGrid(data.grid);
+            this.workerLoadMs = data.timing.elapsedMs;
+            this.bootTransferMs = Math.max(0, performance.timeOrigin + performance.now() - data.sentAt);
+            this.finishBoot?.(data.timing);
+            this.finishBoot = null;
             return;
           }
           if (data.kind === 'terrain-error') {
@@ -56,12 +71,24 @@ export class TerrainClient {
         this.results.push(data);
       };
       this.worker.onerror = (): void => this.fallBack();
+      this.worker.onmessageerror = (): void => this.fallBack();
     } catch {
       this.fallBack();
     }
   }
 
+  async load(progress?: TerrainProgress): Promise<TerrainLoadTiming> {
+    this.bootProgress = progress;
+    try {
+      return (await this.boot) ?? await loadAndInstallTerrain(progress);
+    } finally {
+      this.bootProgress = undefined;
+    }
+  }
+
   private fallBack(): void {
+    this.finishBoot?.(null);
+    this.finishBoot = null;
     this.mode = 'main-thread';
     this.worker?.terminate();
     this.worker = null;

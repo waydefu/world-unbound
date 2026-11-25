@@ -162,6 +162,8 @@ export function buildReport(
     },
     frames: {
       total: stats.totalFrames,
+      percentileSampleFrames: stats.percentileSampleFrames,
+      sessionMeanMs: stats.totalFrames > 0 ? round(stats.elapsedHistoryMs / stats.totalFrames) : null,
       fps: p.mean > 0 ? round(1000 / p.mean, 1) : 0,
       meanMs: round(p.mean),
       p50Ms: round(p.p50),
@@ -208,7 +210,11 @@ export function buildReport(
       grass: {
         enabled: state.grassEnabled, cells: state.grassCells, blades: state.grassBlades, cards: state.grassCards,
         triangles: state.grassTris, sodTiles: state.grassSodTiles, sodTriangles: state.grassSodTris, ms: round(state.grassMs, 3),
-        sodCrowns: state.grassSodCrowns, targetLeavesPerM2: state.grassDensityM2, worldTurf: state.worldTurf,
+        sodCrowns: state.worldTurf ? state.worldTurf.submittedCrowns : state.grassSodCrowns,
+        // Legacy triangles is a known subtotal when an indirect count has not been measured.
+        triangleCountComplete: state.worldTurf === null || state.worldTurf.submittedTriangles !== null,
+        submittedTriangles: state.worldTurf !== null && state.worldTurf.submittedTriangles === null ? null : state.grassTris,
+        targetLeavesPerM2: state.grassDensityM2, worldTurf: state.worldTurf,
       },
       wind: { texels: 64, bytes: 64 * 64 * 8, refreshes: state.windUpdates },
       soil: { worker: state.soilWorker, updates: state.soilUpdates, atEye: state.soilSample },

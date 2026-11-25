@@ -2,6 +2,7 @@ import { readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { HeightCellSampler, heightAt } from '../src/world/heightField';
 import { HEIGHT_OFFSET, HEIGHT_QUANTUM, TERRAIN_VERSION } from '../src/world/constants';
 import {
   TERRAIN_SAMPLES, TERRAIN_TILE_COUNT, TERRAIN_TILE_SAMPLES, decodeTile, installTerrain, terrainGrid, terrainInstalled,
@@ -138,4 +139,13 @@ describe('committed Hellesylt tiles', () => {
     expect(checked).toBeGreaterThanOrEqual(30);
     expect(shallow).toBeGreaterThan(0);
   });
+});
+
+it('reuses terrain height cells with identical interpolation across the seam', () => {
+  const sampler = new HeightCellSampler();
+  for (let row = 0; row < 31; row++) for (let col = 0; col < 35; col++) {
+    const x = -2.03 + .13 * col;
+    const z = -42.04 + .14 * row;
+    expect(sampler.heightAt(x, z)).toBe(heightAt(x, z));
+  }
 });

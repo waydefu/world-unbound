@@ -19,6 +19,7 @@ export class FrameStats {
   private head = 0;
   private filled = 0;
   totalFrames = 0;
+  get percentileSampleFrames(): number { return this.filled; }
   longFrames50 = 0;
   longFrames100 = 0;
   /** Count of visibility resumes observed; the frame after a resume is excluded. */
