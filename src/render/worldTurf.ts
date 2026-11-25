@@ -40,6 +40,8 @@ interface TurfBatch {
 export class WorldTurf {
   readonly eye = uniform(new Vector3());
   readonly season: UniformNode<'vec3', Vector3> = uniform(new Vector3(1, 0, 0));
+  readonly sunDir = uniform(new Vector3(0, 1, 0));
+  readonly sunColour = uniform(new Vector3(1, 1, 1));
   readonly detailReach = uniform(new Vector2());
   private readonly reach = uniform(1);
   private readonly drawLimit = uniform(1);
@@ -104,7 +106,7 @@ export class WorldTurf {
     const capacity = this.capacity;
     const candidates = new Float32Array(capacity * 4);
     const geometry = worldTurfGeometry(this.folded);
-    const common = { ...this.options, eye: this.eye, season: this.season, reach: this.reach,
+    const common = { ...this.options, eye: this.eye, season: this.season, reach: this.reach, sunDir: this.sunDir, sunColour: this.sunColour,
       reference: this.reference !== null, unfaded: this.reference !== null || this.benchmark !== null || (!!this.options.surfaceFrame && !!this.trial && !this.folded),
       proxyLeaf: this.trial === 'canopy' && this.folded };
     let mesh: Mesh;
@@ -141,9 +143,7 @@ export class WorldTurf {
               If(dot(p.xyz, offset).add(p.w).lessThan(-TURF_CROWN_PADDING_M), () => { visibleRoot.assign(0); });
             }
           };
-          // A distance or LOD rejection cannot pass the final visibility test.
-          if (this.experiment?.earlyCull) If(visibleRoot.equal(1), testFrustum);
-          else testFrustum();
+          If(visibleRoot.equal(1), testFrustum);
           If(visibleRoot.equal(1), () => {
             const slot = atomicAdd(indirect.element(1), 1);
             visible.element(slot).assign(id);

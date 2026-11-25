@@ -7,7 +7,7 @@ import { parseParams } from '../src/app/params';
 import { BUDGET_BALANCED, MemoryRegistry } from '../src/perf/memoryRegistry';
 import { createGrassWind } from '../src/render/grassWind';
 import type { RendererHandle } from '../src/render/renderer';
-import { createTurfQualityGeometry, createTurfRibbonGeometry, RIBBON_ATLAS_BYTES, turfRibbonAtlasTop } from '../src/render/turfRibbonGeometry';
+import { createTurfQualityGeometry, createTurfRibbonGeometry, createTurfSolidGeometry, RIBBON_ATLAS_BYTES, turfRibbonAtlasTop } from '../src/render/turfRibbonGeometry';
 import { WorldTurf } from '../src/render/worldTurf';
 import { CROWN_VERTICES, decodeTurfCanopy, decodeTurfMaster, MASTER_HEIGHT, MASTER_WIDTH, turfMasterOrigins } from '../src/render/worldTurfAssets';
 import { worldTurfGeometry } from '../src/render/worldTurfMesh';
@@ -143,6 +143,11 @@ describe('world turf', () => {
     expect(parseParams(`${trial}&turfRibbon=trim`).turfRibbon).toBe('trim');
     expect(parseParams(`${trial}&turfRibbon=depth`).turfRibbon).toBe('depth');
     expect(parseParams(`${trial}&turfRibbon=quality`).turfRibbon).toBe('quality');
+    expect(parseParams(`${trial}&turfRibbon=solid`).turfRibbon).toBe('solid');
+    const solid = createTurfSolidGeometry();
+    expect(solid.getAttribute('position').count).toBe(21);
+    expect(solid.index?.count).toBe(45);
+    solid.dispose();
     expect(parseParams(`${trial}&turfRibbon=unknown`).turfRibbon).toBeNull();
     expect(parseParams('?sward=world&turfLod=30&turfTrial=mesh&turfRibbon=depth').turfRibbon).toBeNull();
     expect(parseParams(`${trial}&turfOff=all&turfCull=1&lighting=sky&exposure=1.428`))

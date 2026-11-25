@@ -223,6 +223,14 @@ export class VegetationBackend {
     const wind = this.wind;
     if (wind === null) return;
     if (wind.update(nowMs, eye.x, eye.z, climate)) uploads.add(nowMs, WIND_BYTES);
+    const p = sun.position;
+    const inv = 1 / Math.max(1e-6, Math.sqrt(p.x * p.x + p.y * p.y + p.z * p.z));
+    const sx = p.x * inv, sy = p.y * inv, sz = p.z * inv;
+    const sr = sun.color.r * sun.intensity, sg = sun.color.g * sun.intensity, sb = sun.color.b * sun.intensity;
+    this.worldTurf?.sunDir.value.set(sx, sy, sz);
+    this.worldTurf?.sunColour.value.set(sr, sg, sb);
+    this.foldedTurf?.sunDir.value.set(sx, sy, sz);
+    this.foldedTurf?.sunColour.value.set(sr, sg, sb);
     this.worldTurf?.update(nowMs, eye.x, eye.y, eye.z, camera, bufferHeight);
     this.foldedTurf?.update(nowMs, eye.x, eye.y, eye.z, camera, bufferHeight);
     this.turfRibbonLod?.update(eye.x, eye.y, eye.z, camera);
@@ -237,9 +245,7 @@ export class VegetationBackend {
       return;
     }
     grass.setWind(dirX, dirZ, climate.windSpeedMs, climate.gust01);
-    const p = sun.position;
-    const inv = 1 / Math.max(1e-6, Math.sqrt(p.x * p.x + p.y * p.y + p.z * p.z));
-    grass.setSun(p.x * inv, p.y * inv, p.z * inv, sun.color.r * sun.intensity, sun.color.g * sun.intensity, sun.color.b * sun.intensity);
+    grass.setSun(sx, sy, sz, sr, sg, sb);
     grass.update(eye.x, eye.y, eye.z, camera, (this.options.captureMs ?? nowMs) / 1000, dt, this.options.captureMs !== null);
     this.groundSod?.update(eye.x, eye.y, eye.z, camera);
   }

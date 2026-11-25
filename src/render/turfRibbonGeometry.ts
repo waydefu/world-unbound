@@ -1,6 +1,6 @@
 import { BufferAttribute, InstancedBufferGeometry } from 'three/webgpu';
 
-export type TurfRibbonTrial = 'trim' | 'depth' | 'quality';
+export type TurfRibbonTrial = 'trim' | 'depth' | 'quality' | 'solid';
 
 export const RIBBON_ATLAS_WIDTH = 512;
 export const RIBBON_ATLAS_HEIGHT = 256;
@@ -54,5 +54,37 @@ export function createTurfQualityGeometry(top: number): InstancedBufferGeometry 
   geometry.setAttribute('position', new BufferAttribute(positions, 3));
   geometry.setAttribute('uv', new BufferAttribute(uvs, 2));
   geometry.setIndex([0, 1, 2, 2, 1, 3, 4, 5, 6, 6, 5, 7, 8, 9, 10, 10, 9, 11]);
+  return geometry;
+}
+
+/**
+ * Opaque solid-geometry mid-range tuft (3 tapered blades, 3 rows each = 15 triangles, zero alpha-blend / zero discard).
+ * Encodes (side -1..1, height 0..1, bladeIndex 0..2) in position; lets hardware Early-Z reject occluded tufts.
+ */
+export function createTurfSolidGeometry(): InstancedBufferGeometry {
+  const geometry = new InstancedBufferGeometry();
+  const positions: number[] = [];
+  const uvs: number[] = [];
+  const indices: number[] = [];
+  const rows = [0, 0.45, 0.82] as const;
+  for (let b = 0; b < 3; b++) {
+    const base = b * 7;
+    for (let r = 0; r < rows.length; r++) {
+      const t = rows[r];
+      const halfW = (1 - t * 0.65) * 0.5;
+      positions.push(-halfW, t, b, halfW, t, b);
+      uvs.push(0, t, 1, t);
+    }
+    positions.push(0, 1, b);
+    uvs.push(0.5, 1);
+    indices.push(
+      base, base + 1, base + 2, base + 2, base + 1, base + 3,
+      base + 2, base + 3, base + 4, base + 4, base + 3, base + 5,
+      base + 4, base + 5, base + 6,
+    );
+  }
+  geometry.setAttribute('position', new BufferAttribute(new Float32Array(positions), 3));
+  geometry.setAttribute('uv', new BufferAttribute(new Float32Array(uvs), 2));
+  geometry.setIndex(indices);
   return geometry;
 }

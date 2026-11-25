@@ -1,9 +1,9 @@
 import {
-  BufferAttribute, type DataTexture, DoubleSide, InstancedBufferGeometry, Mesh, MeshSSSNodeMaterial,
+  BufferAttribute, type DataTexture, DoubleSide, InstancedBufferGeometry, Mesh, MeshLambertNodeMaterial,
   type Node, type UniformNode, type Vector3,
 } from 'three/webgpu';
 import {
-  abs, dot, float, floor, Fn, ivec2, length, mix, normalize, sign, smoothstep, texture,
+  abs, dot, float, floor, Fn, ivec2, length, mix, normalize, positionWorld, pow, saturate, sign, smoothstep, texture,
   transformNormalToView, varyingProperty, vec3, vertexIndex,
 } from 'three/tsl';
 import { WORLD_MAX, WORLD_MIN } from '../world/constants';
@@ -41,6 +41,7 @@ export function worldTurfGeometry(reduced = false): InstancedBufferGeometry {
 export interface TurfMeshOptions {
   master: readonly DataTexture[]; height: DataTexture; water: DataTexture;
   eye: UniformNode<'vec3', Vector3>; season: UniformNode<'vec3', Vector3>; reach: UniformNode<'float', number>;
+  sunDir?: UniformNode<'vec3', Vector3>; sunColour?: UniformNode<'vec3', Vector3>;
   wind: GrassWindUniforms; reference: boolean; shadows: boolean;
   unfaded: boolean;
   ribbonHandoff?: boolean;
@@ -60,8 +61,9 @@ export function nativeTurfCoverage(distance: Node<'float'>) {
 }
 
 export function worldTurfMesh(geometry: InstancedBufferGeometry, root: Node<'vec4'>, options: TurfMeshOptions): Mesh {
-  const { master, height, water, eye, season, reach, wind, reference, unfaded, ribbonHandoff, proxyLeaf } = options;
-  const material = new MeshSSSNodeMaterial({ side: DoubleSide, roughness: .49, specularIntensity: .26, alphaHash: !unfaded });
+  const { master, height, water, eye, season, reach, sunDir, sunColour, wind, reference, unfaded, ribbonHandoff, proxyLeaf } = options;
+  // Opaque Lambert material (zero alphaHash discard): preserves hardware Early-Z / LRZ on mobile tiled GPUs.
+  const material = new MeshLambertNodeMaterial({ side: DoubleSide });
   const pigment = varyingProperty('vec3', 'worldTurfPigment');
   const normal = varyingProperty('vec3', 'worldTurfNormal');
   const bladeHeight = varyingProperty('float', 'worldTurfHeight');
@@ -102,9 +104,11 @@ export function worldTurfMesh(geometry: InstancedBufferGeometry, root: Node<'vec
     bladeHeight.assign(h);
     const gust = grassGust(base, phase, wind);
     const sway = wind.wind.xy.mul(h.max(0).pow(2).mul(gust.mul(1.7).add(.2)).mul(wind.wind.z.min(8)));
-    const relative = vec3(p.x.sub(leaf.x).add(sway.x), h, p.z.sub(leaf.z).add(sway.y));
+    // Scale faded blades smoothly into their anchored root so degenerate triangles cull at zero fragment cost.
+    const fadeScale = unfaded ? float(1) : coverage;
+    const relative = vec3(p.x.sub(leaf.x).add(sway.x), h, p.z.sub(leaf.z).add(sway.y)).mul(fadeScale);
     const offset = options.surfaceFrame ? fromTurfPlane(relative, ground.normal).toVar() : relative;
-    const top = options.surfaceFrame ? foot.add(offset.xz) : base.add(p.xz).add(sway);
+    const top = foot.add(offset.xz);
     const oct = detail.xy.mul(2).sub(1);
     const nz = abs(oct.x).add(abs(oct.y)).oneMinus();
     const unfolded = nz.lessThan(0).select(abs(oct.yx).oneMinus().mul(sign(oct)), oct);
@@ -117,22 +121,22 @@ export function worldTurfMesh(geometry: InstancedBufferGeometry, root: Node<'vec
     return vec3(top.x, y.sub(SOD_ROOT_INSET_M).add(offset.y), top.y);
   })();
   const native = seasonal(pigment.mul(vec3(.26, .34, .19)), season);
-  const contact = mix(.58, 1, smoothstep(.005, .076, bladeHeight));
+  // Root contact darkening and overlapping blade depth gradient (#33).
+  const contact = mix(.54, 1, smoothstep(.005, .076, bladeHeight));
   const canopy = grassCarpetColour(season).mul(proxyLeaf ? mix(.72, .94, pigment.g) : mix(.82, 1.08, pigment.g)).mul(mix(.76, 1.06, contact));
   const colour = canopyBlend ? mix(native.mul(contact), canopy, canopyBlend) : native.mul(contact);
   material.colorNode = colour
     .mul(mix(1, .91, smoothstep(.45, .95, moisture)));
-  if (!unfaded) material.opacityNode = visibility;
   material.normalNode = transformNormalToView(normalize(mix(terrainNormal, normal, normalDetail)));
-  const ao = mix(.42, 1, smoothstep(0, .068, bladeHeight));
+  const ao = mix(.38, 1, smoothstep(0, .068, bladeHeight));
   material.aoNode = shadingBlend ? mix(ao, .86, shadingBlend) : ao;
-  if (shadingBlend) {
-    material.roughnessNode = mix(.49, .82, shadingBlend);
-    material.specularIntensityNode = mix(.26, proxyLeaf ? .08 : .15, shadingBlend);
+  if (sunDir && sunColour) {
+    // Lightweight backlit thin-tip translucency (#33) without physical SSS fragment overhead.
+    const view = normalize(positionWorld.negate());
+    const tip = smoothstep(.022, .085, bladeHeight);
+    const backlit = pow(saturate(dot(view, sunDir.negate())), 3.5).mul(tip).mul(visibility);
+    material.emissiveNode = pigment.mul(vec3(.28, .33, .13)).mul(sunColour).mul(backlit).mul(proxyLeaf ? .12 / Math.PI : .29 / Math.PI);
   }
-  material.thicknessColorNode = pigment.mul(vec3(.27, .30, .13));
-  material.thicknessAttenuationNode = visibility.mul(proxyLeaf ? .12 : .29);
-  material.thicknessAmbientNode = float(0);
   const mesh = new Mesh(geometry, material);
   mesh.frustumCulled = false;
   mesh.receiveShadow = options.shadows;
