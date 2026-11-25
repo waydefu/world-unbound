@@ -1,9 +1,12 @@
 import {
   DataTexture, DoubleSide, DynamicDrawUsage, InstancedBufferAttribute, type InstancedBufferGeometry,
-  LinearFilter, LinearMipmapLinearFilter, Matrix4, Mesh, MeshPhysicalNodeMaterial, RGFormat, UnsignedByteType, Vector3,
+  LinearFilter, LinearMipmapLinearFilter, Matrix4, Mesh, MeshLambertNodeMaterial, RGFormat, UnsignedByteType, Vector3,
   type PerspectiveCamera,
 } from 'three/webgpu';
-import { abs, attribute, cos, Fn, mix, normalize, positionGeometry, positionWorld, sin, smoothstep, texture, transformNormalToView, uv, varyingProperty, vec2, vec3 } from 'three/tsl';
+import {
+  abs, attribute, cos, dot, Fn, mix, normalize, positionGeometry, positionWorld, pow, saturate, sin, smoothstep, texture,
+  transformNormalToView, uv, varyingProperty, vec2, vec3,
+} from 'three/tsl';
 import { frustumPlanes } from '../world/cdlodMath';
 import { WORLD_MAX, WORLD_MIN } from '../world/constants';
 import { HeightCellSampler } from '../world/heightField';
@@ -15,7 +18,8 @@ import { grassGust, type GrassWindUniforms } from './grassWind';
 import type { RendererHandle } from './renderer';
 import { terrainHeightNode } from './terrainHeightNode';
 import {
-  createTurfQualityGeometry, createTurfRibbonGeometry, RIBBON_ATLAS_BYTES, RIBBON_ATLAS_HEIGHT, RIBBON_ATLAS_WIDTH, turfRibbonAtlasTop, type TurfRibbonTrial,
+  createTurfQualityGeometry, createTurfRibbonGeometry, createTurfSolidGeometry,
+  RIBBON_ATLAS_BYTES, RIBBON_ATLAS_HEIGHT, RIBBON_ATLAS_WIDTH, turfRibbonAtlasTop, type TurfRibbonTrial,
 } from './turfRibbonGeometry';
 import type { WorldTurf } from './worldTurf';
 import { nativeTurfCoverage } from './worldTurfMesh';
@@ -27,6 +31,7 @@ const CAMERA_SLACK_M = .60;
 const ROTATION_SLACK = Math.cos(8 * Math.PI / 180);
 const RIBBON_TRIANGLES = 4;
 const QUALITY_TRIANGLES = 6;
+const SOLID_TRIANGLES = 15;
 const RIBBON_ALPHA_CUTOFF = .035;
 const sideAssets = import.meta.glob<string>('../../assets/grass/sod-side.bin', { query: '?url&no-inline', import: 'default', eager: true });
 
@@ -46,7 +51,7 @@ async function loadSideAtlas(): Promise<DataTexture> {
 
 /** Two rooted side projections carry the original foliage silhouette beyond the full blade geometry. */
 export class TurfRibbonLod {
-  readonly mesh: Mesh<InstancedBufferGeometry, MeshPhysicalNodeMaterial>;
+  readonly mesh: Mesh<InstancedBufferGeometry, MeshLambertNodeMaterial>;
   private readonly roots: InstancedBufferAttribute;
   private readonly projection = new Matrix4();
   private readonly planes = new Float32Array(24);
@@ -61,76 +66,98 @@ export class TurfRibbonLod {
   readonly cpuBytes: number;
   readonly gpuBytes: number;
 
-  private constructor(atlas: DataTexture, height: DataTexture, private readonly terrain: TerrainTextureData,
+  private constructor(atlas: DataTexture | null, height: DataTexture, private readonly terrain: TerrainTextureData,
     private readonly range: number, native: WorldTurf, wind: GrassWindUniforms, shadows: boolean, private readonly proxy: boolean,
     private readonly trial: TurfRibbonTrial | null, private readonly top: number) {
     const quality = trial === 'quality';
-    const geometry = quality ? createTurfQualityGeometry(top) : createTurfRibbonGeometry(top);
+    const solid = trial === 'solid';
+    const geometry = solid ? createTurfSolidGeometry() : quality ? createTurfQualityGeometry(top) : createTurfRibbonGeometry(top);
     const capacity = (Math.ceil(2 * (range + CAMERA_SLACK_M) / STEP_M) + 3) ** 2;
     this.roots = new InstancedBufferAttribute(new Float32Array(capacity * 4), 4).setUsage(DynamicDrawUsage);
     geometry.setAttribute('ribbonRoot', this.roots);
     geometry.instanceCount = 0;
     const root = attribute('ribbonRoot', 'vec4');
-    const atlasSample = texture(atlas, uv());
+    const atlasSample = atlas ? texture(atlas, uv()) : null;
     const d = root.xyz.sub(native.eye).length().max(.01);
     const near = proxy ? smoothstep(native.detailReach.x, native.detailReach.y, d) : nativeTurfCoverage(d).oneMinus();
     const far = smoothstep(range * .75, range, d).oneMinus();
-    const material = new MeshPhysicalNodeMaterial({ side: DoubleSide, roughness: .82, specularIntensity: .14,
-      transparent: true, depthWrite: false, alphaTest: RIBBON_ALPHA_CUTOFF, forceSinglePass: true });
+    // Lambert avoids full physical PBR overhead on 50k mid-range tufts; `solid` writes depth with zero alpha/discard.
+    const material = solid
+      ? new MeshLambertNodeMaterial({ side: DoubleSide, transparent: false, depthWrite: true })
+      : new MeshLambertNodeMaterial({
+        side: DoubleSide, transparent: true, depthWrite: false, alphaTest: RIBBON_ALPHA_CUTOFF, forceSinglePass: true,
+      });
     const sampleHeight = terrainHeightNode(height);
     const ribbonNormal = varyingProperty('vec3', 'turfRibbonNormal');
+    const ribbonTip = varyingProperty('float', 'turfRibbonTip');
     material.positionNode = Fn(() => {
-      const h = positionGeometry.y.mul(.105);
-      const angle = root.w.mul(6.2831853).add(positionGeometry.z.mul(quality ? 2.0943951 : 1.16));
+      const solidScale = solid ? near.mul(far) : 1;
+      const h = positionGeometry.y.mul(solid ? .095 : .105).mul(solidScale);
+      const angle = root.w.mul(6.2831853).add(positionGeometry.z.mul(quality || solid ? 2.0943951 : 1.16));
       const along = vec2(cos(angle), sin(angle));
       const across = vec2(along.y.negate(), along.x);
       const spread = across.mul(h.mul(mix(1.10, 1.50, root.w)));
-      const base = root.xz.add(along.mul(positionGeometry.x).mul(mix(.17, .24, root.w))).add(spread).toVar();
+      const widthM = solid ? mix(.055, .085, root.w).mul(solidScale) : mix(.17, .24, root.w);
+      const base = root.xz.add(along.mul(positionGeometry.x).mul(widthM)).add(spread).toVar();
       const gust = grassGust(root.xz, root.w, wind);
       const sway = wind.wind.xy.mul(h.pow(2).mul(gust.mul(1.7).add(.2)).mul(wind.wind.z.min(8)));
-      // The quality silhouette bends its tip without moving its anchored root.
-      const curl = quality ? along.mul(positionGeometry.y.mul(positionGeometry.y).mul(.020)) : vec2(0, 0);
+      // The quality/solid silhouette bends its tip without moving its anchored root.
+      const curl = quality || solid ? along.mul(positionGeometry.y.mul(positionGeometry.y).mul(solid ? .028 : .020)).mul(solidScale) : vec2(0, 0);
       const tip = base.add(sway).add(curl);
       const ground = sampleHeight.withNormal(base);
       const tilt = vec3(across.x.mul(.18).add(sway.x.mul(2.4)), 0, across.y.mul(.18).add(sway.y.mul(2.4)));
-      const bladeBend = quality ? positionGeometry.y.mul(.16) : 0;
-      ribbonNormal.assign(normalize(ground.normal.add(tilt).add(quality
+      const bladeBend = quality || solid ? positionGeometry.y.mul(.16) : 0;
+      ribbonNormal.assign(normalize(ground.normal.add(tilt).add(quality || solid
         ? vec3(along.x.mul(bladeBend), 0, along.y.mul(bladeBend)) : vec3(0, 0, 0))));
+      ribbonTip.assign(positionGeometry.y);
       return vec3(tip.x, ground.y.add(h).sub(.002), tip.y);
     })();
     material.normalNode = transformNormalToView(ribbonNormal);
-    material.colorNode = grassCarpetColour(native.season)
-      .mul(quality ? mix(.59, 1.21, atlasSample.g) : mix(.72, 1.08, atlasSample.g))
-      .mul(quality ? mix(.67, 1.19, uv().y) : mix(.78, 1.12, uv().y));
-    material.aoNode = mix(quality ? .46 : .62, 1, smoothstep(0, .72, uv().y));
-    const alpha = atlasSample.r.mul(smoothstep(0, .23, uv().y));
-    // Split the atlas opacity between crossed projections in optical-depth space.
-    if (proxy) {
-      // Side silhouettes are strongest at grazing angles; the three ground layers cover overhead views.
-      const sideWeight = mix(.5, .13, smoothstep(.35, .86, abs(positionWorld.normalize().y)));
-      material.opacityNode = alpha.min(.999).oneMinus().pow(near.mul(far).mul(sideWeight).mul(quality ? .6666667 : 1)).oneMinus();
-    } else {
-      material.opacityNode = quality
-        ? alpha.min(.999).oneMinus().pow(near.mul(far).mul(.6666667)).oneMinus()
-        : alpha.mul(near).mul(far);
+    const tone = atlasSample
+      ? (quality ? mix(.59, 1.21, atlasSample.g) : mix(.72, 1.08, atlasSample.g))
+      : mix(.76, 1.16, root.w);
+    const ribbonColour = grassCarpetColour(native.season)
+      .mul(tone)
+      .mul(quality || solid ? mix(.62, 1.20, uv().y) : mix(.78, 1.12, uv().y));
+    material.colorNode = ribbonColour;
+    material.aoNode = mix(quality || solid ? .44 : .62, 1, smoothstep(0, .72, uv().y));
+    const view = normalize(positionWorld.negate());
+    const backlit = pow(saturate(dot(view, native.sunDir.negate())), 3.5).mul(smoothstep(.25, 1, ribbonTip));
+    material.emissiveNode = ribbonColour.mul(native.sunColour).mul(backlit).mul(.24 / Math.PI);
+    if (!solid && atlasSample) {
+      const alpha = atlasSample.r.mul(smoothstep(0, .23, uv().y));
+      // Split the atlas opacity between crossed projections in optical-depth space.
+      if (proxy) {
+        // Side silhouettes are strongest at grazing angles; the three ground layers cover overhead views.
+        const sideWeight = mix(.5, .13, smoothstep(.35, .86, abs(positionWorld.normalize().y)));
+        material.opacityNode = alpha.min(.999).oneMinus().pow(near.mul(far).mul(sideWeight).mul(quality ? .6666667 : 1)).oneMinus();
+      } else {
+        material.opacityNode = quality
+          ? alpha.min(.999).oneMinus().pow(near.mul(far).mul(.6666667)).oneMinus()
+          : alpha.mul(near).mul(far);
+      }
     }
     const mesh = new Mesh(geometry, material);
     mesh.frustumCulled = false;
     mesh.receiveShadow = shadows;
     mesh.name = 'world-turf-ribbons';
     this.mesh = mesh;
-    this.cpuBytes = this.roots.array.byteLength + RIBBON_ATLAS_BYTES + (quality ? 12 * 5 * 4 + 18 * 2 : 8 * 5 * 4 + 12 * 2);
-    this.gpuBytes = this.roots.array.byteLength + Math.ceil(RIBBON_ATLAS_BYTES * 4 / 3) + (quality ? 12 * 5 * 4 + 18 * 2 : 8 * 5 * 4 + 12 * 2);
+    const atlasCpu = atlas ? RIBBON_ATLAS_BYTES : 0;
+    const atlasGpu = atlas ? Math.ceil(RIBBON_ATLAS_BYTES * 4 / 3) : 0;
+    const geomBytes = solid ? 21 * 5 * 4 + 45 * 2 : quality ? 12 * 5 * 4 + 18 * 2 : 8 * 5 * 4 + 12 * 2;
+    this.cpuBytes = this.roots.array.byteLength + atlasCpu + geomBytes;
+    this.gpuBytes = this.roots.array.byteLength + atlasGpu + geomBytes;
   }
 
   static async load(height: DataTexture, terrain: TerrainTextureData, range: number, native: WorldTurf, wind: GrassWindUniforms,
     shadows: boolean, proxy: boolean, trial: TurfRibbonTrial | null = null) {
-    const atlas = await loadSideAtlas();
-    const top = trial ? turfRibbonAtlasTop(atlas.image.data as Uint8Array) : 1;
+    const atlas = trial === 'solid' ? null : await loadSideAtlas();
+    const top = atlas && trial ? turfRibbonAtlasTop(atlas.image.data as Uint8Array) : 1;
     return new TurfRibbonLod(atlas, height, terrain, range, native, wind, shadows, proxy, trial, top);
   }
 
   setRenderer(handle: RendererHandle): void {
+    if (this.trial === 'solid') return;
     const depth = this.trial === 'depth' && handle.backend === 'webgpu' && handle.renderer.currentSamples > 1;
     const { material } = this.mesh;
     if (material.alphaToCoverage === depth) return;
@@ -177,6 +204,8 @@ export class TurfRibbonLod {
     const heights = this.terrain.height;
     const { sampler } = this;
     sampler.reset();
+    // Collect visible tiles and sort front-to-back so depth-writing modes maximize hardware Early-Z rejection.
+    const tiles: { tx: number; tz: number; xEnd: number; zEnd: number; d2: number }[] = [];
     for (let tz = back; tz <= front; tz += TILE_CELLS) {
       const zEnd = Math.min(front, tz + TILE_CELLS - 1);
       const cz = (tz + zEnd) * .5 * STEP_M;
@@ -185,7 +214,8 @@ export class TurfRibbonLod {
         const xEnd = Math.min(right, tx + TILE_CELLS - 1);
         const cx = (tx + xEnd) * .5 * STEP_M;
         const tdx = cx - x;
-        if (tdx * tdx + tdz * tdz >= tileR2) continue;
+        const d2 = tdx * tdx + tdz * tdz;
+        if (d2 >= tileR2) continue;
         const lx = Math.max(0, Math.min(HEIGHT_DIM - 2, Math.floor((cx - WORLD_MIN) * .5)));
         const lz = Math.max(0, Math.min(HEIGHT_DIM - 2, Math.floor((cz - WORLD_MIN) * .5)));
         const li = lz * HEIGHT_DIM + lx;
@@ -193,22 +223,27 @@ export class TurfRibbonLod {
         const hMax = Math.max(heights[li], heights[li + 1], heights[li + HEIGHT_DIM], heights[li + HEIGHT_DIM + 1]);
         const tilePad = padding + Math.hypot(tileHalf, (hMax - hMin) * .5 + 1.2, tileHalf);
         if (!turfVisible(this.planes, tdx, (hMin + hMax) * .5 - y, tdz, tilePad)) continue;
-        for (let iz = tz; iz <= zEnd; iz++) for (let ix = tx; ix <= xEnd; ix++) {
-          const seed = sodHash(Math.imul(ix, 73856093) ^ Math.imul(iz, 19349663));
-          const wx = ix * STEP_M + ((seed & 255) / 255 - .5) * jitter;
-          const wz = iz * STEP_M + ((seed >>> 8 & 255) / 255 - .5) * jitter;
-          const dx = wx - x, dz = wz - z;
-          const xz2 = dx * dx + dz * dz;
-          if (xz2 >= r2 || !turfEligible(this.terrain, wx, wz)) continue;
-          const h = sampler.heightAt(wx, wz);
-          const dy = h - y;
-          const distance2 = xz2 + dy * dy;
-          if (h <= .08 || distance2 >= r2 || distance2 <= hidden2 || !turfVisible(this.planes, dx, dy, dz, padding)) continue;
-          roots[at++] = wx;
-          roots[at++] = h;
-          roots[at++] = wz;
-          roots[at++] = (seed >>> 16) / 65536;
-        }
+        tiles.push({ tx, tz, xEnd, zEnd, d2 });
+      }
+    }
+    tiles.sort((a, b) => a.d2 - b.d2);
+    for (let t = 0; t < tiles.length; t++) {
+      const { tx, tz, xEnd, zEnd } = tiles[t];
+      for (let iz = tz; iz <= zEnd; iz++) for (let ix = tx; ix <= xEnd; ix++) {
+        const seed = sodHash(Math.imul(ix, 73856093) ^ Math.imul(iz, 19349663));
+        const wx = ix * STEP_M + ((seed & 255) / 255 - .5) * jitter;
+        const wz = iz * STEP_M + ((seed >>> 8 & 255) / 255 - .5) * jitter;
+        const dx = wx - x, dz = wz - z;
+        const xz2 = dx * dx + dz * dz;
+        if (xz2 >= r2 || !turfEligible(this.terrain, wx, wz)) continue;
+        const h = sampler.heightAt(wx, wz);
+        const dy = h - y;
+        const distance2 = xz2 + dy * dy;
+        if (h <= .08 || distance2 >= r2 || distance2 <= hidden2 || !turfVisible(this.planes, dx, dy, dz, padding)) continue;
+        roots[at++] = wx;
+        roots[at++] = h;
+        roots[at++] = wz;
+        roots[at++] = (seed >>> 16) / 65536;
       }
     }
     this.mesh.geometry.instanceCount = at / 4;
@@ -222,8 +257,10 @@ export class TurfRibbonLod {
 
   metrics() {
     const cells = this.mesh.geometry.instanceCount;
-    const mode: 'blend' | TurfRibbonTrial = this.mesh.material.alphaToCoverage ? 'depth' : this.trial === 'quality' ? 'quality' : this.trial ? 'trim' : 'blend';
-    return { rangeM: this.range, cells, triangles: this.mesh.visible ? cells * (mode === 'quality' ? QUALITY_TRIANGLES : RIBBON_TRIANGLES) : 0,
+    const mode: 'blend' | TurfRibbonTrial = this.trial === 'solid' ? 'solid'
+      : this.mesh.material.alphaToCoverage ? 'depth' : this.trial === 'quality' ? 'quality' : this.trial ? 'trim' : 'blend';
+    const perCell = mode === 'solid' ? SOLID_TRIANGLES : mode === 'quality' ? QUALITY_TRIANGLES : RIBBON_TRIANGLES;
+    return { rangeM: this.range, cells, triangles: this.mesh.visible ? cells * perCell : 0,
       rebuildMs: this.rebuildMs, mode, topV: this.top };
   }
 }

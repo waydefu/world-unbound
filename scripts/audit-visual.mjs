@@ -87,7 +87,7 @@ async function sweep(browser, backend, failures) {
       });
       await page.waitForTimeout(700);
       const report = await page.evaluate(() => window.__wu.report());
-      const png = await page.screenshot({ type: 'png' });
+      const png = await page.screenshot({ type: 'png', animations: 'disabled', timeout: READY_TIMEOUT_MS });
       const stats = await imageStats(page, png);
       writeFileSync(path.join(outDir, `${backend}-cam${cam}.png`), png);
       writeFileSync(path.join(outDir, `${backend}-cam${cam}.json`), JSON.stringify(report, null, 2));
