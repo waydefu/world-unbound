@@ -17,6 +17,12 @@ describe('grass inspection lenses', () => {
     expect(parseParams('?inspect=1&sward=world&turfBench=all')).toMatchObject({ cam: 5, inspect: false });
   });
 
+  it('locks the selected pose in performance mode and disables movement flags', () => {
+    expect(parseParams('?perf=1&cam=6&inspect=1&walk=1&turfSite=slope&turfView=macro&scale=1')).toMatchObject({
+      perf: true, cam: 6, inspect: false, walk: false, turfSite: 'slope', turfView: 'macro', scale: 1,
+    });
+  });
+
   it('aims the fixed macro pose just above the surface at all four world sites', () => {
     expect(parseParams('?turfView=macro')).toMatchObject({ cam: 6, turfSite: 'slope', turfView: 'macro', inspect: false });
     for (const site of Object.keys(TURF_SITES) as Array<keyof typeof TURF_SITES>) {

@@ -60,3 +60,12 @@ export function formatHud(state: AppState, stats: FrameStats, dyn: DynamicResolu
   lines.push(`lost ${state.deviceLostCount} · bg ${state.backgroundSuspends}`);
   return lines.join('\n');
 }
+
+export function formatStatus(state: AppState, benchmark: boolean): string | null {
+  const notes: string[] = [];
+  if (state.fallbackReason) notes.push(`WebGL2 fallback: ${state.fallbackReason}`);
+  if (state.recoveredFromCrash) notes.push('Recovered from an abnormal reload: safe low settings');
+  if (state.deviceLostCount > 0) notes.push(`GPU device restored (${state.deviceLostCount})`);
+  if (state.worldTurf?.overflow) notes.push(benchmark ? 'Full-leaf test stopped at the candidate buffer limit.' : 'World turf candidate buffer full. Depth canopy is active.');
+  return notes.length > 0 ? notes.join(' · ') : null;
+}

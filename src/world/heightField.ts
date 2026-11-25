@@ -98,3 +98,29 @@ export function tileNormal(tile: Int16Array, i: number, j: number, out: Float32A
   out[offset + 1] = ny * inv;
   out[offset + 2] = nz * inv;
 }
+
+/** Reuses one height cell when densely sampling nearby roots. Call reset when replacing the lattice. */
+export class HeightCellSampler {
+  private ix = Infinity;
+  private iz = Infinity;
+  private a = 0;
+  private b = 0;
+  private c = 0;
+  private d = 0;
+
+  reset(): void { this.ix = Infinity; }
+
+  heightAt(x: number, z: number): number {
+    const gx = x / CELL_SIZE, gz = z / CELL_SIZE;
+    const ix = Math.floor(gx), iz = Math.floor(gz);
+    if (this.ix !== ix || this.iz !== iz) {
+      this.ix = ix;
+      this.iz = iz;
+      this.a = sampleQuantized(ix, iz);
+      this.b = sampleQuantized(ix + 1, iz);
+      this.c = sampleQuantized(ix, iz + 1);
+      this.d = sampleQuantized(ix + 1, iz + 1);
+    }
+    return dequantize(interpolateCell(this.a, this.b, this.c, this.d, gx - ix, gz - iz));
+  }
+}

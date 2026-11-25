@@ -13,7 +13,6 @@ import { collectTurfMasterReference, collectTurfRoots, TURF_CROWN_PADDING_M, TUR
   turfDetailStart, turfEligible, turfVisible, type TurfBenchmark, type TurfTrial } from '../world/turfPopulation';
 import type { RendererHandle } from './renderer';
 import { TURF_REDUCED_TRIANGLES_PER_LEAF, worldTurfGeometry, worldTurfMesh, type TurfMeshOptions } from './worldTurfMesh';
-
 import type { WorldTurfMetrics } from './worldTurfMetrics';
 
 const CAPACITY = 524_288;
@@ -58,6 +57,8 @@ export class WorldTurf {
   private lastAspectScale = 0;
   private count = 0;
   private drawn: number | null = null;
+  private selectionRevision = 0;
+  private sampledRevision = -1;
   private sampling = false;
   private lastSample = -Infinity;
   private lastCountAt = -Infinity;
@@ -89,6 +90,7 @@ export class WorldTurf {
     this.batches.length = 0;
     this.handle = handle;
     this.drawn = null;
+    this.sampledRevision = -1;
     this.gpuComputeMs = null;
     this.lastCountAt = -Infinity;
     this.lastSample = -Infinity;
@@ -97,7 +99,6 @@ export class WorldTurf {
     this.lastReach = -1;
     this.addBatch(handle);
   }
-
   /** @amortized A retained batch keeps indirect dispatch within device limits while preserving every crown. */
   private addBatch(handle: RendererHandle): TurfBatch {
     const capacity = this.capacity;
@@ -174,7 +175,6 @@ export class WorldTurf {
     this.root.add(mesh);
     return batch;
   }
-
   /** @hot Reuse the candidate window while looking around, then compact against the current view. */
   update(now: number, x: number, y: number, z: number, camera: PerspectiveCamera, bufferHeight: number): void {
     const handle = this.handle;
@@ -210,7 +210,6 @@ export class WorldTurf {
     }
     if (this.diagnostic && handle.backend === 'webgpu' && !this.sampling && now - this.lastSample >= 1000) this.readGpu(now, handle);
   }
-
   /** @amortized Rebuild only after leaving the current resident window. */
   private rebuild(handle: RendererHandle, x: number, y: number, z: number, reach: number): void {
     const start = performance.now();
@@ -243,9 +242,9 @@ export class WorldTurf {
     }
     this.collectMs = performance.now() - start;
   }
-
   /** @hot */
   private select(x: number, y: number, z: number): void {
+    this.selectionRevision++;
     const start = performance.now();
     if (this.handle?.backend === 'webgpu') {
       for (let i = 0; i < 6; i++) this.vectors[i].fromArray(this.planes, i * 4);
@@ -290,23 +289,23 @@ export class WorldTurf {
     }
     this.selectMs = performance.now() - start;
   }
-
   /** @amortized Optional once-per-second diagnostics. */
   private readGpu(now: number, handle: RendererHandle): void {
     this.lastSample = now;
     this.sampling = true;
+    const revision = this.selectionRevision;
     const { renderer } = handle;
     const counts = this.batches.flatMap(batch => batch.gpu && batch.count ? [renderer.getArrayBufferAsync(batch.gpu.args)] : []);
     void Promise.all(counts).then(results => {
       if (this.handle !== handle) return;
       this.drawn = results.reduce((sum, bytes) => sum + new Uint32Array(bytes)[1], 0);
       this.lastCountAt = performance.now();
+      this.sampledRevision = revision;
     }).catch(() => undefined).finally(() => { if (this.handle === handle) this.sampling = false; });
     if (renderer.hasFeature('timestamp-query')) {
       void renderer.resolveTimestampsAsync('compute').then(ms => { if (this.handle === handle) this.gpuComputeMs = ms ?? null; }).catch(() => undefined);
     }
   }
-
   /** A frustum estimate from 16 m ground samples. Includes terrain that may be occluded by nearer ground. */
   private frustumArea(reach: number): number {
     const eye = this.eye.value;
@@ -322,12 +321,13 @@ export class WorldTurf {
     }
     return Math.round(area);
   }
-
   metrics(): WorldTurfMetrics {
     const gpu = this.handle?.backend === 'webgpu';
-    const submitted = this.experiment?.drawOff ? 0 : this.drawn;
     const drawCalls = this.batches.reduce((sum, batch) => sum + Number(batch.mesh.visible && batch.count > 0), 0);
+    const stale = gpu && this.drawn !== null && this.sampledRevision !== this.selectionRevision;
+    const submitted = drawCalls === 0 ? 0 : stale ? null : this.drawn;
     return {
+      countSource: drawCalls === 0 ? 'no-draw' : !gpu ? 'cpu' : !this.diagnostic ? 'gpu-disabled' : stale ? 'gpu-stale' : submitted === null ? 'gpu-pending' : 'gpu-sample',
       mode: gpu ? 'gpu-indirect' : 'cpu-instanced', reference: this.reference !== null,
       submittedCrowns: submitted, submittedLeaves: submitted === null ? null : submitted * SOD_LEAVES_PER_CROWN,
       submittedTriangles: submitted === null ? null : submitted * SOD_LEAVES_PER_CROWN * (this.folded ? TURF_REDUCED_TRIANGLES_PER_LEAF : 22),
@@ -343,7 +343,7 @@ export class WorldTurf {
       ribbonLod: null,
       nativeFade: this.options.ribbonHandoff ? { startM: TURF_NATIVE_FADE_START_M, endM: TURF_NATIVE_FADE_END_M } : null,
       residentBatches: this.batches.length,
-      drawCalls, gpuSampleAgeMs: gpu && this.drawn !== null ? Math.round(performance.now() - this.lastCountAt) : null,
+      drawCalls, gpuSampleAgeMs: gpu && drawCalls !== 0 && this.drawn !== null ? Math.round(performance.now() - this.lastCountAt) : null,
     };
   }
 }

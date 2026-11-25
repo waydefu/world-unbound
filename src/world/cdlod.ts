@@ -54,6 +54,9 @@ export class CdlodSelector {
   private readonly lastEye = new Float64Array(3).fill(NaN);
   private readonly lastPlanes = new Float32Array(24);
   private lastHadPlanes = false;
+  private casterRevision = 0;
+  private readonly cascadeRevision = new Int32Array(MAX_CASCADES).fill(-1);
+  private readonly cascadeKey = new Float64Array(MAX_CASCADES * 28);
 
   constructor(private readonly pyramid: Float32Array, lod0Distance: number, shadowFar: number) {
     for (let level = 0; level < LEVELS; level++) this.range2[level] = lodRange(lod0Distance, level) ** 2;
@@ -84,6 +87,7 @@ export class CdlodSelector {
     this.classify(ex, ey, ez);
     this.balance();
     this.emit(ex, ey, ez, planes);
+    if (this.castersChanged) this.casterRevision++;
   }
 
   /**
@@ -93,6 +97,7 @@ export class CdlodSelector {
    * @hot
    */
   cullCascade(c: number, ex: number, ey: number, ez: number, planes: Float32Array | null): void {
+    if (this.sameCascade(c, ex, ey, ez, planes)) { this.cascadeChanged[c] = 0; return; }
     const nodes = this.cascadeNodes[c];
     const edges = this.cascadeEdges[c];
     const { casters, casterEdges } = this;
@@ -109,6 +114,26 @@ export class CdlodSelector {
     }
     this.cascadeChanged[c] = changed || n !== this.cascadeCount[c] ? 1 : 0;
     this.cascadeCount[c] = n;
+  }
+
+  /** @hot Compare the caster list revision, eye and exact light frustum. */
+  private sameCascade(c: number, ex: number, ey: number, ez: number, planes: Float32Array | null): boolean {
+    const key = this.cascadeKey;
+    const i = c * 28;
+    const hasPlanes = planes === null ? 0 : 1;
+    let same = this.cascadeRevision[c] === this.casterRevision && key[i] === ex && key[i + 1] === ey
+      && key[i + 2] === ez && key[i + 3] === hasPlanes;
+    if (planes !== null) {
+      for (let p = 0; p < 24; p++) if (key[i + 4 + p] !== planes[p]) same = false;
+      if (!same) key.set(planes, i + 4);
+    }
+    if (same) return true;
+    this.cascadeRevision[c] = this.casterRevision;
+    key[i] = ex;
+    key[i + 1] = ey;
+    key[i + 2] = ez;
+    key[i + 3] = hasPlanes;
+    return false;
   }
 
   /** @hot */

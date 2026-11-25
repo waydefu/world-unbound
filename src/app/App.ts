@@ -7,7 +7,7 @@ import { WEATHER_WETNESS } from '../env/weather';
 import { Environment } from '../render/environment';
 import { createNoiseTexture } from '../render/noiseTextures';
 import { attachSunShadows } from '../render/shadows';
-import { createRenderer, warmUp, whenDeviceLost, type RendererHandle } from '../render/renderer';
+import { createRenderer, whenDeviceLost, type RendererHandle } from '../render/renderer';
 import { Hud, downloadJson } from '../ui/hud';
 import { CameraLook } from './cameraLook';
 import { InspectionCamera } from './inspectionCamera';
@@ -16,19 +16,19 @@ import { CAMERAS, GrassTestWalk, placeTurfCamera, resolveCamera, resolveSodCamer
 import { GpuTimer } from './gpuTimer';
 import { Observer } from './observability';
 import { createAppState } from './appState';
-import { formatHud } from './hudText';
+import { formatHud, formatStatus } from './hudText';
 import type { DebugParams } from './params';
 import { pixelRatioForBudget, type QualityTier } from './quality';
 import { EnvironmentClock } from './environmentClock';
 import { buildReport, type AppState } from './report';
 import { CdlodBackend } from './cdlodBackend';
 import { ChunkBackend } from './chunkBackend';
-import { loadAndInstallTerrain } from './terrainAssets';
-import { loadOceanFloor, type StartupProgress } from './startup';
+import { TerrainClient } from './terrainClient';
+import { FrameDiagnostics } from './frameDiagnostics';
+import { firstSubmit, loadOceanFloor, prepareScene, startupTiming, type StartupProgress, type StartupTiming } from './startup';
 import type { TerrainBackend } from './terrainBackend';
 import { VegetationBackend } from './vegetationBackend';
 const LOW_FREQUENCY_MS = 500;
-const WARMUP_TIMEOUT_MS = 20000;
 const VARIANT_BUDGET = { low: 64, med: 64, high: 128 } as const;
 
 export interface AppOptions {
@@ -39,6 +39,7 @@ export interface AppOptions {
   viewportRoot: HTMLElement;
   hudRoot: HTMLElement;
   progress?: StartupProgress;
+  bootStartMs: number;
 }
 
 /** Owns the renderer, the scene and the frame loop. */
@@ -65,11 +66,14 @@ export class App {
   private readonly observer = new Observer();
   private lastTime = 0;
   private lastLowFrequency = 0;
-  private startTime = 0;
+  private loopStart = 0;
+  private cameraCuts = 0;
+  private readonly diagnostics: FrameDiagnostics | null;
   private recovering = false;
   private running = false;
-  private constructor(private readonly options: AppOptions) {
+  private constructor(private readonly options: AppOptions, client: TerrainClient, private readonly startup: StartupTiming) {
     const { params, tier } = options;
+    this.diagnostics = params.cpuTrace ? new FrameDiagnostics() : null;
     this.look = new CameraLook(options.viewportRoot, this.camera);
     this.inspection = params.inspect ? new InspectionCamera(options.viewportRoot) : null;
     const lite = tier.name === 'low';
@@ -85,8 +89,8 @@ export class App {
     this.memory.add(MemoryPartition.Gpu, this.environment.ocean.gpuBytes);
     this.clock = new EnvironmentClock(this.environment, params.exposure);
     this.terrain = params.terrain === 'chunks'
-      ? new ChunkBackend(this.memory, noise.texture, this.environment.ocean.floorTexture, tier, this.observer.uploads)
-      : new CdlodBackend(this.memory, noise.texture, tier, this.observer.uploads, params.shadows ? tier.shadows.cascades : 0, params.sward && params.grass, params.soilPreview, !params.grass, params.worldTurf, params.turfBench !== null, params.turfLod !== null, params.turfTrial === 'canopy', params.turfOff === 'canopy');
+      ? new ChunkBackend(client, this.memory, noise.texture, this.environment.ocean.floorTexture, tier, this.observer.uploads)
+      : new CdlodBackend(client, this.memory, noise.texture, tier, this.observer.uploads, params.shadows ? tier.shadows.cascades : 0, params.sward && params.grass, params.soilPreview, !params.grass, params.worldTurf, params.turfBench !== null, params.turfLod !== null, params.turfTrial === 'canopy', params.turfOff === 'canopy');
     this.vegetation = new VegetationBackend({
       ocean: this.environment.ocean, sun: this.environment.sun, terrain: this.terrain, tier, memory: this.memory,
       uploads: this.observer.uploads, noise: noise.texture, grass: params.grass, sward: params.sward, shadows: params.shadows, fullSod: params.sodView !== null,
@@ -105,50 +109,35 @@ export class App {
     this.state = createAppState(tier, params, options.recoveredFromCrash, this.clock.lutMs, VARIANT_BUDGET[tier.name]);
   }
   static async create(options: AppOptions): Promise<App> {
-    const terrainLoadMs = await loadAndInstallTerrain((done, total) => options.progress?.(5 + 40 * done / total, `Terrain tiles ${done}/${total}`));
-    const app = new App(options);
-    app.state.terrainLoadMs = terrainLoadMs;
-    await app.start();
-    return app;
+    const assetsStart = performance.now();
+    const client = new TerrainClient();
+    try {
+      const terrainAssets = await client.load((done, total) => options.progress?.(5 + 40 * done / total, `Terrain tiles ${done}/${total}`));
+      const timing = startupTiming(terrainAssets, client.bootTransferMs, assetsStart - options.bootStartMs);
+      const loadMs = performance.now() - assetsStart;
+      const app = new App(options, client, timing);
+      app.state.terrainLoadMs = loadMs;
+      await app.start();
+      return app;
+    } catch (error) {
+      client.dispose();
+      throw error;
+    }
   }
   private async start(): Promise<void> {
     const { params, capabilities, tier, viewportRoot, progress } = this.options;
-    this.startTime = performance.now();
-    this.setCamera(params.cam);
+    this.selectCamera(params.cam);
     this.terrain.prime(this.eye.x, this.eye.z);
     this.placeWorld(0);
 
-    this.handle = await createRenderer({
-      container: viewportRoot,
-      choice: params.backend,
-      webgpuUsable: capabilities.webgpu.adapter,
-      antialias: tier.antialias,
-      timestampQuery: capabilities.webgpu.features.includes('timestamp-query'),
-    });
-    await this.terrain.prepare();
-    progress?.(65, 'Preparing vegetation and scene');
-    await this.vegetation.prepare();
-    this.placeWorld(0);
-    this.attachRenderer();
-    progress?.(82, this.handle.fallbackReason ? `WebGL2 fallback: ${this.handle.fallbackReason}` : 'Warming shaders');
-    try {
-      this.state.warmupMs = await warmUp(this.handle, this.scene, this.camera, WARMUP_TIMEOUT_MS);
-    } catch (err) {
-      // A WebGPU device that cannot build our pipelines is treated like a
-      // missing adapter: continue on the flagged WebGL2 path.
-      if (this.handle.backend !== 'webgpu') throw err;
-      const reason = err instanceof Error ? err.message : String(err);
-      this.handle.renderer.dispose();
-      this.handle = await createRenderer({ container: viewportRoot, choice: 'webgl2', webgpuUsable: false, antialias: tier.antialias });
-      this.handle.fallbackReason = `WebGPU ${reason}`;
-      this.attachRenderer();
-      progress?.(82, `Warming WebGL2: ${reason}`);
-      this.state.warmupMs = await warmUp(this.handle, this.scene, this.camera, WARMUP_TIMEOUT_MS);
-    }
+    await prepareScene(this.startup, this.terrain, this.vegetation, this.scene, this.camera, {
+      container: viewportRoot, choice: params.backend, webgpuUsable: capabilities.webgpu.adapter,
+      antialias: tier.antialias, timestampQuery: capabilities.webgpu.features.includes('timestamp-query'),
+    }, handle => { this.handle = handle; this.placeWorld(0); this.attachRenderer(); }, progress);
+    this.state.warmupMs = this.startup.shaderWarmupMs;
     this.observer.markWarm(this.handle.renderer, this.scene, this.state);
     this.running = true;
     progress?.(95, 'Drawing the first frame');
-    loadOceanFloor(this.terrain, this.environment.ocean, this.observer.uploads);
 
     window.addEventListener('resize', () => this.resize());
     document.addEventListener('visibilitychange', () => {
@@ -160,6 +149,7 @@ export class App {
       }
     });
     this.updateStatus();
+    this.loopStart = performance.now();
     this.handle.renderer.setAnimationLoop(this.frame);
   }
   private attachRenderer(): void {
@@ -216,8 +206,14 @@ export class App {
     this.handle.renderer.setAnimationLoop(this.frame);
   }
   setCamera(index: number): void {
+    if (this.options.params.perf) return;
+    this.cameraCuts++;
+    this.selectCamera(index);
+  }
+
+  private selectCamera(index: number): void {
     const spec = CAMERAS[index] ?? CAMERAS[0];
-    this.look.reset(spec.allowLook === true || this.inspection !== null, this.inspection !== null);
+    this.look.reset(!this.options.params.perf && (spec.allowLook === true || this.inspection !== null), this.inspection !== null);
     const { params } = this.options;
     const sodView = spec === CAMERAS[2] ? params.sodView : null;
     resolveCamera(spec, this.eye);
@@ -282,6 +278,9 @@ export class App {
   }
   /** @hot */
   private readonly frame = (now: number): void => {
+    const profile = this.diagnostics;
+    const firstFrame = this.state.firstFrameMs === 0;
+    const frameStart = profile || firstFrame ? performance.now() : 0;
     const interval = this.lastTime === 0 ? 1000 / this.state.refreshHz : now - this.lastTime;
     this.lastTime = now;
     this.stats.push(interval, this.dyn.scale);
@@ -290,19 +289,28 @@ export class App {
     if (this.ready || captureMs !== null) this.grassWalk.update(now, this.eye, captureMs);
     if (this.ready) this.inspection?.update(this.eye, this.camera, interval);
     this.camera.updateMatrixWorld();
+    const terrainStart = profile ? performance.now() : 0;
     this.terrain.update(now, this.eye, this.camera);
+    const vegetationStart = profile ? performance.now() : 0;
     this.vegetation.update(now, this.eye, this.camera, this.state.bufferHeight);
+    const vegetationMs = profile ? performance.now() - vegetationStart : 0;
     this.placeWorld((captureMs ?? now) / 1000);
     this.environment.setExposure(this.clock.update(interval));
+    const submitStart = profile || firstFrame ? performance.now() : 0;
     this.handle.renderer.render(this.scene, this.camera);
+    const submitMs = profile ? performance.now() - submitStart : 0;
+    if (firstFrame) {
+      this.state.firstFrameMs = firstSubmit(this.startup, this.options.bootStartMs, this.loopStart, frameStart, submitStart);
+      loadOceanFloor(this.terrain, this.environment.ocean, this.observer.uploads);
+    }
     this.gpuTimer.afterRender();
     if (now - this.lastLowFrequency >= LOW_FREQUENCY_MS) this.lowFrequency(now);
+    profile?.push(now - this.loopStart, interval, frameStart, vegetationStart - terrainStart, vegetationMs, submitMs, this.state.cameraIndex, this.eye);
   };
   /** @amortized telemetry and HUD refresh at 2 Hz */
   private lowFrequency(now: number): void {
     this.lastLowFrequency = now;
     const { state, stats, terrain } = this;
-    if (state.firstFrameMs === 0) state.firstFrameMs = performance.now() - this.startTime;
     if (!state.refreshMeasured && stats.totalFrames >= 120) {
       const period = snapRefreshPeriod(stats.medianOfRecent(120));
       state.refreshHz = 1000 / period;
@@ -325,22 +333,17 @@ export class App {
     if (!this.ready && terrain.settled) {
       this.ready = true;
       if (state.worldReadyMs === 0) {
-        state.worldReadyMs = performance.now() - this.startTime;
+        state.worldReadyMs = performance.now() - this.options.bootStartMs;
         this.options.progress?.(100, 'Ready');
       }
     }
     if (this.hud.isVisible) this.hud.setText(formatHud(state, stats, this.dyn, this.memory));
   }
-  private updateStatus(): void {
-    const notes: string[] = [];
-    if (this.state.fallbackReason) notes.push(`WebGL2 fallback: ${this.state.fallbackReason}`);
-    if (this.state.recoveredFromCrash) notes.push('Recovered from an abnormal reload: safe low settings');
-    if (this.state.deviceLostCount > 0) notes.push(`GPU device restored (${this.state.deviceLostCount})`);
-    if (this.state.worldTurf?.overflow) notes.push(this.options.params.turfBench !== null ? 'Full-leaf test stopped at the candidate buffer limit.' : 'World turf candidate buffer full. Depth canopy is active.');
-    this.hud.setStatus(notes.length > 0 ? notes.join(' · ') : null);
-  }
+  private updateStatus(): void { this.hud.setStatus(formatStatus(this.state, this.options.params.turfBench !== null)); }
   report(): Record<string, unknown> {
     const report = buildReport(this.state, this.stats, this.dyn, this.memory, this.options.capabilities, this.options.params);
-    return { ...report, camera: { index: this.state.cameraIndex, name: this.state.cameraName, pose: sampleInspectionPose(this.eye, this.camera) } };
+    return { ...report, startup: this.startup, cpuFrameTiming: this.diagnostics?.report() ?? null,
+      camera: { index: this.state.cameraIndex, name: this.state.cameraName, initialIndex: this.options.params.cam,
+        cuts: this.cameraCuts, locked: this.options.params.perf, pose: sampleInspectionPose(this.eye, this.camera) } };
   }
 }

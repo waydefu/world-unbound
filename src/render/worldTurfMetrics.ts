@@ -1,8 +1,11 @@
 import type { TurfBenchmark, TurfTrial } from '../world/turfPopulation';
 
+export type TurfCountSource = 'no-draw' | 'cpu' | 'gpu-disabled' | 'gpu-pending' | 'gpu-sample' | 'gpu-stale' | 'mixed';
+
 export interface WorldTurfMetrics {
   mode: 'gpu-indirect' | 'cpu-instanced';
   reference: boolean;
+  countSource: TurfCountSource;
   submittedCrowns: number | null;
   submittedLeaves: number | null;
   submittedTriangles: number | null;
@@ -26,8 +29,21 @@ export interface TurfTrialMetrics {
   mode: TurfTrial;
   detailBlendM: { start: number; end: number };
   reducedCrownDivisor: number;
-  full: { crowns: number | null; triangles: number | null };
-  folded: { crowns: number | null; triangles: number | null };
+  full: TurfLayerCount;
+  folded: TurfLayerCount;
+}
+
+interface TurfLayerCount {
+  crowns: number | null;
+  leaves: number | null;
+  triangles: number | null;
+  countSource: TurfCountSource;
+  gpuSampleAgeMs: number | null;
+}
+
+function layerCount(metrics: WorldTurfMetrics): TurfLayerCount {
+  return { crowns: metrics.submittedCrowns, leaves: metrics.submittedLeaves, triangles: metrics.submittedTriangles,
+    countSource: metrics.countSource, gpuSampleAgeMs: metrics.gpuSampleAgeMs };
 }
 
 function sum(a: number | null, b: number | null): number | null {
@@ -39,6 +55,7 @@ export function combineWorldTurfMetrics(full: WorldTurfMetrics, folded: WorldTur
   mode: TurfTrial, start: number, end: number, divisor: number): WorldTurfMetrics {
   return {
     ...full,
+    countSource: full.countSource === folded.countSource ? full.countSource : 'mixed',
     submittedCrowns: sum(full.submittedCrowns, folded.submittedCrowns),
     submittedLeaves: sum(full.submittedLeaves, folded.submittedLeaves),
     submittedTriangles: sum(full.submittedTriangles, folded.submittedTriangles),
@@ -54,8 +71,7 @@ export function combineWorldTurfMetrics(full: WorldTurfMetrics, folded: WorldTur
       : Math.max(full.gpuSampleAgeMs ?? 0, folded.gpuSampleAgeMs ?? 0),
     trial: {
       mode, detailBlendM: { start, end }, reducedCrownDivisor: divisor,
-      full: { crowns: full.submittedCrowns, triangles: full.submittedTriangles },
-      folded: { crowns: folded.submittedCrowns, triangles: folded.submittedTriangles },
+      full: layerCount(full), folded: layerCount(folded),
     },
   };
 }

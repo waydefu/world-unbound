@@ -2,22 +2,25 @@
 import { COAST_DIM, SEAFLOOR_DIM, buildCoastFloor, buildSeaFloor } from '../world/seaFloor';
 import { runTerrainJob, type TerrainRequest } from '../world/terrainJob';
 import { buildTerrainTextures, type MaterialStep, type TerrainTextureData } from '../world/terrainTextures';
+import { terrainGrid } from '../world/terrainData';
 import { loadAndInstallTerrain } from './terrainAssets';
 
 /** Terrain worker: tile generation and mesh building off the main thread. */
 const scope = self as unknown as DedicatedWorkerGlobalScope;
 
 /** The worker fetches and verifies the terrain tiles itself; jobs wait for it, in arrival order. */
-const ready: Promise<boolean> = loadAndInstallTerrain().then(
-  (ms) => {
-    scope.postMessage({ kind: 'terrain-ready', ms });
+const ready: Promise<boolean> = loadAndInstallTerrain((loaded, total) => scope.postMessage({ kind: 'terrain-progress', loaded, total })).then(
+  (timing) => {
+    // Keep the worker's authoritative grid for subsequent texture and mesh jobs.
+    const grid = terrainGrid?.slice();
+    if (!grid) throw new Error('Terrain lattice was not installed');
+    scope.postMessage({ kind: 'terrain-ready', timing, grid, sentAt: performance.timeOrigin + performance.now() }, [grid.buffer]);
     return true;
   },
-  (error: unknown) => {
-    scope.postMessage({ kind: 'terrain-error', message: error instanceof Error ? error.message : String(error) });
-    return false;
-  },
-);
+).catch((error: unknown) => {
+  scope.postMessage({ kind: 'terrain-error', message: error instanceof Error ? error.message : String(error) });
+  return false;
+});
 
 /** The buffers a textures reply moves instead of copying. */
 function transferList(t: TerrainTextureData): Transferable[] {

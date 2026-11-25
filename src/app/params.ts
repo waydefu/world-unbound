@@ -15,6 +15,9 @@ export type TurfDrawOff = 'full' | 'folded' | 'ribbon' | 'canopy';
 export interface DebugParams {
   /** Index of a fixed test camera. */
   cam: number;
+  /** Lock the initial camera and collect CPU frame timing. */
+  perf: boolean;
+  cpuTrace: boolean;
   backend: BackendChoice;
   /** null = choose automatically from device capabilities. */
   quality: QualityName | null;
@@ -95,7 +98,8 @@ export function parseParams(search: string): DebugParams {
   const rawBench = p.get('turfBench');
   const turfBench = worldTurf ? (rawBench === 'all' ? 'all' : numberIn(rawBench, 0, 64)) : null;
   const turfReference = worldTurf && turfBench === null && p.get('turfReference') === '1';
-  const inspect = p.get('inspect') === '1' && turfBench === null;
+  const perf = p.get('perf') === '1';
+  const inspect = !perf && p.get('inspect') === '1' && turfBench === null;
   const inspectPose = turfBench === null ? parseInspectionPose(p.get('inspectPose')) : null;
   const knownSite = turfSite === 'slope' || turfSite === 'lowland' || turfSite === 'highland' || turfSite === 'seam';
   const useSlope = (inspect && turfReference) || turfView === 'macro';
@@ -107,6 +111,8 @@ export function parseParams(search: string): DebugParams {
   const turfTrial = turfLod !== null && (trial === 'mesh' || trial === 'canopy') ? trial : null;
   return {
     cam: cam === null ? (sodView !== null ? 2 : inspect || inspectPose || turfView === 'macro' ? 6 : 5) : Math.floor(cam),
+    perf,
+    cpuTrace: perf || p.get('perf') === 'trace',
     backend: backend === 'webgpu' || backend === 'webgl2' ? backend : 'auto',
     quality: turfBench !== null ? (q === 'high' ? 'high' : 'med') : q !== null && QUALITIES.includes(q) ? q : null,
     scale: numberIn(p.get('scale'), 0.5, 1.5),
@@ -140,6 +146,6 @@ export function parseParams(search: string): DebugParams {
     inspectPose,
     sodView,
     soilPreview: soil === 'dry' || soil === 'rain' || soil === 'drained' ? soil : null,
-    walk: p.get('walk') === '1',
+    walk: !perf && p.get('walk') === '1',
   };
 }

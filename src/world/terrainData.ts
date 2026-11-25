@@ -50,6 +50,12 @@ export function installTerrain(tiles: readonly Int16Array[]): void {
       grid.set(tile.subarray(j * dim, (j + 1) * dim), (row * dim + j) * TERRAIN_SAMPLES + col * dim);
     }
   }
+  installTerrainGrid(grid);
+}
+
+/** Installs a validated worker-built lattice without assembling its tiles a second time. */
+export function installTerrainGrid(grid: Int16Array): void {
+  if (grid.length !== TERRAIN_SAMPLES ** 2) throw new Error('Invalid assembled terrain lattice size');
   terrainGrid = grid;
 }
 
