@@ -3,7 +3,7 @@ import type { ResolvedCamera } from './cameras';
 import { WORLD_MAX, WORLD_MIN } from '../world/constants';
 
 export const INSPECTION_NEAR_M = .008;
-export const INSPECTION_HEIGHTS = { macro: .055, standing: 1.2, raised: 7.2 } as const;
+export const INSPECTION_HEIGHTS = { macro: .055, standing: 1.65, raised: 7.2 } as const;
 
 export interface InspectionPose {
   x: number;

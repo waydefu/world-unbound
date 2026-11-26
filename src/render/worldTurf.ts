@@ -18,8 +18,8 @@ import type { WorldTurfMetrics } from './worldTurfMetrics';
 const CAPACITY = 524_288;
 const TRIAL_CAPACITY = 131_072;
 const WORKGROUP = 64;
-const WINDOW_SLACK = .44;
-const WINDOW_TURN = Math.cos(10 * Math.PI / 180);
+const WINDOW_SLACK = 1.2;
+const WINDOW_TURN = Math.cos(16 * Math.PI / 180);
 
 interface GpuRoots {
   input: StorageBufferAttribute;
@@ -225,8 +225,8 @@ export class WorldTurf {
     } : undefined;
     const count = this.reference ? collectTurfMasterReference(this.terrain, this.reference, this.reference.origins, first) : collectTurfRoots(this.terrain, {
       x, y, z, reach: radius, reference: null, hull: this.planes, crownDivisor: this.crownDivisor,
-      // A plane can rotate by ten degrees before the window is rebuilt. Also cover eye translation and complete blades.
-      hullMargin: this.benchmark === 'all' ? TURF_CROWN_PADDING_M : radius * .20 + WINDOW_SLACK + TURF_CROWN_PADDING_M,
+      // A plane can rotate by sixteen degrees before the window is rebuilt. Also cover eye translation and complete blades.
+      hullMargin: this.benchmark === 'all' ? TURF_CROWN_PADDING_M : radius * .29 + WINDOW_SLACK + TURF_CROWN_PADDING_M,
     }, first, this.uv, nextBatch);
     this.overflow = count < 0;
     this.count = Math.max(0, count);
