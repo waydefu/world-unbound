@@ -81,7 +81,7 @@ export function placeTurfCamera(eye: ResolvedCamera, site: TurfSite, view: TurfV
     eye.fovDeg = 50;
     return;
   }
-  eye.y = heightAt(x, z) + (view === 'close' ? .16 : view === 'standing' ? 1.2 : 7.2);
+  eye.y = heightAt(x, z) + (view === 'close' ? .16 : view === 'standing' ? INSPECTION_HEIGHTS.standing : INSPECTION_HEIGHTS.raised);
   eye.targetX = x - .64;
   eye.targetZ = z + .77;
   eye.targetY = eye.y - (view === 'raised' ? 2.55 : view === 'wide' ? .34 : .42);

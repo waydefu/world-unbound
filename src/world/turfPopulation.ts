@@ -14,12 +14,12 @@ export type TurfTrial = 'mesh' | 'canopy';
 
 export const TURF_PROXY_CROWN_DIVISOR = 24;
 
-/** @hot Begin exchanging full topology when a 90th-percentile leaf width projects below 0.78 px. */
+/** @hot Begin exchanging full topology around 3 m and finish handoff at 4 m. */
 export function turfDetailStart(focalPixels: number): number {
-  return Math.max(.9, Math.min(2, focalPixels * .00105 / .78));
+  return Math.max(2.6, Math.min(3.0, focalPixels * .0025 / .78));
 }
 
-export const TURF_DETAIL_BLEND = 1.52;
+export const TURF_DETAIL_BLEND = 4 / 3;
 
 /** Sample neighbours of the authored turf together, across a continuously warped world field. */
 function authoredVariant(x: number, z: number): number {
@@ -82,9 +82,16 @@ export function turfVisible(planes: Float32Array, x: number, y: number, z: numbe
 export function collectTurfRoots(terrain: TerrainTextureData, bounds: TurfWindow, out: Float32Array, uv: Float64Array,
   nextBatch?: () => Float32Array): number {
   const { x, y, z, reach, reference, hull, hullMargin = 0, crownDivisor = 1 } = bounds;
+  const veg = terrain.masks?.vegetation;
+  if (!veg) return 0;
+  const dim = materialDim(terrain.materialStep);
+  const dimMax = dim - 1;
+  const invStep = 1 / (terrain.materialStep * 2);
   const centreX = reference?.x ?? x;
   const centreZ = reference?.z ?? z;
   const range = reference ? 2 : reach;
+  const reach2 = reach * reach;
+  const cellRange2 = (range + 1.5) ** 2;
   const minX = Math.max(0, Math.floor((centreX - range - WORLD_MIN) / 2));
   const minZ = Math.max(0, Math.floor((centreZ - range - WORLD_MIN) / 2));
   const maxX = Math.min(HEIGHT_DIM - 2, Math.floor((centreX + range - WORLD_MIN) / 2));
@@ -92,49 +99,63 @@ export function collectTurfRoots(terrain: TerrainTextureData, bounds: TurfWindow
   const h = terrain.height;
   let used = 0;
   let completed = 0;
-  for (let iz = minZ; iz <= maxZ; iz++) for (let ix = minX; ix <= maxX; ix++) {
-    const i = iz * HEIGHT_DIM + ix;
-    const a = h[i]; const b = h[i + 1]; const c = h[i + HEIGHT_DIM]; const d = h[i + HEIGHT_DIM + 1];
-    if (!Number.isFinite(reach) && hull) {
-      const low = Math.min(a, b, c, d), high = Math.max(a, b, c, d);
-      if (high <= .08 || !turfVisible(hull, WORLD_MIN + ix * 2 + 1 - x, (low + high) * .5 - y,
-        WORLD_MIN + iz * 2 + 1 - z, Math.hypot(1, (high - low) * .5, 1) + hullMargin)) continue;
-    }
-    for (let upper = 0; upper < 2; upper++) {
-      const start = upper ? d : a;
-      const dx = upper ? c - d : b - a;
-      const dz = upper ? b - d : c - a;
-      const count = Math.ceil(sodCrownCount(dx, dz) / crownDivisor);
-      const seed = sodTriangleSeed(ix, iz, upper);
-      const slack = .36 + .18 * (Math.abs(dx) + Math.abs(dz));
-      for (let branch = 0; branch < Math.min(SUBTREES, count); branch++) {
-        sodBarycentric(branch, seed, uv, 3);
-        const bx = sodWorldAxis(ix, uv[0], upper);
-        const bz = sodWorldAxis(iz, uv[1], upper);
-        const by = start + dx * uv[0] + dz * uv[1];
-        if (Math.abs(bx - centreX) > range + slack || Math.abs(bz - centreZ) > range + slack
-          || (!reference && Math.hypot(bx - x, by - y, bz - z) > reach + slack)) continue;
-        if (hull && !turfVisible(hull, bx - x, by - y, bz - z, slack + hullMargin)) continue;
-        for (let k = branch; k < count; k += SUBTREES) {
-          sodBarycentric(k, seed, uv);
-          const wx = sodWorldAxis(ix, uv[0], upper);
-          const wz = sodWorldAxis(iz, uv[1], upper);
-          const wy = start + dx * uv[0] + dz * uv[1];
-          if (reference ? Math.abs(wx - centreX) >= 2 || Math.abs(wz - centreZ) >= 2
-            : (wx - x) ** 2 + (wy - y) ** 2 + (wz - z) ** 2 >= reach * reach) continue;
-          if (wy <= .08 || !turfEligible(terrain, wx, wz)) continue;
-          if (nextBatch && hull && !turfVisible(hull, wx - x, wy - y, wz - z, hullMargin)) continue;
-          if (used === out.length) {
-            if (!nextBatch) return -1;
-            completed += used;
-            out = nextBatch();
-            used = 0;
+  for (let iz = minZ; iz <= maxZ; iz++) {
+    const cellZ = WORLD_MIN + iz * 2 + 1;
+    const cellDz = cellZ - centreZ;
+    for (let ix = minX; ix <= maxX; ix++) {
+      const cellX = WORLD_MIN + ix * 2 + 1;
+      const cellDx = cellX - centreX;
+      if (!reference && cellDx * cellDx + cellDz * cellDz > cellRange2) continue;
+      const i = iz * HEIGHT_DIM + ix;
+      const a = h[i]; const b = h[i + 1]; const c = h[i + HEIGHT_DIM]; const d = h[i + HEIGHT_DIM + 1];
+      const high = Math.max(a, b, c, d);
+      if (high <= .08) continue;
+      if (hull) {
+        const low = Math.min(a, b, c, d);
+        if (!turfVisible(hull, cellX - x, (low + high) * .5 - y,
+          cellZ - z, Math.hypot(1, (high - low) * .5, 1) + hullMargin)) continue;
+      }
+      for (let upper = 0; upper < 2; upper++) {
+        const start = upper ? d : a;
+        const dx = upper ? c - d : b - a;
+        const dz = upper ? b - d : c - a;
+        const count = Math.ceil(sodCrownCount(dx, dz) / crownDivisor);
+        const seed = sodTriangleSeed(ix, iz, upper);
+        const slack = .36 + .18 * (Math.abs(dx) + Math.abs(dz));
+        const branchReach2 = (reach + slack) ** 2;
+        for (let branch = 0; branch < Math.min(SUBTREES, count); branch++) {
+          sodBarycentric(branch, seed, uv, 3);
+          const bx = sodWorldAxis(ix, uv[0], upper);
+          const bz = sodWorldAxis(iz, uv[1], upper);
+          const by = start + dx * uv[0] + dz * uv[1];
+          if (Math.abs(bx - centreX) > range + slack || Math.abs(bz - centreZ) > range + slack
+            || (!reference && (bx - x) ** 2 + (by - y) ** 2 + (bz - z) ** 2 > branchReach2)) continue;
+          if (hull && !turfVisible(hull, bx - x, by - y, bz - z, slack + hullMargin)) continue;
+          for (let k = branch; k < count; k += SUBTREES) {
+            sodBarycentric(k, seed, uv);
+            const wx = sodWorldAxis(ix, uv[0], upper);
+            const wz = sodWorldAxis(iz, uv[1], upper);
+            const wy = start + dx * uv[0] + dz * uv[1];
+            if (reference ? Math.abs(wx - centreX) >= 2 || Math.abs(wz - centreZ) >= 2
+              : (wx - x) ** 2 + (wy - y) ** 2 + (wz - z) ** 2 >= reach2) continue;
+            if (wy <= .08) continue;
+            const vix = Math.max(0, Math.min(dimMax, Math.round((wx - WORLD_MIN) * invStep)));
+            const viz = Math.max(0, Math.min(dimMax, Math.round((wz - WORLD_MIN) * invStep)));
+            const vp = (viz * dim + vix) * 4;
+            if (veg[vp] + veg[vp + 1] < 123 || veg[vp + 3] >= 130) continue;
+            if (nextBatch && hull && !turfVisible(hull, wx - x, wy - y, wz - z, hullMargin)) continue;
+            if (used === out.length) {
+              if (!nextBatch) return -1;
+              completed += used;
+              out = nextBatch();
+              used = 0;
+            }
+            const key = sodHash(seed ^ Math.imul(k, 0x9e3779b1));
+            out[used++] = wx;
+            out[used++] = wy;
+            out[used++] = wz;
+            out[used++] = authoredVariant(wx, wz) + (key >>> 23) / 512;
           }
-          const key = sodHash(seed ^ Math.imul(k, 0x9e3779b1));
-          out[used++] = wx;
-          out[used++] = wy;
-          out[used++] = wz;
-          out[used++] = authoredVariant(wx, wz) + (key >>> 23) / 512;
         }
       }
     }

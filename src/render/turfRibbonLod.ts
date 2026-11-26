@@ -11,8 +11,8 @@ import { frustumPlanes } from '../world/cdlodMath';
 import { WORLD_MAX, WORLD_MIN } from '../world/constants';
 import { HeightCellSampler } from '../world/heightField';
 import { sodHash } from '../world/sodRoots';
-import { HEIGHT_DIM, type TerrainTextureData } from '../world/terrainTextures';
-import { TURF_NATIVE_FADE_START_M, turfEligible, turfVisible } from '../world/turfPopulation';
+import { HEIGHT_DIM, materialDim, type TerrainTextureData } from '../world/terrainTextures';
+import { TURF_NATIVE_FADE_START_M, turfVisible } from '../world/turfPopulation';
 import { grassCarpetColour } from './grassPalette';
 import { grassGust, type GrassWindUniforms } from './grassWind';
 import type { RendererHandle } from './renderer';
@@ -27,8 +27,8 @@ import { nativeTurfCoverage } from './worldTurfMesh';
 const STEP_M = .145;
 const TILE_CELLS = 16;
 const PADDING_M = .32;
-const CAMERA_SLACK_M = .60;
-const ROTATION_SLACK = Math.cos(8 * Math.PI / 180);
+const CAMERA_SLACK_M = 1.20;
+const ROTATION_SLACK = Math.cos(14 * Math.PI / 180);
 const RIBBON_TRIANGLES = 4;
 const QUALITY_TRIANGLES = 6;
 const SOLID_TRIANGLES = 15;
@@ -67,7 +67,7 @@ export class TurfRibbonLod {
   readonly gpuBytes: number;
 
   private constructor(atlas: DataTexture | null, height: DataTexture, private readonly terrain: TerrainTextureData,
-    private readonly range: number, native: WorldTurf, wind: GrassWindUniforms, shadows: boolean, private readonly proxy: boolean,
+    private readonly range: number, private readonly native: WorldTurf, wind: GrassWindUniforms, shadows: boolean, private readonly proxy: boolean,
     private readonly trial: TurfRibbonTrial | null, private readonly top: number) {
     const quality = trial === 'quality';
     const solid = trial === 'solid';
@@ -173,7 +173,7 @@ export class TurfRibbonLod {
   update(x: number, y: number, z: number, camera: PerspectiveCamera): void {
     const matrix = camera.matrixWorld.elements;
     const turned = this.direction.x * matrix[8] + this.direction.y * matrix[9] + this.direction.z * matrix[10] < ROTATION_SLACK;
-    const moved = !Number.isFinite(this.x) || (x - this.x) ** 2 + (y - this.y) ** 2 + (z - this.z) ** 2 > .45 ** 2;
+    const moved = !Number.isFinite(this.x) || (x - this.x) ** 2 + (y - this.y) ** 2 + (z - this.z) ** 2 > (CAMERA_SLACK_M * .75) ** 2;
     if (moved || turned || this.fov !== camera.fov || this.aspect !== camera.aspect) {
       this.direction.set(matrix[8], matrix[9], matrix[10]);
       this.rebuild(x, y, z, camera);
@@ -188,13 +188,14 @@ export class TurfRibbonLod {
     this.fov = camera.fov; this.aspect = camera.aspect;
     frustumPlanes(this.projection.elements, this.planes);
     const radius = this.range + CAMERA_SLACK_M;
-    const padding = PADDING_M + CAMERA_SLACK_M + radius * .14;
+    const padding = PADDING_M + CAMERA_SLACK_M + radius * .26;
     const left = Math.ceil(Math.max(WORLD_MIN, x - radius) / STEP_M);
     const right = Math.floor(Math.min(WORLD_MAX, x + radius) / STEP_M);
     const back = Math.ceil(Math.max(WORLD_MIN, z - radius) / STEP_M);
     const front = Math.floor(Math.min(WORLD_MAX, z + radius) / STEP_M);
     const r2 = radius ** 2;
-    const hidden2 = this.proxy ? 0 : (TURF_NATIVE_FADE_START_M - CAMERA_SLACK_M) ** 2;
+    const innerStart = this.proxy ? this.native.detailReach.value.x : TURF_NATIVE_FADE_START_M;
+    const hidden2 = Math.max(0, innerStart - CAMERA_SLACK_M) ** 2;
     const roots = this.roots.array;
     let at = 0;
     const jitter = this.proxy ? STEP_M : .11;
@@ -226,6 +227,11 @@ export class TurfRibbonLod {
         tiles.push({ tx, tz, xEnd, zEnd, d2 });
       }
     }
+    const veg = this.terrain.masks?.vegetation;
+    if (!veg) { this.mesh.geometry.instanceCount = 0; return; }
+    const dim = materialDim(this.terrain.materialStep);
+    const dimMax = dim - 1;
+    const invStep = 1 / (this.terrain.materialStep * 2);
     tiles.sort((a, b) => a.d2 - b.d2);
     for (let t = 0; t < tiles.length; t++) {
       const { tx, tz, xEnd, zEnd } = tiles[t];
@@ -235,7 +241,11 @@ export class TurfRibbonLod {
         const wz = iz * STEP_M + ((seed >>> 8 & 255) / 255 - .5) * jitter;
         const dx = wx - x, dz = wz - z;
         const xz2 = dx * dx + dz * dz;
-        if (xz2 >= r2 || !turfEligible(this.terrain, wx, wz)) continue;
+        if (xz2 >= r2) continue;
+        const vix = Math.max(0, Math.min(dimMax, Math.round((wx - WORLD_MIN) * invStep)));
+        const viz = Math.max(0, Math.min(dimMax, Math.round((wz - WORLD_MIN) * invStep)));
+        const vp = (viz * dim + vix) * 4;
+        if (veg[vp] + veg[vp + 1] < 123 || veg[vp + 3] >= 130) continue;
         const h = sampler.heightAt(wx, wz);
         const dy = h - y;
         const distance2 = xz2 + dy * dy;

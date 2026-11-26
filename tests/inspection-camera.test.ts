@@ -30,6 +30,8 @@ describe('grass inspection lenses', () => {
       placeTurfCamera(eye, site, 'macro');
       expect(eye.y - heightAt(eye.x, eye.z)).toBeCloseTo(INSPECTION_HEIGHTS.macro);
       expect(eye.targetY - heightAt(eye.targetX, eye.targetZ)).toBeCloseTo(INSPECTION_HEIGHTS.macro);
+      placeTurfCamera(eye, site, 'standing');
+      expect(eye.y - heightAt(eye.x, eye.z)).toBeCloseTo(1.65);
     }
   });
 
